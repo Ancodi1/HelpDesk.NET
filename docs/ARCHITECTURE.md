@@ -4,7 +4,7 @@
 
 ## Estado actual
 
-El repositorio contiene la solución `HelpDesk.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene el arranque mínimo, el endpoint Minimal API `GET /api/health` que devuelve `{"status":"ok"}` y `GET /api/tickets/1` que devuelve un `Ticket` de ejemplo creado en memoria; existe un primer modelo de dominio `Ticket`, pero no hay persistencia ni infraestructura desplegada. EF Core y la gestión de incidencias siguen pendientes.
+El repositorio contiene la solución `HelpDesk.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene el arranque mínimo, el endpoint Minimal API `GET /api/health` que devuelve `{"status":"ok"}` y `GET /api/tickets/{id}` que recibe un `int id` y devuelve un `Ticket` de ejemplo creado en memoria con ese identificador; existe un primer modelo de dominio `Ticket`, pero no hay persistencia ni infraestructura desplegada. EF Core y la gestión de incidencias siguen pendientes.
 
 ## Decisiones iniciales
 
@@ -86,7 +86,7 @@ Decisión: ubicar una clase C# sencilla `Ticket` en `HelpDesk.Api/Models/Ticket.
 
 Motivo: aprender la diferencia entre clase y objeto y representar una incidencia sin introducir persistencia ni capas adicionales.
 
-Consecuencia: los textos se inicializan con `string.Empty` para evitar valores nulos; no hay validaciones ni asignación automática de identificador o fecha. La clase se utiliza en el endpoint literal `GET /api/tickets/1`, que crea un objeto de ejemplo por petición y lo devuelve directamente. ASP.NET Core lo serializa con System.Text.Json, con nombres de propiedades camelCase y fecha ISO 8601, y responde con HTTP 200. No incorpora configuración de Entity Framework ni persistencia.
+Consecuencia: los textos se inicializan con `string.Empty` para evitar valores nulos; no hay validaciones ni asignación automática de identificador o fecha. La clase se utiliza en el endpoint `GET /api/tickets/{id}`, que recibe el parámetro de ruta como `int id`, crea un objeto de ejemplo por petición con `Id = id` y lo devuelve directamente. Sustituye a la ruta literal `/api/tickets/1`; si el segmento no puede convertirse a `int`, ASP.NET Core responde con HTTP 400 antes de ejecutar la función. ASP.NET Core lo serializa con System.Text.Json, con nombres de propiedades camelCase y fecha ISO 8601, y responde con HTTP 200. No incorpora configuración de Entity Framework ni persistencia.
 
 ## Mantenimiento del registro
 

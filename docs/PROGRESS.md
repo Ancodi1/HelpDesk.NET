@@ -13,21 +13,23 @@
 
 - Primer modelo de dominio `Ticket` creado en `HelpDesk.Api/Models/Ticket.cs`, con únicamente `Id` (`int`), `Title` (`string`), `Description` (`string`) y `CreatedAt` (`DateTime`).
 
-- Endpoint `GET /api/tickets/1`: crea en memoria un `Ticket` de ejemplo y lo devuelve con HTTP 200 mediante serialización JSON automática.
+- Endpoint `GET /api/tickets/{id}`: recibe el parámetro de ruta como `int`, crea en memoria un `Ticket` con `Id = id` y lo devuelve con HTTP 200 mediante serialización JSON automática. Sustituye al endpoint literal `GET /api/tickets/1`.
 
 El modelo se utiliza en este endpoint de ejemplo y no tiene persistencia.
 
 ## Trabajo actual
 
-Serialización de un objeto C# completada: el endpoint literal `/api/tickets/1` crea un nuevo `Ticket` por petición y devuelve sus cuatro propiedades como JSON. Pendiente de la siguiente tarea solicitada.
+Parámetros de ruta completados: `{id}` captura un segmento de la URL y ASP.NET Core lo enlaza con el argumento `(int id)` del endpoint. Convierte el texto a entero antes de ejecutar la función; si la conversión falla, devuelve HTTP 400. El endpoint crea un nuevo `Ticket` por petición con el identificador recibido, sin consultar ni guardar datos. Pendiente de la siguiente tarea solicitada.
 
 Validación del cambio actual:
 
-- `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias tras añadir el endpoint.
+- `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias.
 - API arrancada en `http://127.0.0.1:5080` con `dotnet run --project HelpDesk.Api/HelpDesk.Api.csproj --no-build --no-launch-profile --urls http://127.0.0.1:5080`.
-- Petición HTTP real a `/api/tickets/1`: HTTP 200 y `Content-Type: application/json; charset=utf-8`.
-- Cuerpo comprobado mediante aserciones: `{"id":1,"title":"No puedo acceder al correo","description":"El correo muestra un error al iniciar sesión.","createdAt":"2026-10-06T10:00:00Z"}`.
-- Servidor detenido correctamente tras la comprobación.
+- Peticiones HTTP reales a `/api/tickets/1` y `/api/tickets/25`: HTTP 200 y contenido JSON. Aserciones verificaron las cuatro propiedades del modelo y que `id` es un número entero con valor 1 y 25, respectivamente.
+- Ambos tickets mantienen el título y la descripción de ejemplo y `createdAt` igual a `2026-10-06T10:00:00Z`.
+- Petición HTTP real a `/api/tickets/abc`: HTTP 400, confirmado mediante una aserción.
+- El sandbox bloqueó los sockets del servidor y del cliente; las comprobaciones HTTP se completaron con autorización fuera del sandbox.
+- Servidor detenido correctamente tras las comprobaciones.
 - No se ejecuta `dotnet test`: aún no existen proyectos de tests.
 
 Validación HTTP realizada en la tarea anterior (sin cambios en este endpoint):
