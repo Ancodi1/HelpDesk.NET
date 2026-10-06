@@ -4,7 +4,7 @@
 
 ## Estado actual
 
-El repositorio contiene la solución `HelpDeskt.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene únicamente el arranque mínimo; no hay endpoints, modelo de datos ni infraestructura desplegada. EF Core y las funcionalidades del dominio siguen pendientes.
+El repositorio contiene la solución `HelpDesk.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene el arranque mínimo y un endpoint Minimal API `GET /api/health` que devuelve `{"status":"ok"}`; no hay modelo de datos ni infraestructura desplegada. EF Core y las funcionalidades del dominio siguen pendientes.
 
 ## Decisiones iniciales
 
@@ -76,7 +76,7 @@ Decisión: generar la plantilla `webapi` de .NET 10 con Minimal APIs, sin OpenAP
 
 Motivo: aprender primero el arranque de ASP.NET Core y la relación entre solución y proyecto con la estructura mínima solicitada.
 
-Consecuencia: `Program.cs` crea el builder, construye la aplicación y ejecuta el servidor. No hay controllers, endpoints ni capas adicionales. HTTP se utiliza para la comprobación local; una petición a una ruta sin endpoint devuelve 404. HTTPS y el estilo de los futuros endpoints podrán revisarse cuando se soliciten.
+Consecuencia: `Program.cs` crea el builder, construye la aplicación y ejecuta el servidor. El primer endpoint se registra directamente con `app.MapGet("/api/health", () => new { status = "ok" })`; no hay controllers ni capas adicionales. HTTP se utiliza para la comprobación local; una petición a una ruta sin endpoint devuelve 404. HTTPS y el estilo de los futuros endpoints podrán revisarse cuando se soliciten.
 
 ## Mantenimiento del registro
 
