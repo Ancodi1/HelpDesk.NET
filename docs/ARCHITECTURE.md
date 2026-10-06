@@ -4,7 +4,7 @@
 
 ## Estado actual
 
-El repositorio contiene la solución `HelpDesk.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene el arranque mínimo y un endpoint Minimal API `GET /api/health` que devuelve `{"status":"ok"}`; no hay modelo de datos ni infraestructura desplegada. EF Core y las funcionalidades del dominio siguen pendientes.
+El repositorio contiene la solución `HelpDesk.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene el arranque mínimo y un endpoint Minimal API `GET /api/health` que devuelve `{"status":"ok"}`; existe un primer modelo de dominio `Ticket`, pero no hay persistencia ni infraestructura desplegada. EF Core y la gestión de incidencias siguen pendientes.
 
 ## Decisiones iniciales
 
@@ -77,6 +77,16 @@ Decisión: generar la plantilla `webapi` de .NET 10 con Minimal APIs, sin OpenAP
 Motivo: aprender primero el arranque de ASP.NET Core y la relación entre solución y proyecto con la estructura mínima solicitada.
 
 Consecuencia: `Program.cs` crea el builder, construye la aplicación y ejecuta el servidor. El primer endpoint se registra directamente con `app.MapGet("/api/health", () => new { status = "ok" })`; no hay controllers ni capas adicionales. HTTP se utiliza para la comprobación local; una petición a una ruta sin endpoint devuelve 404. HTTPS y el estilo de los futuros endpoints podrán revisarse cuando se soliciten.
+
+### 008 — Primer modelo de dominio Ticket
+
+Estado: implementada.
+
+Decisión: ubicar una clase C# sencilla `Ticket` en `HelpDesk.Api/Models/Ticket.cs`, con únicamente `Id` (`int`), `Title` (`string`), `Description` (`string`) y `CreatedAt` (`DateTime`), mediante propiedades automáticas públicas.
+
+Motivo: aprender la diferencia entre clase y objeto y representar una incidencia sin introducir persistencia ni capas adicionales.
+
+Consecuencia: los textos se inicializan con `string.Empty` para evitar valores nulos; no hay validaciones ni asignación automática de identificador o fecha. La clase todavía no se utiliza en endpoints y no incorpora configuración de Entity Framework.
 
 ## Mantenimiento del registro
 

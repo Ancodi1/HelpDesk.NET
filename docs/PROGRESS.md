@@ -11,13 +11,20 @@
 - Primer endpoint Minimal API: `GET /api/health`, que devuelve HTTP 200 y JSON `{"status":"ok"}` mediante `app.MapGet()`.
 - Configuración de aplicación y perfil HTTP local conservados, sin paquetes adicionales.
 
-Todavía no hay funcionalidades del dominio HelpDesk implementadas.
+- Primer modelo de dominio `Ticket` creado en `HelpDesk.Api/Models/Ticket.cs`, con únicamente `Id` (`int`), `Title` (`string`), `Description` (`string`) y `CreatedAt` (`DateTime`).
+
+El modelo aún no se utiliza en endpoints ni tiene persistencia.
 
 ## Trabajo actual
 
-Primer endpoint completado: routing por método GET y ruta `/api/health`, con respuesta JSON comprobada mediante una petición HTTP real. Pendiente de la siguiente tarea solicitada.
+Primer modelo de dominio completado: clase `Ticket` con cuatro propiedades automáticas. `Title` y `Description` se inicializan con `string.Empty`; `CreatedAt` no se asigna automáticamente. Pendiente de la siguiente tarea solicitada.
 
-Validación realizada:
+Validación del cambio actual:
+
+- `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias tras crear `Ticket`.
+- No se ejecuta `dotnet test`: aún no existen proyectos de tests.
+
+Validación HTTP realizada en la tarea anterior (sin cambios en este endpoint):
 
 - `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias.
 - `dotnet run --project HelpDesk.Api/HelpDesk.Api.csproj --no-build --no-launch-profile --urls http://127.0.0.1:5080`: arranque correcto, confirmado por Kestrel.
@@ -38,7 +45,7 @@ Validación realizada:
 
 Estos pasos son orientativos y requieren una tarea solicitada:
 
-1. Definir progresivamente el modelo de incidencias y sus reglas.
+1. Acordar el siguiente uso del modelo `Ticket` y definir sus reglas progresivamente.
 2. Incorporar persistencia con Entity Framework Core cuando corresponda.
 3. Incorporar usuarios, técnicos, administradores, prioridades, categorías, asignaciones, estados, comentarios e historial por tareas concretas.
 4. Añadir autenticación y autorización, tests automatizados, frontend con Angular y TypeScript y Docker en etapas posteriores.
