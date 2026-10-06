@@ -13,15 +13,21 @@
 
 - Primer modelo de dominio `Ticket` creado en `HelpDesk.Api/Models/Ticket.cs`, con únicamente `Id` (`int`), `Title` (`string`), `Description` (`string`) y `CreatedAt` (`DateTime`).
 
-El modelo aún no se utiliza en endpoints ni tiene persistencia.
+- Endpoint `GET /api/tickets/1`: crea en memoria un `Ticket` de ejemplo y lo devuelve con HTTP 200 mediante serialización JSON automática.
+
+El modelo se utiliza en este endpoint de ejemplo y no tiene persistencia.
 
 ## Trabajo actual
 
-Primer modelo de dominio completado: clase `Ticket` con cuatro propiedades automáticas. `Title` y `Description` se inicializan con `string.Empty`; `CreatedAt` no se asigna automáticamente. Pendiente de la siguiente tarea solicitada.
+Serialización de un objeto C# completada: el endpoint literal `/api/tickets/1` crea un nuevo `Ticket` por petición y devuelve sus cuatro propiedades como JSON. Pendiente de la siguiente tarea solicitada.
 
 Validación del cambio actual:
 
-- `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias tras crear `Ticket`.
+- `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias tras añadir el endpoint.
+- API arrancada en `http://127.0.0.1:5080` con `dotnet run --project HelpDesk.Api/HelpDesk.Api.csproj --no-build --no-launch-profile --urls http://127.0.0.1:5080`.
+- Petición HTTP real a `/api/tickets/1`: HTTP 200 y `Content-Type: application/json; charset=utf-8`.
+- Cuerpo comprobado mediante aserciones: `{"id":1,"title":"No puedo acceder al correo","description":"El correo muestra un error al iniciar sesión.","createdAt":"2026-10-06T10:00:00Z"}`.
+- Servidor detenido correctamente tras la comprobación.
 - No se ejecuta `dotnet test`: aún no existen proyectos de tests.
 
 Validación HTTP realizada en la tarea anterior (sin cambios en este endpoint):
@@ -45,7 +51,7 @@ Validación HTTP realizada en la tarea anterior (sin cambios en este endpoint):
 
 Estos pasos son orientativos y requieren una tarea solicitada:
 
-1. Acordar el siguiente uso del modelo `Ticket` y definir sus reglas progresivamente.
+1. Acordar el siguiente paso de la gestión de tickets y definir sus reglas progresivamente.
 2. Incorporar persistencia con Entity Framework Core cuando corresponda.
 3. Incorporar usuarios, técnicos, administradores, prioridades, categorías, asignaciones, estados, comentarios e historial por tareas concretas.
 4. Añadir autenticación y autorización, tests automatizados, frontend con Angular y TypeScript y Docker en etapas posteriores.
