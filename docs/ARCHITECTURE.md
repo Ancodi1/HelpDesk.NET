@@ -4,7 +4,7 @@
 
 ## Estado actual
 
-El repositorio está en fase documental. No existe aplicación, solución .NET, modelo de datos ni infraestructura desplegada. Las decisiones siguientes orientan la implementación futura y no implican que esté realizada.
+El repositorio contiene la solución `HelpDeskt.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene únicamente el arranque mínimo; no hay endpoints, modelo de datos ni infraestructura desplegada. EF Core y las funcionalidades del dominio siguen pendientes.
 
 ## Decisiones iniciales
 
@@ -20,19 +20,19 @@ Consecuencia: el alcance funcional completo se desarrollará por etapas; cada et
 
 ### 002 — Backend previsto con .NET 10, ASP.NET Core Web API y EF Core
 
-Estado: aceptada como dirección tecnológica; implementación pendiente.
+Estado: backend mínimo implementado; persistencia pendiente.
 
 Decisión: utilizar .NET 10 y ASP.NET Core Web API para el backend, e incorporar Entity Framework Core para persistencia en la etapa correspondiente.
 
 Motivo: aprender desarrollo de APIs y acceso a datos dentro del ecosistema .NET.
 
-Consecuencia: antes de implementar se comprobará el entorno. La elección de base de datos y proveedor de EF Core permanece pendiente; no se añaden dependencias todavía.
+Consecuencia: entorno comprobado con SDK .NET 10.0.112 y runtime ASP.NET Core 10.0.12. La elección de base de datos y proveedor de EF Core permanece pendiente; el proyecto no incorpora paquetes adicionales.
 
 ### 003 — Estructura inicial sencilla
 
 Estado: aceptada.
 
-Decisión: no adoptar Clean Architecture inicialmente ni añadir capas o patrones sin una necesidad concreta. La estructura de archivos se decidirá al solicitar la creación de la API.
+Decisión: no adoptar Clean Architecture inicialmente ni añadir capas o patrones sin una necesidad concreta. La estructura inicial consiste en un único proyecto `HelpDesk.Api` en la raíz de la solución.
 
 Motivo: reducir complejidad inicial y centrar el aprendizaje en los fundamentos de .NET y ASP.NET Core.
 
@@ -67,6 +67,16 @@ Decisión: nunca incluir secretos ni credenciales en archivos versionados o docu
 Motivo: mantener prácticas profesionales y evitar exponer datos sensibles.
 
 Consecuencia: los ejemplos utilizarán marcadores y las futuras configuraciones sensibles se suministrarán mediante un mecanismo adecuado al entorno.
+
+### 007 — Arranque mínimo de Web API
+
+Estado: implementada.
+
+Decisión: generar la plantilla `webapi` de .NET 10 con Minimal APIs, sin OpenAPI ni HTTPS local en esta etapa. Eliminar el endpoint WeatherForecast y su archivo de peticiones de ejemplo. Mantener `Program.cs`, el archivo de proyecto, `appsettings.json`, `appsettings.Development.json` y `Properties/launchSettings.json`.
+
+Motivo: aprender primero el arranque de ASP.NET Core y la relación entre solución y proyecto con la estructura mínima solicitada.
+
+Consecuencia: `Program.cs` crea el builder, construye la aplicación y ejecuta el servidor. No hay controllers, endpoints ni capas adicionales. HTTP se utiliza para la comprobación local; una petición a una ruta sin endpoint devuelve 404. HTTPS y el estilo de los futuros endpoints podrán revisarse cuando se soliciten.
 
 ## Mantenimiento del registro
 
