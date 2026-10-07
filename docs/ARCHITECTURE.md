@@ -1,10 +1,10 @@
 # Arquitectura — HelpDesk.NET
 
-Última actualización: 2026-10-06.
+Última actualización: 2026-10-07.
 
 ## Estado actual
 
-El repositorio contiene la solución `HelpDesk.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene el arranque mínimo, el endpoint Minimal API `GET /api/health` que devuelve `{"status":"ok"}` y `GET /api/tickets/{id}` que recibe un `int id` y devuelve un `Ticket` de ejemplo creado en memoria con ese identificador; existe un primer modelo de dominio `Ticket`, pero no hay persistencia ni infraestructura desplegada. EF Core y la gestión de incidencias siguen pendientes.
+El repositorio contiene la solución `HelpDesk.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene el arranque mínimo, el endpoint Minimal API `GET /api/health` que devuelve `{"status":"ok"}` y `GET /api/tickets/{id}` que recibe un `int id` y busca en una `List<Ticket>` en memoria con tres ejemplos (IDs 1, 2 y 3), devolviendo HTTP 200 con el ticket o HTTP 404 si no existe; existe un primer modelo de dominio `Ticket`, pero no hay persistencia ni infraestructura desplegada. EF Core y la gestión de incidencias siguen pendientes.
 
 ## Decisiones iniciales
 
@@ -86,7 +86,7 @@ Decisión: ubicar una clase C# sencilla `Ticket` en `HelpDesk.Api/Models/Ticket.
 
 Motivo: aprender la diferencia entre clase y objeto y representar una incidencia sin introducir persistencia ni capas adicionales.
 
-Consecuencia: los textos se inicializan con `string.Empty` para evitar valores nulos; no hay validaciones ni asignación automática de identificador o fecha. La clase se utiliza en el endpoint `GET /api/tickets/{id}`, que recibe el parámetro de ruta como `int id`, crea un objeto de ejemplo por petición con `Id = id` y lo devuelve directamente. Sustituye a la ruta literal `/api/tickets/1`; si el segmento no puede convertirse a `int`, ASP.NET Core responde con HTTP 400 antes de ejecutar la función. ASP.NET Core lo serializa con System.Text.Json, con nombres de propiedades camelCase y fecha ISO 8601, y responde con HTTP 200. No incorpora configuración de Entity Framework ni persistencia.
+Consecuencia: los textos se inicializan con `string.Empty` para evitar valores nulos; no hay validaciones ni asignación automática de identificador o fecha. La clase se utiliza en el endpoint `GET /api/tickets/{id}`, que recibe el parámetro de ruta como `int id`, consulta mediante `FirstOrDefault` una `List<Ticket>` creada en `Program.cs` al arrancar, con tres objetos de ejemplo (IDs 1, 2 y 3). Si el resultado es `null`, devuelve `Results.NotFound()` (HTTP 404 sin cuerpo); en caso contrario, devuelve `Results.Ok(ticket)` (HTTP 200 con JSON). Los datos se recrean al reiniciar. Sustituye a la ruta literal `/api/tickets/1`; si el segmento no puede convertirse a `int`, ASP.NET Core responde con HTTP 400 antes de ejecutar la función. Cuando encuentra el ticket, ASP.NET Core lo serializa con System.Text.Json, con nombres de propiedades camelCase y fecha ISO 8601. No incorpora configuración de Entity Framework ni persistencia.
 
 ## Mantenimiento del registro
 
