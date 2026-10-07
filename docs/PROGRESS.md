@@ -15,16 +15,24 @@
 
 - Endpoint `GET /api/tickets/{id}`: recibe el parámetro de ruta como `int` y busca en una `List<Ticket>` en memoria con tres tickets de ejemplo (IDs 1, 2 y 3). Usa `FirstOrDefault(ticket => ticket.Id == id)` y devuelve HTTP 200 con el ticket en JSON mediante `Results.Ok(ticket)`, o HTTP 404 sin cuerpo mediante `Results.NotFound()` si no existe.
 
-El modelo se utiliza en este endpoint de ejemplo y no tiene persistencia.
+- Endpoint `POST /api/tickets`: recibe un `Ticket` desde JSON, asigna `Id` con el mayor identificador de la lista más uno y `CreatedAt` con `DateTime.UtcNow`, añade el objeto a la colección y devuelve HTTP 201 con JSON y cabecera `Location` mediante `Results.Created`.
+
+El modelo se utiliza directamente en los endpoints y no tiene persistencia.
 
 ## Trabajo actual
 
-Colecciones en memoria y respuestas HTTP completadas. La lista se crea una vez al arrancar la aplicación; cada petición consulta los objetos existentes. `FirstOrDefault` devuelve el primer ticket cuyo `Id` coincide, o `null` si no hay coincidencias. La comprobación `ticket is null` permite elegir entre 404 y 200. Los datos son ejemplos sin persistencia y se recrean al reiniciar. El parámetro sigue siendo `int`; si la conversión falla, ASP.NET Core devuelve HTTP 400 antes de ejecutar la función. Pendiente de la siguiente tarea solicitada.
+Creación de recursos mediante POST completada. ASP.NET Core deserializa el JSON del cuerpo a través del parámetro `(Ticket ticket)`. El endpoint sustituye cualquier `Id` o `CreatedAt` enviado por el cliente por valores calculados en el servidor. `tickets.Add(ticket)` incorpora el objeto a la misma colección que consulta GET; `Results.Created` serializa el ticket y devuelve HTTP 201 junto con su ruta en `Location`.
+
+La colección se crea una vez al arrancar con los IDs 1, 2 y 3. Los nuevos IDs se calculan con `tickets.Max(ticket => ticket.Id) + 1`; la lista inicial no está vacía. Los datos creados se pierden al reiniciar. Se mantienen GET por ID (200 o 404) y health. No se han añadido dependencias ni capas. Pendiente de la siguiente tarea solicitada.
 
 Validación del cambio actual:
 
 - `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias.
 - API arrancada en `http://127.0.0.1:5080` con `dotnet run --project HelpDesk.Api/HelpDesk.Api.csproj --no-build --no-launch-profile --urls http://127.0.0.1:5080`.
+- Primer POST real a `/api/tickets` con título y descripción: HTTP 201, ID 4 y `Location: /api/tickets/4`.
+- Segundo POST real enviando también `id: 999` y una fecha antigua: HTTP 201, ID 5 y fecha UTC actual asignados por el servidor.
+- Aserciones verificaron JSON, las cuatro propiedades, título y descripción conservados, IDs consecutivos, cabecera `Location` y `CreatedAt` en UTC dentro del intervalo de cada petición.
+- GET reales a `/api/tickets/4` y `/api/tickets/5`: HTTP 200 con objetos idénticos a los devueltos por los POST, confirmando su incorporación a la colección.
 - Peticiones HTTP reales a `/api/tickets/1`, `/api/tickets/2` y `/api/tickets/3`: HTTP 200. Aserciones verificaron el identificador correspondiente, las cuatro propiedades del modelo y contenido de título, descripción y fecha.
 - Petición HTTP real a `/api/tickets/99`: HTTP 404 y cuerpo vacío, verificados mediante aserciones.
 - Petición HTTP real a `/api/health`: HTTP 200 y JSON `{"status":"ok"}`, verificados mediante aserciones.
@@ -34,7 +42,9 @@ Validación del cambio actual:
 
 ## Problemas conocidos
 
-- No se han identificado problemas de implementación.
+- La colección es temporal: los tickets creados se pierden al reiniciar la API.
+- `List<Ticket>` y el cálculo `Max + 1` no están sincronizados para peticiones simultáneas. Esta práctica comprueba peticiones secuenciales; la concurrencia queda pendiente.
+- No se ha añadido validación de título o descripción en esta etapa.
 - El sandbox bloqueó inicialmente la apertura del socket; la comprobación de arranque se completó con autorización fuera del sandbox.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
 - No hay proyectos de tests automatizados todavía.

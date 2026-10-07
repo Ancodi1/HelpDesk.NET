@@ -43,4 +43,14 @@ app.MapGet("/api/tickets/{id}", (int id) =>
     return Results.Ok(ticket);
 });
 
+app.MapPost("/api/tickets", (Ticket ticket) =>
+{
+    ticket.Id = tickets.Max(ticket => ticket.Id) + 1;
+    ticket.CreatedAt = DateTime.UtcNow;
+
+    tickets.Add(ticket);
+
+    return Results.Created($"/api/tickets/{ticket.Id}", ticket);
+});
+
 app.Run();
