@@ -1,3 +1,4 @@
+using HelpDesk.Api.DTOs;
 using HelpDesk.Api.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,25 +44,30 @@ app.MapGet("/api/tickets/{id}", (int id) =>
     return Results.Ok(ticket);
 });
 
-app.MapPost("/api/tickets", (Ticket ticket) =>
+app.MapPost("/api/tickets", (CreateTicketDto createTicketDto) =>
 {
-    if (string.IsNullOrWhiteSpace(ticket.Title))
+    if (string.IsNullOrWhiteSpace(createTicketDto.Title))
     {
         return Results.BadRequest(new { error = "El título es obligatorio y no puede contener solamente espacios." });
     }
 
-    if (ticket.Title.Length > 100)
+    if (createTicketDto.Title.Length > 100)
     {
         return Results.BadRequest(new { error = "El título debe tener como máximo 100 caracteres." });
     }
 
-    if (string.IsNullOrWhiteSpace(ticket.Description))
+    if (string.IsNullOrWhiteSpace(createTicketDto.Description))
     {
         return Results.BadRequest(new { error = "La descripción es obligatoria y no puede contener solamente espacios." });
     }
 
-    ticket.Id = tickets.Max(ticket => ticket.Id) + 1;
-    ticket.CreatedAt = DateTime.UtcNow;
+    var ticket = new Ticket
+    {
+        Id = tickets.Max(ticket => ticket.Id) + 1,
+        Title = createTicketDto.Title,
+        Description = createTicketDto.Description,
+        CreatedAt = DateTime.UtcNow
+    };
 
     tickets.Add(ticket);
 

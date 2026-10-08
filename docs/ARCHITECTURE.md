@@ -4,7 +4,7 @@
 
 ## Estado actual
 
-El repositorio contiene la solución `HelpDesk.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene el arranque mínimo, el endpoint Minimal API `GET /api/health` que devuelve `{"status":"ok"}` y `GET /api/tickets/{id}` que recibe un `int id` y busca en una `List<Ticket>` en memoria con tres ejemplos (IDs 1, 2 y 3), devolviendo HTTP 200 con el ticket o HTTP 404 si no existe; `POST /api/tickets` recibe JSON como `Ticket`, asigna identificador y fecha UTC, añade el objeto a esa misma colección y devuelve HTTP 201 con JSON y cabecera `Location`. Existe un primer modelo de dominio `Ticket`, pero no hay persistencia ni infraestructura desplegada. EF Core y la gestión de incidencias siguen pendientes.
+El repositorio contiene la solución `HelpDesk.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene el arranque mínimo, el endpoint Minimal API `GET /api/health` que devuelve `{"status":"ok"}` y `GET /api/tickets/{id}` que recibe un `int id` y busca en una `List<Ticket>` en memoria con tres ejemplos (IDs 1, 2 y 3), devolviendo HTTP 200 con el ticket o HTTP 404 si no existe; `POST /api/tickets` recibe JSON como `CreateTicketDto`, valida sus textos y construye un nuevo `Ticket` con identificador y fecha UTC, añade el objeto a esa misma colección y devuelve HTTP 201 con JSON y cabecera `Location`. Existe un primer modelo de dominio `Ticket`, pero no hay persistencia ni infraestructura desplegada. EF Core y la gestión de incidencias siguen pendientes.
 
 ## Decisiones iniciales
 
@@ -90,13 +90,23 @@ Consecuencia: los textos se inicializan con `string.Empty` para evitar valores n
 
 ### 009 — Creación de tickets en memoria mediante POST
 
-Estado: implementada para la práctica educativa.
+Estado: implementada para la práctica educativa; entrada evolucionada a DTO en la decisión 010.
 
-Decisión: registrar `POST /api/tickets` directamente en `Program.cs`, recibiendo un `Ticket` desde el cuerpo JSON. Calcular el ID mediante `tickets.Max(ticket => ticket.Id) + 1`, asignar `DateTime.UtcNow`, añadir el objeto a la lista compartida con GET y responder con `Results.Created($"/api/tickets/{ticket.Id}", ticket)`.
+Decisión inicial: registrar `POST /api/tickets` directamente en `Program.cs`, recibiendo un `Ticket` desde el cuerpo JSON. La decisión 010 sustituye esta entrada por un DTO para delimitar los datos recibidos. Calcular el ID mediante `tickets.Max(ticket => ticket.Id) + 1`, asignar `DateTime.UtcNow`, añadir el objeto a la lista compartida con GET y responder con `Results.Created($"/api/tickets/{ticket.Id}", ticket)`.
 
 Motivo: aprender deserialización del cuerpo, creación de recursos y la respuesta HTTP 201 sin añadir capas ni dependencias.
 
-Consecuencia: el servidor sustituye ID y fecha recibidos; la respuesta incluye el ticket y una cabecera `Location` que permite consultarlo mediante GET. La lista comienza con tres ejemplos, por lo que `Max` opera sobre una colección no vacía. Los datos se pierden al reiniciar. La colección y el cálculo de ID no están sincronizados para peticiones simultáneas; esta implementación temporal se verifica con peticiones secuenciales. El endpoint valida el título obligatorio (máximo 100 caracteres) y la descripción obligatoria antes de asignar ID y fecha o añadir el ticket. Usa `string.IsNullOrWhiteSpace` y `Title.Length`; el primer fallo devuelve HTTP 400 mediante `Results.BadRequest` con un JSON que contiene `error`. Las peticiones inválidas no modifican la colección. La persistencia permanece pendiente.
+Consecuencia actual: el servidor asigna ID y fecha al nuevo ticket; la respuesta incluye el ticket y una cabecera `Location` que permite consultarlo mediante GET. La lista comienza con tres ejemplos, por lo que `Max` opera sobre una colección no vacía. Los datos se pierden al reiniciar. La colección y el cálculo de ID no están sincronizados para peticiones simultáneas; esta implementación temporal se verifica con peticiones secuenciales. El endpoint valida el título obligatorio (máximo 100 caracteres) y la descripción obligatoria antes de asignar ID y fecha o añadir el ticket. Usa `string.IsNullOrWhiteSpace` y `Title.Length`; el primer fallo devuelve HTTP 400 mediante `Results.BadRequest` con un JSON que contiene `error`. Las peticiones inválidas no modifican la colección. La persistencia permanece pendiente.
+
+### 010 — DTO de entrada para crear tickets
+
+Estado: implementada.
+
+Decisión: crear `DTOs/CreateTicketDto.cs` con únicamente `Title` y `Description`, inicializadas con `string.Empty`. POST recibe este DTO, mantiene las validaciones manuales existentes y, si son correctas, construye un `Ticket` mediante un inicializador de objeto. Copia los textos y asigna ID y fecha UTC en el servidor.
+
+Motivo: separar el contrato de creación del modelo de dominio y evitar que propiedades internas se incorporen accidentalmente a la entrada del cliente al evolucionar `Ticket`.
+
+Consecuencia: el DTO no contiene ID ni fecha; los campos JSON adicionales se ignoran con la configuración actual. Los valores ausentes, nulos o inválidos de los textos siguen devolviendo HTTP 400 antes de crear o guardar el ticket. La colección y las respuestas siguen utilizando `Ticket`; HTTP 201 y `Location`, GET y health se mantienen. El mapeo es manual y no requiere servicios, capas ni dependencias adicionales.
 
 ## Mantenimiento del registro
 

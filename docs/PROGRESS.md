@@ -15,15 +15,17 @@
 
 - Endpoint `GET /api/tickets/{id}`: recibe el parámetro de ruta como `int` y busca en una `List<Ticket>` en memoria con tres tickets de ejemplo (IDs 1, 2 y 3). Usa `FirstOrDefault(ticket => ticket.Id == id)` y devuelve HTTP 200 con el ticket en JSON mediante `Results.Ok(ticket)`, o HTTP 404 sin cuerpo mediante `Results.NotFound()` si no existe.
 
-- Endpoint `POST /api/tickets`: recibe un `Ticket` desde JSON, asigna `Id` con el mayor identificador de la lista más uno y `CreatedAt` con `DateTime.UtcNow`, añade el objeto a la colección y devuelve HTTP 201 con JSON y cabecera `Location` mediante `Results.Created`.
+- Endpoint `POST /api/tickets`: recibe un `CreateTicketDto` desde JSON y construye internamente un nuevo `Ticket`, asigna `Id` con el mayor identificador de la lista más uno y `CreatedAt` con `DateTime.UtcNow`, añade el objeto a la colección y devuelve HTTP 201 con JSON y cabecera `Location` mediante `Results.Created`.
 
 - Validación básica de `POST /api/tickets`: título obligatorio con máximo de 100 caracteres y descripción obligatoria. Se rechazan campos ausentes, `null`, vacíos o compuestos solamente por espacios con HTTP 400 y JSON `{"error":"mensaje explicativo"}`. Se devuelve el primer error y no se añade el ticket a la colección.
 
-El modelo se utiliza directamente en los endpoints y no tiene persistencia.
+- Primer DTO `CreateTicketDto` creado en `HelpDesk.Api/DTOs/CreateTicketDto.cs`, con únicamente `Title` y `Description`. Separa la entrada del POST del modelo de dominio.
+
+`Ticket` se utiliza para la colección y las respuestas; POST recibe el DTO. No hay persistencia.
 
 ## Trabajo actual
 
-Validaciones básicas de POST completadas mediante condiciones al inicio del endpoint en `Program.cs`. `string.IsNullOrWhiteSpace` comprueba los campos obligatorios; `Title.Length > 100` comprueba el límite del título. Cada fallo devuelve `Results.BadRequest(new { error = ... })` antes de asignar ID, fecha o ejecutar `tickets.Add(ticket)`. Si los datos son válidos, se conserva la creación en memoria y la respuesta HTTP 201 con `Location`. No se añaden dependencias, controllers ni capas. Pendiente de la siguiente tarea solicitada.
+Primer DTO implementado. ASP.NET Core deserializa la petición de POST en `CreateTicketDto`. Se mantienen las validaciones existentes sobre sus propiedades; después se crea un `new Ticket` con título y descripción copiados del DTO, ID calculado y `CreatedAt = DateTime.UtcNow`. Solo el objeto de dominio se añade a la colección y se devuelve con HTTP 201 y `Location`. El DTO no contiene ID ni fecha: las propiedades JSON adicionales se ignoran con la configuración actual. GET y health mantienen su código. No se añaden dependencias, controllers, servicios ni capas. Pendiente de la siguiente tarea solicitada.
 
 Validación del cambio actual:
 
@@ -31,9 +33,9 @@ Validación del cambio actual:
 - API arrancada en `http://127.0.0.1:5080` con `dotnet run --project HelpDesk.Api/HelpDesk.Api.csproj --no-build --no-launch-profile --urls http://127.0.0.1:5080`.
 - 11 POST inválidos: título y descripción ausentes, `null`, vacíos, con espacios o tabulaciones/saltos de línea; además, título de 101 caracteres. Todos devolvieron HTTP 400 con JSON explicativo, verificado mediante aserciones.
 - Tras cada POST inválido, GET al ID 4 devolvió 404. El primer POST válido recibió ID 4, confirmando que los rechazos no añadieron tickets.
-- Dos POST válidos, incluido un título de exactamente 100 caracteres: HTTP 201, IDs consecutivos 4 y 5, contenido conservado y cabecera `Location` correctos. Ambos sobrescribieron el ID y la fecha enviados por el cliente; se verificó la fecha UTC dentro del intervalo de la petición.
+- Dos POST válidos, incluido un título de exactamente 100 caracteres: HTTP 201, IDs consecutivos 4 y 5, contenido conservado y cabecera `Location` correctos. El primero envió únicamente título y descripción. El segundo añadió `id: 999` y un `createdAt` que no era una fecha; esos campos se ignoraron al no pertenecer al DTO. Se verificaron las cuatro propiedades de la respuesta y la fecha UTC dentro del intervalo de cada petición.
 - GET de los tickets creados devolvió HTTP 200 y el mismo JSON que POST. GET de los ejemplos 1, 2 y 3, GET inexistente (404) y health (200 con JSON esperado) siguen funcionando.
-- El sandbox bloqueó los sockets del servidor y del cliente; las comprobaciones HTTP se completaron con autorización fuera del sandbox.
+- Las comprobaciones HTTP se ejecutaron con autorización fuera del sandbox, porque en esta sesión ya se había comprobado que bloquea los sockets locales.
 - Servidor detenido tras las comprobaciones.
 - No se ejecuta `dotnet test`: aún no existen proyectos de tests automatizados. Se ejecutaron comprobaciones funcionales HTTP con aserciones.
 
