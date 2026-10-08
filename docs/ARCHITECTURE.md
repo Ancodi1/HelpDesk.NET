@@ -4,7 +4,7 @@
 
 ## Estado actual
 
-El repositorio contiene la solución `HelpDesk.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene el arranque mínimo, el endpoint Minimal API `GET /api/health` que devuelve `{"status":"ok"}` y `GET /api/tickets/{id}` que recibe un `int id` y busca en una `List<Ticket>` en memoria con tres ejemplos (IDs 1, 2 y 3), devolviendo HTTP 200 con el ticket o HTTP 404 si no existe; `POST /api/tickets` recibe JSON como `CreateTicketDto`, valida sus textos y construye un nuevo `Ticket` con identificador y fecha UTC, añade el objeto a esa misma colección y devuelve HTTP 201 con JSON y cabecera `Location`. `GET /api/tickets` devuelve HTTP 200 con la lista completa como array JSON mediante `Results.Ok(tickets)`, o `[]` si está vacía. Comparte la colección con GET por ID y POST. Existe un primer modelo de dominio `Ticket`, pero no hay persistencia ni infraestructura desplegada. EF Core y la gestión de incidencias siguen pendientes.
+El repositorio contiene la solución `HelpDesk.NET.slnx` y un único proyecto ASP.NET Core Web API, `HelpDesk.Api`, dirigido a `net10.0`. La aplicación tiene el arranque mínimo, el endpoint Minimal API `GET /api/health` que devuelve `{"status":"ok"}` y `GET /api/tickets/{id}` que recibe un `int id` y busca en una `List<Ticket>` en memoria con tres ejemplos (IDs 1, 2 y 3), devolviendo HTTP 200 con el ticket o HTTP 404 si no existe; `POST /api/tickets` recibe JSON como `CreateTicketDto`, valida sus textos y construye un nuevo `Ticket` con identificador y fecha UTC, añade el objeto a esa misma colección y devuelve HTTP 201 con JSON y cabecera `Location`. `GET /api/tickets` devuelve HTTP 200 con la lista completa como array JSON mediante `Results.Ok(tickets)`, o `[]` si está vacía. Comparte la colección con GET por ID y POST. `PUT /api/tickets/{id}` recibe `UpdateTicketDto`, busca el ticket y actualiza sus textos conservando ID y fecha; devuelve 404 si no existe, 400 si los textos son inválidos o 200 con el ticket actualizado. POST y PUT comparten una función local de validación. Existe un primer modelo de dominio `Ticket`, pero no hay persistencia ni infraestructura desplegada. EF Core y la gestión de incidencias siguen pendientes.
 
 ## Decisiones iniciales
 
@@ -107,6 +107,16 @@ Decisión: crear `DTOs/CreateTicketDto.cs` con únicamente `Title` y `Descriptio
 Motivo: separar el contrato de creación del modelo de dominio y evitar que propiedades internas se incorporen accidentalmente a la entrada del cliente al evolucionar `Ticket`.
 
 Consecuencia: el DTO no contiene ID ni fecha; los campos JSON adicionales se ignoran con la configuración actual. Los valores ausentes, nulos o inválidos de los textos siguen devolviendo HTTP 400 antes de crear o guardar el ticket. La colección y las respuestas siguen utilizando `Ticket`; HTTP 201 y `Location`, GET y health se mantienen. El mapeo es manual y no requiere servicios, capas ni dependencias adicionales.
+
+### 011 — Actualización en memoria con PUT y validación compartida
+
+Estado: implementada.
+
+Decisión: crear `DTOs/UpdateTicketDto.cs` con `Title` y `Description`, inicializadas con `string.Empty`. Registrar PUT por ID directamente en `Program.cs`. Buscar primero el ticket; si existe, validar y actualizar únicamente sus textos. Devolver HTTP 404 si no existe, HTTP 400 con JSON de error si falla la validación, o HTTP 200 con el objeto actualizado.
+
+Motivo: aprender actualización idempotente y conservar las propiedades administradas por el servidor, evitando duplicar las reglas de creación y actualización.
+
+Consecuencia: ID y fecha de creación permanecen intactos; repetir los mismos datos mantiene el mismo estado. Los DTOs de creación y actualización son independientes. La función local `ValidateTicket` recibe dos textos anulables y devuelve el primer mensaje de error o `null`. Centraliza las reglas ya existentes sin servicios ni capas adicionales; POST conserva sus respuestas y comportamiento. La colección sigue siendo temporal y no está sincronizada para peticiones simultáneas.
 
 ## Mantenimiento del registro
 

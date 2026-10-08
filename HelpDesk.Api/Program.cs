@@ -48,19 +48,11 @@ app.MapGet("/api/tickets/{id}", (int id) =>
 
 app.MapPost("/api/tickets", (CreateTicketDto createTicketDto) =>
 {
-    if (string.IsNullOrWhiteSpace(createTicketDto.Title))
-    {
-        return Results.BadRequest(new { error = "El título es obligatorio y no puede contener solamente espacios." });
-    }
+    var error = ValidateTicket(createTicketDto.Title, createTicketDto.Description);
 
-    if (createTicketDto.Title.Length > 100)
+    if (error is not null)
     {
-        return Results.BadRequest(new { error = "El título debe tener como máximo 100 caracteres." });
-    }
-
-    if (string.IsNullOrWhiteSpace(createTicketDto.Description))
-    {
-        return Results.BadRequest(new { error = "La descripción es obligatoria y no puede contener solamente espacios." });
+        return Results.BadRequest(new { error });
     }
 
     var ticket = new Ticket
@@ -76,4 +68,46 @@ app.MapPost("/api/tickets", (CreateTicketDto createTicketDto) =>
     return Results.Created($"/api/tickets/{ticket.Id}", ticket);
 });
 
+app.MapPut("/api/tickets/{id}", (int id, UpdateTicketDto updateTicketDto) =>
+{
+    var ticket = tickets.FirstOrDefault(ticket => ticket.Id == id);
+
+    if (ticket is null)
+    {
+        return Results.NotFound();
+    }
+
+    var error = ValidateTicket(updateTicketDto.Title, updateTicketDto.Description);
+
+    if (error is not null)
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    ticket.Title = updateTicketDto.Title;
+    ticket.Description = updateTicketDto.Description;
+
+    return Results.Ok(ticket);
+});
+
 app.Run();
+
+static string? ValidateTicket(string? title, string? description)
+{
+    if (string.IsNullOrWhiteSpace(title))
+    {
+        return "El título es obligatorio y no puede contener solamente espacios.";
+    }
+
+    if (title.Length > 100)
+    {
+        return "El título debe tener como máximo 100 caracteres.";
+    }
+
+    if (string.IsNullOrWhiteSpace(description))
+    {
+        return "La descripción es obligatoria y no puede contener solamente espacios.";
+    }
+
+    return null;
+}

@@ -19,28 +19,32 @@
 
 - Endpoint `POST /api/tickets`: recibe un `CreateTicketDto` desde JSON y construye internamente un nuevo `Ticket`, asigna `Id` con el mayor identificador de la lista más uno y `CreatedAt` con `DateTime.UtcNow`, añade el objeto a la colección y devuelve HTTP 201 con JSON y cabecera `Location` mediante `Results.Created`.
 
-- Validación básica de `POST /api/tickets`: título obligatorio con máximo de 100 caracteres y descripción obligatoria. Se rechazan campos ausentes, `null`, vacíos o compuestos solamente por espacios con HTTP 400 y JSON `{"error":"mensaje explicativo"}`. Se devuelve el primer error y no se añade el ticket a la colección.
+- Validación compartida de POST y PUT mediante la función local `ValidateTicket` en `Program.cs`: título obligatorio con máximo de 100 caracteres y descripción obligatoria. Se rechazan campos ausentes, `null`, vacíos o compuestos solamente por espacios con HTTP 400 y JSON `{"error":"mensaje explicativo"}`. Se devuelve el primer error sin añadir ni modificar tickets.
 
 - Primer DTO `CreateTicketDto` creado en `HelpDesk.Api/DTOs/CreateTicketDto.cs`, con únicamente `Title` y `Description`. Separa la entrada del POST del modelo de dominio.
 
-`Ticket` se utiliza para la colección y las respuestas; POST recibe el DTO. No hay persistencia.
+- Endpoint `PUT /api/tickets/{id}` con `UpdateTicketDto` (`Title` y `Description`): busca el ticket, devuelve 404 si no existe, valida los textos y actualiza únicamente esos dos campos. Conserva ID y fecha de creación y devuelve HTTP 200 con el ticket actualizado.
+
+`Ticket` se utiliza para la colección y las respuestas; POST y PUT reciben sus respectivos DTOs. No hay persistencia.
 
 ## Trabajo actual
 
-Consulta de todos los tickets implementada con `app.MapGet("/api/tickets", () => Results.Ok(tickets))`. ASP.NET Core serializa la misma colección utilizada por GET por ID y POST como un array JSON. No se necesita una condición para la lista vacía: `Results.Ok` conserva HTTP 200 y serializa `[]`. GET por ID, POST y health mantienen su código. No se añaden dependencias, base de datos, servicios ni repositorios. Pendiente de la siguiente tarea solicitada.
+Actualización de tickets implementada mediante PUT. `UpdateTicketDto` delimita los campos editables. El endpoint busca con `FirstOrDefault`, devuelve `Results.NotFound()` si no existe y valida antes de modificar. Asigna únicamente `Title` y `Description` al objeto existente y devuelve `Results.Ok(ticket)`. Repetir la misma petición deja el ticket en el mismo estado (idempotencia); no crea recursos ni cambia `CreatedAt`.
+
+Las reglas existentes se han extraído a la función local `ValidateTicket(string? title, string? description)` en `Program.cs`. Devuelve el primer mensaje de error o `null`; POST y PUT la utilizan para devolver HTTP 400 con el mismo JSON. No se añaden capas, servicios ni dependencias. GET y health conservan su código y POST mantiene su comportamiento. Pendiente de la siguiente tarea solicitada.
 
 Validación del cambio actual:
 
 - `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias.
 - API arrancada en `http://127.0.0.1:5080` con `dotnet run --project HelpDesk.Api/HelpDesk.Api.csproj --no-build --no-launch-profile --urls http://127.0.0.1:5080`.
-- GET real a `/api/tickets`: HTTP 200 y contenido `application/json`. Aserciones verificaron un array con los IDs 1, 2 y 3, las cuatro propiedades de cada ticket y objetos idénticos a los obtenidos por GET por ID.
-- POST inválido con título de espacios: HTTP 400 con JSON de error; el listado permaneció idéntico.
-- POST válido: HTTP 201, ID 4, fecha UTC actual, textos y `Location` correctos. El siguiente listado contenía exactamente los tres ejemplos más el ticket creado; GET por ID devolvió ese mismo objeto.
+- 11 PUT inválidos y 11 POST inválidos: campos ausentes, `null`, vacíos, solo espacios o tabulaciones/saltos de línea, y título de 101 caracteres. Aserciones verificaron HTTP 400, JSON de errores idéntico entre ambos endpoints y colección sin cambios tras cada petición.
+- PUT al ID 99 con datos válidos y con textos inválidos: HTTP 404 sin cuerpo, sin crear recursos. La búsqueda precede a la validación de campos.
+- PUT válido al ID 1: HTTP 200 y textos actualizados. ID y `CreatedAt` iguales a los originales, incluso enviando esas propiedades adicionales en el JSON. Repetir exactamente la petición devolvió el mismo objeto y mantuvo el estado, sin duplicar tickets.
+- PUT con título de exactamente 100 caracteres: HTTP 200. GET por ID y listado reflejan las actualizaciones; el resto de tickets permanece intacto.
+- POST válido: HTTP 201, ID 4, textos conservados, fecha UTC dentro del intervalo de la petición y `Location: /api/tickets/4`. GET por ID y listado muestran el ticket creado.
 - GET inexistente: HTTP 404. Health: HTTP 200 y JSON esperado. Comprobados mediante aserciones.
-- Lista vacía: se compiló y arrancó una copia temporal en `/tmp`, con el mismo código del endpoint y únicamente la lista inicial vacía. Una petición HTTP real a `/api/tickets` devolvió HTTP 200, `application/json` y cuerpo `[]`. No se modificaron los ejemplos del repositorio. El primer intento de conexión llegó antes del arranque y falló; la petición repetida tras confirmar el arranque funcionó.
-- Las comprobaciones HTTP se ejecutaron con autorización fuera del sandbox, porque en esta sesión ya se había comprobado que bloquea los sockets locales.
-- Ambos servidores detenidos tras las comprobaciones.
-- No se ejecuta `dotnet test`: aún no existen proyectos de tests automatizados. Se ejecutaron comprobaciones funcionales HTTP.
+- Comprobaciones HTTP ejecutadas con autorización fuera del sandbox, que bloquea los sockets locales. Servidor detenido tras las pruebas.
+- No se ejecuta `dotnet test`: aún no existen proyectos de tests automatizados. Se ejecutaron comprobaciones funcionales HTTP con aserciones.
 
 ## Problemas conocidos
 
