@@ -32,6 +32,8 @@ var tickets = new List<Ticket>
     }
 };
 
+app.MapGet("/api/tickets", () => Results.Ok(tickets));
+
 app.MapGet("/api/tickets/{id}", (int id) =>
 {
     var ticket = tickets.FirstOrDefault(ticket => ticket.Id == id);

@@ -13,6 +13,8 @@
 
 - Primer modelo de dominio `Ticket` creado en `HelpDesk.Api/Models/Ticket.cs`, con únicamente `Id` (`int`), `Title` (`string`), `Description` (`string`) y `CreatedAt` (`DateTime`).
 
+- Endpoint `GET /api/tickets`: devuelve HTTP 200 con todos los tickets de la lista en memoria mediante `Results.Ok(tickets)`. La respuesta es un array JSON; una lista vacía se devuelve como `[]`.
+
 - Endpoint `GET /api/tickets/{id}`: recibe el parámetro de ruta como `int` y busca en una `List<Ticket>` en memoria con tres tickets de ejemplo (IDs 1, 2 y 3). Usa `FirstOrDefault(ticket => ticket.Id == id)` y devuelve HTTP 200 con el ticket en JSON mediante `Results.Ok(ticket)`, o HTTP 404 sin cuerpo mediante `Results.NotFound()` si no existe.
 
 - Endpoint `POST /api/tickets`: recibe un `CreateTicketDto` desde JSON y construye internamente un nuevo `Ticket`, asigna `Id` con el mayor identificador de la lista más uno y `CreatedAt` con `DateTime.UtcNow`, añade el objeto a la colección y devuelve HTTP 201 con JSON y cabecera `Location` mediante `Results.Created`.
@@ -25,19 +27,20 @@
 
 ## Trabajo actual
 
-Primer DTO implementado. ASP.NET Core deserializa la petición de POST en `CreateTicketDto`. Se mantienen las validaciones existentes sobre sus propiedades; después se crea un `new Ticket` con título y descripción copiados del DTO, ID calculado y `CreatedAt = DateTime.UtcNow`. Solo el objeto de dominio se añade a la colección y se devuelve con HTTP 201 y `Location`. El DTO no contiene ID ni fecha: las propiedades JSON adicionales se ignoran con la configuración actual. GET y health mantienen su código. No se añaden dependencias, controllers, servicios ni capas. Pendiente de la siguiente tarea solicitada.
+Consulta de todos los tickets implementada con `app.MapGet("/api/tickets", () => Results.Ok(tickets))`. ASP.NET Core serializa la misma colección utilizada por GET por ID y POST como un array JSON. No se necesita una condición para la lista vacía: `Results.Ok` conserva HTTP 200 y serializa `[]`. GET por ID, POST y health mantienen su código. No se añaden dependencias, base de datos, servicios ni repositorios. Pendiente de la siguiente tarea solicitada.
 
 Validación del cambio actual:
 
 - `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias.
 - API arrancada en `http://127.0.0.1:5080` con `dotnet run --project HelpDesk.Api/HelpDesk.Api.csproj --no-build --no-launch-profile --urls http://127.0.0.1:5080`.
-- 11 POST inválidos: título y descripción ausentes, `null`, vacíos, con espacios o tabulaciones/saltos de línea; además, título de 101 caracteres. Todos devolvieron HTTP 400 con JSON explicativo, verificado mediante aserciones.
-- Tras cada POST inválido, GET al ID 4 devolvió 404. El primer POST válido recibió ID 4, confirmando que los rechazos no añadieron tickets.
-- Dos POST válidos, incluido un título de exactamente 100 caracteres: HTTP 201, IDs consecutivos 4 y 5, contenido conservado y cabecera `Location` correctos. El primero envió únicamente título y descripción. El segundo añadió `id: 999` y un `createdAt` que no era una fecha; esos campos se ignoraron al no pertenecer al DTO. Se verificaron las cuatro propiedades de la respuesta y la fecha UTC dentro del intervalo de cada petición.
-- GET de los tickets creados devolvió HTTP 200 y el mismo JSON que POST. GET de los ejemplos 1, 2 y 3, GET inexistente (404) y health (200 con JSON esperado) siguen funcionando.
+- GET real a `/api/tickets`: HTTP 200 y contenido `application/json`. Aserciones verificaron un array con los IDs 1, 2 y 3, las cuatro propiedades de cada ticket y objetos idénticos a los obtenidos por GET por ID.
+- POST inválido con título de espacios: HTTP 400 con JSON de error; el listado permaneció idéntico.
+- POST válido: HTTP 201, ID 4, fecha UTC actual, textos y `Location` correctos. El siguiente listado contenía exactamente los tres ejemplos más el ticket creado; GET por ID devolvió ese mismo objeto.
+- GET inexistente: HTTP 404. Health: HTTP 200 y JSON esperado. Comprobados mediante aserciones.
+- Lista vacía: se compiló y arrancó una copia temporal en `/tmp`, con el mismo código del endpoint y únicamente la lista inicial vacía. Una petición HTTP real a `/api/tickets` devolvió HTTP 200, `application/json` y cuerpo `[]`. No se modificaron los ejemplos del repositorio. El primer intento de conexión llegó antes del arranque y falló; la petición repetida tras confirmar el arranque funcionó.
 - Las comprobaciones HTTP se ejecutaron con autorización fuera del sandbox, porque en esta sesión ya se había comprobado que bloquea los sockets locales.
-- Servidor detenido tras las comprobaciones.
-- No se ejecuta `dotnet test`: aún no existen proyectos de tests automatizados. Se ejecutaron comprobaciones funcionales HTTP con aserciones.
+- Ambos servidores detenidos tras las comprobaciones.
+- No se ejecuta `dotnet test`: aún no existen proyectos de tests automatizados. Se ejecutaron comprobaciones funcionales HTTP.
 
 ## Problemas conocidos
 
