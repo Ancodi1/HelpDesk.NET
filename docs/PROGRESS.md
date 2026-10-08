@@ -25,29 +25,31 @@
 
 - Endpoint `PUT /api/tickets/{id}` con `UpdateTicketDto` (`Title` y `Description`): busca el ticket, devuelve 404 si no existe, valida los textos y actualiza únicamente esos dos campos. Conserva ID y fecha de creación y devuelve HTTP 200 con el ticket actualizado.
 
+- Endpoint `DELETE /api/tickets/{id}`: busca el ticket en la lista compartida, devuelve HTTP 404 sin cuerpo si no existe, o lo elimina y devuelve HTTP 204 sin cuerpo.
+
 `Ticket` se utiliza para la colección y las respuestas; POST y PUT reciben sus respectivos DTOs. No hay persistencia.
 
 ## Trabajo actual
 
-Actualización de tickets implementada mediante PUT. `UpdateTicketDto` delimita los campos editables. El endpoint busca con `FirstOrDefault`, devuelve `Results.NotFound()` si no existe y valida antes de modificar. Asigna únicamente `Title` y `Description` al objeto existente y devuelve `Results.Ok(ticket)`. Repetir la misma petición deja el ticket en el mismo estado (idempotencia); no crea recursos ni cambia `CreatedAt`.
-
-Las reglas existentes se han extraído a la función local `ValidateTicket(string? title, string? description)` en `Program.cs`. Devuelve el primer mensaje de error o `null`; POST y PUT la utilizan para devolver HTTP 400 con el mismo JSON. No se añaden capas, servicios ni dependencias. GET y health conservan su código y POST mantiene su comportamiento. Pendiente de la siguiente tarea solicitada.
+Eliminación de tickets implementada directamente en `Program.cs` mediante `app.MapDelete`. Se busca el objeto con `FirstOrDefault`; si es `null`, se devuelve `Results.NotFound()`. Si existe, `tickets.Remove(ticket)` lo elimina y `Results.NoContent()` devuelve HTTP 204 sin cuerpo. Repetir la eliminación devuelve 404 y conserva el estado de ausencia del recurso (idempotencia). GET, POST, PUT y health mantienen su código. No se añaden DTOs, dependencias ni capas. Pendiente de la siguiente tarea solicitada.
 
 Validación del cambio actual:
 
 - `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias.
 - API arrancada en `http://127.0.0.1:5080` con `dotnet run --project HelpDesk.Api/HelpDesk.Api.csproj --no-build --no-launch-profile --urls http://127.0.0.1:5080`.
-- 11 PUT inválidos y 11 POST inválidos: campos ausentes, `null`, vacíos, solo espacios o tabulaciones/saltos de línea, y título de 101 caracteres. Aserciones verificaron HTTP 400, JSON de errores idéntico entre ambos endpoints y colección sin cambios tras cada petición.
-- PUT al ID 99 con datos válidos y con textos inválidos: HTTP 404 sin cuerpo, sin crear recursos. La búsqueda precede a la validación de campos.
-- PUT válido al ID 1: HTTP 200 y textos actualizados. ID y `CreatedAt` iguales a los originales, incluso enviando esas propiedades adicionales en el JSON. Repetir exactamente la petición devolvió el mismo objeto y mantuvo el estado, sin duplicar tickets.
-- PUT con título de exactamente 100 caracteres: HTTP 200. GET por ID y listado reflejan las actualizaciones; el resto de tickets permanece intacto.
-- POST válido: HTTP 201, ID 4, textos conservados, fecha UTC dentro del intervalo de la petición y `Location: /api/tickets/4`. GET por ID y listado muestran el ticket creado.
-- GET inexistente: HTTP 404. Health: HTTP 200 y JSON esperado. Comprobados mediante aserciones.
+- DELETE del ticket 2: HTTP 204 con cuerpo vacío. GET posterior: HTTP 404 con cuerpo vacío. El listado conservó exactamente los tickets 1 y 3, sin alterar sus propiedades.
+- DELETE repetido del ticket 2 y DELETE del ID 99: HTTP 404 sin cuerpo; listado sin cambios.
+- GET por ID de los tickets restantes: HTTP 200 con sus objetos originales.
+- POST válido tras borrar el ticket 2: HTTP 201, ID 4, textos conservados, fecha UTC actual y `Location` correcto. PUT del ticket creado: HTTP 200, textos actualizados e ID y fecha conservados. GET por ID y listado reflejaron esos cambios.
+- POST y PUT con título de espacios: HTTP 400 con JSON de error. PUT al ID 99: HTTP 404. Health: HTTP 200 con JSON esperado.
+- Eliminados los tickets restantes: cada DELETE devolvió HTTP 204 sin cuerpo. El listado final devolvió HTTP 200 y cuerpo `[]`. Comprobaciones funcionales realizadas con aserciones.
+- POST válido con la lista ya vacía: HTTP 500, confirmado por petición real. El cálculo existente de ID con `Max` no admite una colección vacía; se registra como problema conocido sin modificar POST, conforme al alcance solicitado.
 - Comprobaciones HTTP ejecutadas con autorización fuera del sandbox, que bloquea los sockets locales. Servidor detenido tras las pruebas.
-- No se ejecuta `dotnet test`: aún no existen proyectos de tests automatizados. Se ejecutaron comprobaciones funcionales HTTP con aserciones.
+- No se ejecuta `dotnet test`: aún no existen proyectos de tests automatizados.
 
 ## Problemas conocidos
 
+- Tras eliminar todos los tickets, POST válido devuelve HTTP 500: `Max` falla sobre la lista vacía. Además, `Max + 1` puede reutilizar el ID del ticket de mayor identificador si se elimina. El cálculo de IDs queda pendiente de revisión en una tarea autorizada; POST no se ha modificado.
 - La colección es temporal: los tickets creados se pierden al reiniciar la API.
 - `List<Ticket>` y el cálculo `Max + 1` no están sincronizados para peticiones simultáneas. Esta práctica comprueba peticiones secuenciales; la concurrencia queda pendiente.
 - El sandbox bloqueó inicialmente la apertura del socket; la comprobación de arranque se completó con autorización fuera del sandbox.

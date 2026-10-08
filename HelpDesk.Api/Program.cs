@@ -90,6 +90,20 @@ app.MapPut("/api/tickets/{id}", (int id, UpdateTicketDto updateTicketDto) =>
     return Results.Ok(ticket);
 });
 
+app.MapDelete("/api/tickets/{id}", (int id) =>
+{
+    var ticket = tickets.FirstOrDefault(ticket => ticket.Id == id);
+
+    if (ticket is null)
+    {
+        return Results.NotFound();
+    }
+
+    tickets.Remove(ticket);
+
+    return Results.NoContent();
+});
+
 app.Run();
 
 static string? ValidateTicket(string? title, string? description)
