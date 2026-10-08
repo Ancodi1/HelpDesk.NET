@@ -1,7 +1,21 @@
+using HelpDesk.Api.Data;
 using HelpDesk.Api.DTOs;
 using HelpDesk.Api.Models;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContext<HelpDeskDbContext>(options =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        throw new InvalidOperationException("Configura ConnectionStrings:DefaultConnection mediante secretos de desarrollo o variables de entorno.");
+    }
+
+    options.UseNpgsql(connectionString);
+});
 
 var app = builder.Build();
 
@@ -32,11 +46,16 @@ var tickets = new List<Ticket>
     }
 };
 
-app.MapGet("/api/tickets", () => Results.Ok(tickets));
-
-app.MapGet("/api/tickets/{id}", (int id) =>
+app.MapGet("/api/tickets", async (HelpDeskDbContext dbContext) =>
 {
-    var ticket = tickets.FirstOrDefault(ticket => ticket.Id == id);
+    var tickets = await dbContext.Tickets.ToListAsync();
+
+    return Results.Ok(tickets);
+});
+
+app.MapGet("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =>
+{
+    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
 
     if (ticket is null)
     {
