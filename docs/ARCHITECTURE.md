@@ -1,6 +1,6 @@
 # Arquitectura — HelpDesk.NET
 
-Última actualización: 2026-10-07.
+Última actualización: 2026-10-08.
 
 ## Estado actual
 
@@ -96,7 +96,7 @@ Decisión: registrar `POST /api/tickets` directamente en `Program.cs`, recibiend
 
 Motivo: aprender deserialización del cuerpo, creación de recursos y la respuesta HTTP 201 sin añadir capas ni dependencias.
 
-Consecuencia: el servidor sustituye ID y fecha recibidos; la respuesta incluye el ticket y una cabecera `Location` que permite consultarlo mediante GET. La lista comienza con tres ejemplos, por lo que `Max` opera sobre una colección no vacía. Los datos se pierden al reiniciar. La colección y el cálculo de ID no están sincronizados para peticiones simultáneas; esta implementación temporal se verifica con peticiones secuenciales. La validación de contenido y la persistencia permanecen pendientes.
+Consecuencia: el servidor sustituye ID y fecha recibidos; la respuesta incluye el ticket y una cabecera `Location` que permite consultarlo mediante GET. La lista comienza con tres ejemplos, por lo que `Max` opera sobre una colección no vacía. Los datos se pierden al reiniciar. La colección y el cálculo de ID no están sincronizados para peticiones simultáneas; esta implementación temporal se verifica con peticiones secuenciales. El endpoint valida el título obligatorio (máximo 100 caracteres) y la descripción obligatoria antes de asignar ID y fecha o añadir el ticket. Usa `string.IsNullOrWhiteSpace` y `Title.Length`; el primer fallo devuelve HTTP 400 mediante `Results.BadRequest` con un JSON que contiene `error`. Las peticiones inválidas no modifican la colección. La persistencia permanece pendiente.
 
 ## Mantenimiento del registro
 

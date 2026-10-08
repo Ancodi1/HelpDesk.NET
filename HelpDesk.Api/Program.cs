@@ -45,6 +45,21 @@ app.MapGet("/api/tickets/{id}", (int id) =>
 
 app.MapPost("/api/tickets", (Ticket ticket) =>
 {
+    if (string.IsNullOrWhiteSpace(ticket.Title))
+    {
+        return Results.BadRequest(new { error = "El título es obligatorio y no puede contener solamente espacios." });
+    }
+
+    if (ticket.Title.Length > 100)
+    {
+        return Results.BadRequest(new { error = "El título debe tener como máximo 100 caracteres." });
+    }
+
+    if (string.IsNullOrWhiteSpace(ticket.Description))
+    {
+        return Results.BadRequest(new { error = "La descripción es obligatoria y no puede contener solamente espacios." });
+    }
+
     ticket.Id = tickets.Max(ticket => ticket.Id) + 1;
     ticket.CreatedAt = DateTime.UtcNow;
 
