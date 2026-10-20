@@ -37,6 +37,12 @@ namespace HelpDesk.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("Open");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(100)

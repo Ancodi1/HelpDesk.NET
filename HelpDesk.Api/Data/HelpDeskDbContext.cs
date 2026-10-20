@@ -23,5 +23,8 @@ public class HelpDeskDbContext : DbContext
         ticket.Property(ticket => ticket.Title).IsRequired().HasMaxLength(100);
         ticket.Property(ticket => ticket.Description).IsRequired();
         ticket.Property(ticket => ticket.CreatedAt).HasColumnType("timestamp with time zone");
+        ticket.Property(ticket => ticket.Status)
+            .HasConversion<string>()
+            .HasDefaultValue(TicketStatus.Open);
     }
 }

@@ -2,8 +2,19 @@ using HelpDesk.Api.Data;
 using HelpDesk.Api.DTOs;
 using HelpDesk.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.Configure<RouteHandlerOptions>(options =>
+{
+    options.ThrowOnBadRequest = false;
+});
+
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 
 builder.Services.AddDbContext<HelpDeskDbContext>(options =>
 {
@@ -18,6 +29,17 @@ builder.Services.AddDbContext<HelpDeskDbContext>(options =>
 });
 
 var app = builder.Build();
+
+app.UseStatusCodePages(async context =>
+{
+    if (context.HttpContext.Response.StatusCode == StatusCodes.Status400BadRequest)
+    {
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            error = "El cuerpo JSON de la petición no es válido."
+        });
+    }
+});
 
 app.MapGet("/api/health", () => new { status = "ok" });
 
@@ -81,6 +103,26 @@ app.MapPut("/api/tickets/{id}", async (int id, UpdateTicketDto updateTicketDto, 
     ticket.Title = updateTicketDto.Title;
     ticket.Description = updateTicketDto.Description;
 
+    await dbContext.SaveChangesAsync();
+
+    return Results.Ok(ticket);
+});
+
+app.MapPatch("/api/tickets/{id}/status", async (int id, UpdateTicketStatusDto updateTicketStatusDto, HelpDeskDbContext dbContext) =>
+{
+    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
+
+    if (ticket is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (updateTicketStatusDto.Status is null || !Enum.IsDefined(typeof(TicketStatus), updateTicketStatusDto.Status))
+    {
+        return Results.BadRequest(new { error = "El estado debe ser Open, InProgress, Resolved o Closed." });
+    }
+
+    ticket.Status = Enum.Parse<TicketStatus>(updateTicketStatusDto.Status);
     await dbContext.SaveChangesAsync();
 
     return Results.Ok(ticket);

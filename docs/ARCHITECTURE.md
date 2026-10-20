@@ -1,14 +1,16 @@
 # Arquitectura — HelpDesk.NET
 
-Última actualización: 2026-10-13.
+Última actualización: 2026-10-20.
 
 ## Estado actual
 
-El repositorio contiene la solución `HelpDesk.NET.slnx` y el único proyecto ASP.NET Core Web API `HelpDesk.Api` (`net10.0`). `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Los dos GET, POST y PUT acceden a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
+El repositorio contiene la solución `HelpDesk.NET.slnx` y el único proyecto ASP.NET Core Web API `HelpDesk.Api` (`net10.0`). `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Todo el CRUD accede a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
 
 `GET /api/tickets` inyecta el contexto y usa `ToListAsync` para devolver HTTP 200 con el array de tickets, incluido `[]` si la tabla está vacía. `GET /api/tickets/{id}` usa `FirstOrDefaultAsync` y devuelve 200 con el objeto o 404 sin cuerpo. Health mantiene HTTP 200 con `{"status":"ok"}`.
 
-POST inyecta el contexto, registra el nuevo ticket con `Add` y lo persiste con `SaveChangesAsync` antes de responder 201. PUT consulta una entidad seguida por EF Core con `FirstOrDefaultAsync`, valida y guarda sus textos con `SaveChangesAsync` antes de responder 200. DELETE sigue trabajando sobre `List<Ticket>` con los tres ejemplos iniciales. Durante esta transición sus eliminaciones en memoria no aparecen en los GET; un mismo ID puede identificar objetos distintos en cada almacén. No hay servicios, repositorios ni capas adicionales.
+POST inyecta el contexto, registra el nuevo ticket con `Add` y lo persiste con `SaveChangesAsync` antes de responder 201. PUT consulta una entidad seguida por EF Core con `FirstOrDefaultAsync`, valida y guarda sus textos con `SaveChangesAsync` antes de responder 200. DELETE consulta por ID con `FirstOrDefaultAsync`, elimina mediante `Remove` y persiste con `SaveChangesAsync`; devuelve 404 o 204. La lista temporal ya no existe. No hay servicios, repositorios ni capas adicionales.
+
+La serialización JSON de las Minimal APIs se configura centralmente con `ConfigureHttpJsonOptions` y `JsonStringEnumConverter`: los estados se devuelven como texto (decisión 019). Las referencias a JSON numérico en decisiones anteriores son históricas.
 
 ## Decisiones iniciales
 
@@ -24,13 +26,13 @@ Consecuencia: el alcance funcional completo se desarrollará por etapas; cada et
 
 ### 002 — Backend previsto con .NET 10, ASP.NET Core Web API y EF Core
 
-Estado: backend, lecturas, creación y actualización persistidos; persistencia de DELETE pendiente.
+Estado: CRUD completo persistido; migración de estado aplicada por el desarrollador y PATCH de estado implementado.
 
 Decisión: utilizar .NET 10 y ASP.NET Core Web API para el backend, e incorporar Entity Framework Core para persistencia en la etapa correspondiente.
 
 Motivo: aprender desarrollo de APIs y acceso a datos dentro del ecosistema .NET.
 
-Consecuencia: entorno comprobado con SDK .NET 10.0.112 y runtime ASP.NET Core 10.0.12. PostgreSQL y Npgsql se han elegido para la primera integración (decisión 012). Se incorporan EF Core/Design `10.0.12` y Npgsql EF Core `10.0.3`, compatibles con `net10.0`. GET, POST y PUT utilizan PostgreSQL; DELETE sigue siendo temporal.
+Consecuencia: entorno comprobado con SDK .NET 10.0.112 y runtime ASP.NET Core 10.0.12. PostgreSQL y Npgsql se han elegido para la primera integración (decisión 012). Se incorporan EF Core/Design `10.0.12` y Npgsql EF Core `10.0.3`, compatibles con `net10.0`. Todo el CRUD utiliza PostgreSQL.
 
 ### 003 — Estructura inicial sencilla
 
@@ -183,6 +185,56 @@ Motivo: aprender cómo el contexto sigue una entidad consultada, detecta sus cam
 Consecuencia: la consulta usa el seguimiento predeterminado. Al guardar, EF Core compara los valores originales con los actuales y ejecuta la actualización necesaria. Id y CreatedAt permanecen intactos; las entradas inválidas devuelven 400 sin modificar la entidad. El esquema no cambia y no se generan migraciones. GET y POST mantienen su implementación; DELETE conserva la lista temporal y es la única operación pendiente de migración.
 
 Validación: build correcto sin errores ni advertencias; `dotnet test` con código 0, sin proyectos de tests. PUT válido devolvió 200; GET por ID y listado confirmaron los textos guardados con ID y fecha originales. Repetir PUT mantuvo el mismo resultado. Nueve entradas inválidas devolvieron 400 sin cambios y un ID inexistente devolvió 404 sin cuerpo, incluso con entrada inválida. Se creó y actualizó un ticket de prueba (ID 5), conservando los cuatro tickets previos. API detenida tras las pruebas HTTP autorizadas fuera del sandbox por el bloqueo de sockets. Sin commit ni push.
+
+### 017 — Estado de tickets mediante enum y conversión a texto
+
+Estado: implementada el 20 de octubre de 2026; migración aplicada posteriormente por el desarrollador, con seis tickets verificados en Open. La generación original no aplicó la migración.
+
+Decisión: definir `TicketStatus` en Models con `Open`, `InProgress`, `Resolved` y `Closed`. Añadir `Ticket.Status = TicketStatus.Open`. Configurar `HasConversion<string>()` y `HasDefaultValue(TicketStatus.Open)` en el contexto. Generar `20261020092721_AddTicketStatus` sin modificar endpoints ni DTOs.
+
+Motivo: aprender enums, conversores y evolución del esquema conservando tickets existentes, con estados legibles en PostgreSQL.
+
+Consecuencia: Up añade exclusivamente `Status` como `text NOT NULL DEFAULT 'Open'`. Al aplicarse, las filas existentes recibirán `Open` sin recrear la tabla ni borrar registros; el inicializador cubre objetos nuevos y el default cubre inserciones que omitan la columna. Down elimina únicamente Status, perdiendo sus valores al revertir. Designer y snapshot reflejan el nuevo modelo. Renombrar estados en el futuro requerirá considerar los textos persistidos. No hay reglas de transición todavía. La conversión no cambia la serialización JSON: las respuestas con Ticket incorporarán status numérico con la configuración actual. El CRUD actualizado requiere aplicar previamente la migración; no se ha ejecutado database update ni SQL sobre la base.
+
+Validación: build correcto (0 errores, 0 advertencias); dotnet test con código 0, sin proyectos de tests. Revisados migración, metadatos y SQL generado tras compilar. No se han repetido pruebas HTTP ni comprobado la migración aplicada sobre datos reales.
+
+La revisión local también confirma DELETE persistido sin lista temporal; las cinco pruebas HTTP principales superadas fueron comunicadas por el desarrollador. Las referencias a DELETE pendiente en decisiones y cierres anteriores describen etapas históricas.
+
+### 018 — Actualización parcial del estado mediante PATCH
+
+Estado: implementada el 20 de octubre de 2026.
+
+Decisión: crear `UpdateTicketStatusDto` con `string? Status` y registrar `PATCH /api/tickets/{id}/status`. Inyectar HelpDeskDbContext, consultar por ID y devolver 404 si no existe. Validar los nombres exactos de TicketStatus con Enum.IsDefined y convertir mediante Enum.Parse. Asignar únicamente Status, guardar con SaveChangesAsync y devolver 200 con Ticket.
+
+Motivo: aprender actualización parcial, deserialización de DTOs y seguimiento de cambios, evitando que la entrada modifique otras propiedades.
+
+Consecuencia: solo se aceptan Open, InProgress, Resolved y Closed con esa capitalización. Cadenas numéricas, combinaciones, textos desconocidos, null y campos ausentes devuelven 400. Un número JSON no se deserializa como string y produce 400 antes del handler; para DTOs deserializados la búsqueda precede a la validación. EF sigue la entidad consultada y persiste solo el estado modificado, usando el conversor a texto existente. Las respuestas conservan la serialización numérica del enum. No hay reglas de transición, cambios de esquema, nuevas migraciones ni capas. Los demás handlers permanecen intactos.
+
+Validación: build con 0 errores y 0 advertencias; dotnet test con código 0, sin proyectos de tests. Pruebas HTTP reales: cuatro estados con 200 y GET posterior; ocho entradas inválidas con 400 y sin cambios; ID inexistente con 404. Conservadas las otras propiedades incluso enviando campos adicionales. Restaurado el estado original y comparados los seis tickets con el listado inicial. Sockets bloqueados en sandbox: pruebas completadas fuera de él con autorización y servidor detenido. No se repitieron POST, PUT ni DELETE. Sin commit ni push.
+
+### 019 — Enums como texto en JSON
+
+Estado: implementada el 20 de octubre de 2026.
+
+Decisión: registrar `JsonStringEnumConverter` en las opciones HTTP JSON de las Minimal APIs mediante `builder.Services.ConfigureHttpJsonOptions`, antes de construir la aplicación.
+
+Motivo: devolver estados legibles como `"Resolved"` en las respuestas, configurándolo una sola vez para todos los endpoints.
+
+Consecuencia: la representación JSON es independiente del valor subyacente del enum C# y del conversor de EF Core para PostgreSQL. La configuración afecta a la serialización y deserialización de propiedades enum; el DTO de PATCH sigue usando string nullable, por lo que sus validaciones explícitas y el rechazo de números JSON permanecen intactos. No se cambian handlers, esquema, migraciones, dependencias ni capas.
+
+Validación: build con 0 errores y 0 advertencias; dotnet test código 0 sin proyectos de tests. PATCH con los cuatro estados y GET posterior confirmaron nombres de texto. Ocho entradas inválidas, incluidas Inventado, número, null y ausente, devolvieron 400 sin cambios. ID inexistente: 404. Restaurado el estado original y comparados los seis tickets con el listado inicial. API de pruebas detenida; sin commit ni push.
+
+### 020 — Respuestas breves para errores de enlace del cuerpo JSON
+
+Estado: implementada el 20 de octubre de 2026.
+
+Decisión: configurar RouteHandlerOptions.ThrowOnBadRequest=false y añadir UseStatusCodePages antes de los endpoints. Completar las respuestas 400 sin cuerpo con el JSON fijo `{"error":"El cuerpo JSON de la petición no es válido."}`.
+
+Motivo: los DTOs se deserializan antes de entrar al handler; los números incompatibles con strings o JSON mal formado no llegan a su validación. Evitar que esos errores expongan detalles del servidor en Development mediante los mecanismos integrados de Minimal APIs.
+
+Consecuencia: no hay captura general de excepciones. El framework produce 400 por errores de enlace y el middleware añade el mensaje; también cubre otros 400 vacíos de enlace, como parámetros de ruta incompatibles. Las respuestas de validación que ya tienen cuerpo se conservan. No se cambian otros códigos como 404 o 415, ni se convierten fallos de negocio o de PostgreSQL en 400. Development y los logs internos permanecen disponibles. Sin cambios en handlers, persistencia, esquema, migraciones o dependencias.
+
+Validación: build con 0 errores y 0 advertencias; dotnet test código 0, sin proyectos de tests. HTTP en Development: PATCH numérico, mal formado, array, null y vacío, y POST/PUT incompatibles devolvieron exactamente el JSON genérico con 400. Inventado y demás validaciones conservaron su mensaje. Resolved devolvió 200 y GET confirmó texto. Restaurado el estado original y comparados los seis tickets por ID; 404 y health intactos. API detenida, sin commit ni push.
 
 ## Mantenimiento del registro
 

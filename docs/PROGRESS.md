@@ -1,6 +1,6 @@
 # Progreso — HelpDesk.NET
 
-Última actualización: 2026-10-13.
+Última actualización: 2026-10-20.
 
 ## Funcionalidades completadas
 
@@ -25,11 +25,11 @@
 
 - Endpoint `PUT /api/tickets/{id}` con `UpdateTicketDto` (`Title` y `Description`): inyecta `HelpDeskDbContext`, busca con `FirstOrDefaultAsync`, devuelve 404 si no existe y conserva `ValidateTicket` con respuesta 400. Actualiza únicamente los textos de la entidad seguida por EF Core y guarda con `SaveChangesAsync`. Conserva ID y fecha de creación y devuelve HTTP 200 con el ticket actualizado.
 
-- Endpoint `DELETE /api/tickets/{id}`: busca el ticket en la lista compartida, devuelve HTTP 404 sin cuerpo si no existe, o lo elimina y devuelve HTTP 204 sin cuerpo.
+- Endpoint `DELETE /api/tickets/{id}`: consulta PostgreSQL con `FirstOrDefaultAsync`, devuelve 404 si no existe o elimina mediante `Remove` y `SaveChangesAsync`, devolviendo 204 sin cuerpo.
 
 - Preparación de PostgreSQL y EF Core: paquetes EF Core/Design `10.0.12` y Npgsql EF Core `10.0.3`; `Data/HelpDeskDbContext.cs`, `DbSet<Ticket>` y mapeo del modelo; contexto registrado mediante DI y cadena de conexión externa `ConnectionStrings:DefaultConnection` con User Secrets o variable de entorno. Guía Linux Mint 22.3 en `docs/POSTGRESQL.md`. Migración `InitialCreate` aplicada por el desarrollador; los dos GET ya consultan PostgreSQL.
 
-`Ticket` se utiliza para la colección y las respuestas; POST y PUT reciben sus respectivos DTOs. GET, POST y PUT utilizan PostgreSQL; DELETE todavía opera en memoria.
+`Ticket` se utiliza para la colección y las respuestas; POST y PUT reciben sus respectivos DTOs. Todo el CRUD utiliza PostgreSQL; la lista temporal ya no existe.
 
 ## Cierre de sesión — 8 de octubre de 2026
 
@@ -84,8 +84,7 @@ Comprobaciones realizadas:
 
 ## Problemas conocidos
 
-- Estado transitorio: GET, POST y PUT utilizan PostgreSQL, pero DELETE sigue usando los tres ejemplos en memoria. Sus eliminaciones no afectan a GET ni a los tickets persistidos. Coincidir en ID entre ambos almacenes no implica que sea el mismo ticket.
-- `List<Ticket>` sigue siendo temporal y no está sincronizada para peticiones simultáneas de DELETE. Sus cambios se pierden al reiniciar.
+- `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
 - No hay proyectos de tests automatizados todavía.
@@ -95,8 +94,62 @@ Comprobaciones realizadas:
 
 Estos pasos son orientativos y requieren una tarea solicitada:
 
-1. Migrar DELETE a EF Core en una tarea autorizada. Retirar la lista únicamente cuando ningún endpoint dependa de ella.
-2. Incorporar usuarios, técnicos, administradores, prioridades, categorías, asignaciones, estados, comentarios e historial por tareas concretas.
+1. Definir reglas de transición entre estados cuando se soliciten; actualmente cualquier estado válido puede cambiarse por otro válido.
+2. Incorporar usuarios, técnicos, administradores, prioridades, categorías, asignaciones, reglas de transición de estados, comentarios e historial por tareas concretas.
 3. Añadir autenticación y autorización, tests automatizados, frontend con Angular y TypeScript y Docker en etapas posteriores.
 
 Cada cambio importante debe actualizar este documento y, si afecta al diseño, `ARCHITECTURE.md`.
+
+## Avance — 20 de octubre de 2026
+
+La revisión local confirma CRUD completo con EF Core y PostgreSQL, incluido DELETE, sin lista temporal. Las cinco pruebas HTTP principales superadas son un resultado comunicado por el desarrollador; no se han repetido en esta tarea. Los apartados fechados anteriores conservan el estado histórico.
+
+Añadidos `Models/TicketStatus.cs` (`Open`, `InProgress`, `Resolved`, `Closed`) y `Ticket.Status`, inicializado explícitamente en `Open`. El contexto convierte el enum a cadena y configura `Open` como valor predeterminado de la columna. Generada `20261020092721_AddTicketStatus`, con Designer y snapshot actualizados. No se han modificado endpoints, DTOs ni implementado reglas de transición.
+
+Verificaciones:
+
+- `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias.
+- `dotnet test HelpDesk.NET.slnx --no-restore`: código 0; no hay proyectos de tests ni casos automatizados ejecutados.
+- Revisados Up, Down, Designer, snapshot y SQL generado. Up solo añade `Status` (`text NOT NULL DEFAULT 'Open'`): conserva filas y columnas existentes y asignará `Open` a los tickets previos al aplicarse. Down solo elimina esa columna y perdería sus valores de estado al revertir.
+- La primera generación de SQL con `--no-build` no encontró la migración porque el ensamblado aún era el anterior; repetida correctamente tras el build.
+- No se ha ejecutado `dotnet ef database update`, aplicado SQL ni comprobado el cambio sobre datos reales. No se ejecutaron pruebas HTTP contra el esquema anterior.
+- La conversión a texto es de persistencia; JSON mantiene la serialización numérica predeterminada del enum. Las respuestas basadas en `Ticket` incorporarán `status` al utilizar el modelo actualizado.
+- Sin commit ni push.
+
+## Avance de PATCH de estado — 20 de octubre de 2026
+
+El desarrollador confirmó `AddTicketStatus` aplicada y seis tickets existentes con `Open`. Añadidos `DTOs/UpdateTicketStatusDto.cs` con `string? Status` y `PATCH /api/tickets/{id}/status` en `Program.cs`. Consulta mediante `FirstOrDefaultAsync`, devuelve 404 si no existe y valida los nombres exactos con `Enum.IsDefined` antes de convertir con `Enum.Parse<TicketStatus>`. Solo asigna Status y guarda mediante `SaveChangesAsync`; responde 200 con Ticket. No hay reglas de transición.
+
+Los valores desconocidos, cadenas numéricas, null, ausentes, vacíos, grafías distintas y combinaciones de nombres devuelven 400; un número JSON devuelve 400 durante la deserialización, antes del handler. La búsqueda precede a la validación de texto. Las respuestas mantienen el enum numérico en JSON. Los campos adicionales de entrada se ignoran y no modifican otras propiedades.
+
+Verificaciones realizadas:
+
+- `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias.
+- `dotnet test HelpDesk.NET.slnx --no-restore`: código 0, sin proyectos de tests ni casos automatizados ejecutados.
+- PATCH con cada estado (`Open`, `InProgress`, `Resolved`, `Closed`): 200; GET independiente confirmó cada valor persistido.
+- Ocho entradas inválidas: `Unknown`, número JSON 1, cadena `"1"`, null, campo ausente, vacío, `open` y `Open, Closed`: 400; GET después de cada petición confirmó que no había cambios.
+- ID comprobado como inexistente mediante GET: PATCH con estado válido devolvió 404.
+- Id, Title, Description y CreatedAt intactos en todas las respuestas y GET, incluso enviando otros valores para esas propiedades en PATCH.
+- Estado original restaurado mediante PATCH; comparación final del listado completo confirmó los seis tickets idénticos al inicio, sin crear ni borrar registros.
+- El sandbox bloqueó los sockets del servidor y del cliente; pruebas HTTP completadas fuera del sandbox con autorización. API de pruebas detenida.
+- GET, POST, PUT y DELETE conservan sus handlers; se comprobó GET, sin repetir escrituras POST/PUT/DELETE en esta tarea. Sin nuevas migraciones, cambios de esquema, servicios ni repositorios. Sin commit ni push.
+
+## Serialización JSON de enums — 20 de octubre de 2026
+
+Configuración centralizada en `Program.cs` mediante `ConfigureHttpJsonOptions` y `JsonStringEnumConverter`. Las respuestas de las Minimal APIs representan TicketStatus con sus nombres, por ejemplo `"status":"Resolved"`. Las referencias anteriores a JSON numérico describen el comportamiento histórico. El enum C# y su conversión a texto en PostgreSQL permanecen intactos. El DTO de PATCH sigue siendo string nullable y conserva toda su validación explícita; no se modifican handlers, esquema, migraciones ni dependencias.
+
+Verificación: `dotnet build HelpDesk.NET.slnx` correcto, 0 errores y 0 advertencias. `dotnet test HelpDesk.NET.slnx --no-restore` con código 0, sin proyectos de tests ni casos ejecutados. Pruebas HTTP: los cuatro estados devolvieron 200 con status como texto, incluido Resolved, y GET posterior confirmó cada valor y las demás propiedades intactas. Inventado, número JSON 1, cadena numérica, null, campo ausente, vacío, capitalización distinta y combinación de nombres devolvieron 400 sin cambios. ID inexistente: 404. Estado original restaurado y los seis tickets idénticos al inicio. No se repitieron POST, PUT ni DELETE; sus handlers permanecen intactos. Pruebas fuera del sandbox con autorización por la restricción de sockets ya comprobada; API detenida al terminar. Sin commit ni push.
+
+## Errores del cuerpo JSON — 20 de octubre de 2026
+
+Configuración centralizada en Program.cs: RouteHandlerOptions.ThrowOnBadRequest=false evita lanzar excepciones por fallos de enlace de las Minimal APIs; UseStatusCodePages completa únicamente respuestas 400 sin cuerpo con `{"error":"El cuerpo JSON de la petición no es válido."}`. Las respuestas de validación que ya contienen JSON permanecen intactas. No se capturan excepciones de negocio o PostgreSQL ni se convierten en 400. Development sigue activo. El mensaje genérico también cubre otros fallos de enlace que produzcan un 400 vacío; no cambia 404 ni 415.
+
+Verificaciones:
+
+- Build correcto: 0 errores, 0 advertencias. dotnet test con código 0, sin proyectos de tests ni casos ejecutados.
+- En Development, PATCH con número JSON, JSON incompleto, array, null como cuerpo y cuerpo vacío: 400 con el JSON genérico exacto, sin trazas ni nombres de clases, incluso solicitando text/plain.
+- POST y PUT con título numérico: mismo 400 genérico, sin escrituras.
+- PATCH con Inventado, cadena numérica, estado null y campo ausente: 400 con el mensaje personalizado de estados existente.
+- PATCH Resolved: 200; GET confirma Resolved como texto y otras propiedades intactas. Estado original restaurado; seis tickets idénticos al inicio, comparados por ID. La primera comparación falló por asumir orden del listado; corregida la prueba, sin modificar la consulta.
+- GET inexistente: 404; health intacto. API detenida tras pruebas HTTP fuera del sandbox con autorización por restricción de sockets.
+- Sin cambios de lógica de negocio, esquema, migraciones ni dependencias. Sin commit ni push.
