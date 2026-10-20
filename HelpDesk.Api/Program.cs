@@ -181,3 +181,5 @@ static string? ValidateTicket(string? title, string? description)
 
     return null;
 }
+
+public partial class Program { }

@@ -4,7 +4,7 @@
 
 ## Estado actual
 
-El repositorio contiene la solución `HelpDesk.NET.slnx` y los proyectos `HelpDesk.Api` (ASP.NET Core Web API) y `HelpDesk.Tests` (pruebas unitarias xUnit), ambos para `net10.0`. `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Todo el CRUD accede a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
+El repositorio contiene la solución `HelpDesk.NET.slnx` y los proyectos `HelpDesk.Api` (ASP.NET Core Web API) y `HelpDesk.Tests` (pruebas unitarias xUnit e integración HTTP), ambos para `net10.0`. `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Todo el CRUD accede a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
 
 `GET /api/tickets` inyecta el contexto y usa `ToListAsync` para devolver HTTP 200 con el array de tickets, incluido `[]` si la tabla está vacía. `GET /api/tickets/{id}` usa `FirstOrDefaultAsync` y devuelve 200 con el objeto o 404 sin cuerpo. Health mantiene HTTP 200 con `{"status":"ok"}`.
 
@@ -273,6 +273,18 @@ Motivo: Design aporta Relational 10.0.12 solo al grafo de la API por PrivateAsse
 Consecuencia: ambos proyectos resuelven Relational 10.0.12, compatible con el rango de Npgsql y net10.0. No se añaden referencias EF en Tests, no se actualizan otros paquetes y no se suprimen advertencias. Sin cambios de negocio, endpoints, tests o migraciones.
 
 Validación: restore y build correctos sin advertencias ni errores; test ejecutó 16 casos, 16 superados, 0 fallidos y 0 omitidos, sin advertencias. Grafo verificado con dotnet nuget why; diff correcto. Comandos fuera del sandbox con autorización por restricciones de MSBuild. Sin uso de PostgreSQL, commit ni push.
+
+### 024 — Primera prueba HTTP con WebApplicationFactory
+
+Estado: implementada el 20 de octubre de 2026; amplía la decisión 022 con integración HTTP sin base de datos.
+
+Decisión: añadir Microsoft.AspNetCore.Mvc.Testing 10.0.12 en Tests y exponer Program mediante una declaración public partial al final del archivo de arranque. HealthEndpointTests crea una fábrica local por prueba, configura el entorno Testing y envía GET /api/health mediante el HttpClient de TestServer.
+
+Motivo: comprobar conjuntamente arranque, enrutamiento y serialización de la API sin ejecutar manualmente Kestrel ni depender de infraestructura externa.
+
+Consecuencia: la prueba verifica el contrato existente: 200, application/json y objeto con únicamente status=ok. TestServer ejecuta el pipeline en memoria, sin puerto HTTP. Health no resuelve HelpDeskDbContext; el registro diferido de sus opciones no configura ni conecta PostgreSQL en esta prueba, por lo que no se necesita sustituirlo. Las pruebas CRUD y cualquier configuración de base de datos de pruebas siguen pendientes. No se modifican handlers, migraciones ni reglas. Las 16 pruebas unitarias se conservan.
+
+Validación: restore y build correctos con 0 errores y 0 advertencias; test con 17 superadas, 0 fallidas y 0 omitidas, sin advertencias. Comandos fuera del sandbox con autorización por restricciones de NuGet/MSBuild. Diff correcto; sin conexiones ni operaciones con PostgreSQL, commit o push.
 
 ## Mantenimiento del registro
 

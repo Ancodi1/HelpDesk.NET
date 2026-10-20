@@ -87,7 +87,7 @@ Comprobaciones realizadas:
 - `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
-- Primer proyecto de tests unitarios `HelpDesk.Tests` implementado: 16 casos de transiciones. Pendientes pruebas de integración automatizadas.
+- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Pruebas CRUD de integración pendientes.
 - Conflicto MSB3277 resuelto: referencia explícita a Microsoft.EntityFrameworkCore.Relational 10.0.12 en la API, propagada a Tests. Restore, build y 16 tests sin advertencias.
 - Las rutas sin un endpoint registrado devolverán 404.
 
@@ -202,3 +202,18 @@ Verificaciones completadas fuera del sandbox con autorización por las restricci
 - `git diff --check`: correcto. Sin cambios en tests, endpoints, reglas o migraciones; sin API arrancada ni acceso a PostgreSQL. Sin commit ni push.
 
 Las advertencias consignadas en la etapa anterior son resultados históricos, resueltos por este cambio.
+
+## Primera prueba de integración HTTP — 20 de octubre de 2026
+
+Añadido Microsoft.AspNetCore.Mvc.Testing 10.0.12 a HelpDesk.Tests. Program.cs expone `public partial class Program` como punto de entrada accesible para WebApplicationFactory; los handlers y su contrato no cambian.
+
+`HealthEndpointTests.cs` incluye un Fact asíncrono que crea WebApplicationFactory<Program> en el entorno Testing y un HttpClient de TestServer. Solicita GET /api/health y comprueba HTTP 200, Content-Type application/json y un objeto JSON con una única propiedad status cuyo valor es ok. La comprobación estructural no depende de espacios ni formato del JSON. Client, respuesta, documento JSON y fábrica se liberan al terminar.
+
+Health no solicita HelpDeskDbContext y su registro es diferido: no se ejecuta la configuración Npgsql ni se abre conexión. No ha sido necesario sustituir el contexto ni proporcionar credenciales. No se arranca Kestrel, no se abre un puerto HTTP ni se realizan operaciones contra PostgreSQL. Las 16 pruebas unitarias permanecen intactas. Sin pruebas CRUD, contenedores, cambios de migraciones o reglas de negocio.
+
+Verificaciones realizadas fuera del sandbox con autorización por las restricciones de NuGet/MSBuild ya comprobadas:
+
+- `dotnet restore HelpDesk.NET.slnx`: correcto, sin advertencias.
+- `dotnet build HelpDesk.NET.slnx`: 0 errores, 0 advertencias.
+- `dotnet test HelpDesk.NET.slnx`: 17 superadas (16 unitarias y una HTTP), 0 fallidas, 0 omitidas, sin advertencias.
+- `git diff --check`: correcto. Sin commit ni push.
