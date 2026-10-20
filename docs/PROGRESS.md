@@ -94,7 +94,7 @@ Comprobaciones realizadas:
 
 Estos pasos son orientativos y requieren una tarea solicitada:
 
-1. Definir reglas de transición entre estados cuando se soliciten; actualmente cualquier estado válido puede cambiarse por otro válido.
+1. Ampliar las funcionalidades del dominio únicamente mediante tareas solicitadas; las transiciones de estado ya están implementadas.
 2. Incorporar usuarios, técnicos, administradores, prioridades, categorías, asignaciones, reglas de transición de estados, comentarios e historial por tareas concretas.
 3. Añadir autenticación y autorización, tests automatizados, frontend con Angular y TypeScript y Docker en etapas posteriores.
 
@@ -153,3 +153,20 @@ Verificaciones:
 - PATCH Resolved: 200; GET confirma Resolved como texto y otras propiedades intactas. Estado original restaurado; seis tickets idénticos al inicio, comparados por ID. La primera comparación falló por asumir orden del listado; corregida la prueba, sin modificar la consulta.
 - GET inexistente: 404; health intacto. API detenida tras pruebas HTTP fuera del sandbox con autorización por restricción de sockets.
 - Sin cambios de lógica de negocio, esquema, migraciones ni dependencias. Sin commit ni push.
+
+## Reglas de transición de estados — 20 de octubre de 2026
+
+Añadida `Models/TicketStatusTransitions.cs`, clase estática con una función pura IsAllowed que expresa las transiciones mediante switch. PATCH conserva DTO, consulta y validación; después de convertir el estado devuelve 200 inmediatamente si coincide con el actual, sin asignar ni llamar a SaveChangesAsync. Para cambios distintos consulta la regla y devuelve 409 con error, currentStatus y requestedStatus cuando no están permitidos. Solo los cambios permitidos asignan Status y guardan con EF Core.
+
+Transiciones: Open → InProgress; InProgress → Resolved u Open; Resolved → Closed, InProgress u Open; Closed → Open. Cualquier otro cambio distinto se rechaza. Esto sustituye la libertad de transición descrita en etapas históricas anteriores.
+
+Verificaciones:
+
+- `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias.
+- `dotnet test HelpDesk.NET.slnx --no-restore`: código 0; sin proyectos de tests ni casos automatizados ejecutados.
+- HTTP sobre PostgreSQL: ciclo Open → InProgress → Resolved → Closed → Open completo con 200 y GET independiente tras cada cambio.
+- Comprobadas las 16 combinaciones: siete transiciones con 200, cinco prohibidas con 409 (incluida Open → Closed) y cuatro repeticiones con 200. Los 409 incluyen ambos estados y no modifican el ticket. La rama idempotente retorna antes del guardado, comprobado en el código.
+- Estado Inventado, número JSON, cadena numérica, null, campo ausente y JSON incompleto: 400 con error, sin cambios. Ticket comprobado como inexistente: 404.
+- Id, Title, Description y CreatedAt intactos; PATCH ignora valores adicionales para título e ID. Restaurado el estado original siguiendo transiciones permitidas. Comparación final por ID: los seis tickets idénticos al inicio, sin crear ni borrar datos.
+- Pruebas HTTP fuera del sandbox con autorización por restricción de sockets. API de pruebas detenida. Sin repetir POST, PUT ni DELETE; sus handlers no se modifican.
+- Sin cambios de esquema, migraciones, dependencias ni capas. Sin commit ni push.

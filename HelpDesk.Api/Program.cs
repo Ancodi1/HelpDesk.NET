@@ -122,7 +122,24 @@ app.MapPatch("/api/tickets/{id}/status", async (int id, UpdateTicketStatusDto up
         return Results.BadRequest(new { error = "El estado debe ser Open, InProgress, Resolved o Closed." });
     }
 
-    ticket.Status = Enum.Parse<TicketStatus>(updateTicketStatusDto.Status);
+    var requestedStatus = Enum.Parse<TicketStatus>(updateTicketStatusDto.Status);
+
+    if (ticket.Status == requestedStatus)
+    {
+        return Results.Ok(ticket);
+    }
+
+    if (!TicketStatusTransitions.IsAllowed(ticket.Status, requestedStatus))
+    {
+        return Results.Conflict(new
+        {
+            error = $"No se permite cambiar el estado de {ticket.Status} a {requestedStatus}.",
+            currentStatus = ticket.Status,
+            requestedStatus
+        });
+    }
+
+    ticket.Status = requestedStatus;
     await dbContext.SaveChangesAsync();
 
     return Results.Ok(ticket);

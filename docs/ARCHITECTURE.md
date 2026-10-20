@@ -12,6 +12,8 @@ POST inyecta el contexto, registra el nuevo ticket con `Add` y lo persiste con `
 
 La serialización JSON de las Minimal APIs se configura centralmente con `ConfigureHttpJsonOptions` y `JsonStringEnumConverter`: los estados se devuelven como texto (decisión 019). Las referencias a JSON numérico en decisiones anteriores son históricas.
 
+PATCH aplica las transiciones definidas en `TicketStatusTransitions` y devuelve 409 para cambios prohibidos; repetir el estado actual devuelve 200 sin guardar (decisión 021).
+
 ## Decisiones iniciales
 
 ### 001 — Desarrollo incremental orientado al aprendizaje
@@ -235,6 +237,18 @@ Motivo: los DTOs se deserializan antes de entrar al handler; los números incomp
 Consecuencia: no hay captura general de excepciones. El framework produce 400 por errores de enlace y el middleware añade el mensaje; también cubre otros 400 vacíos de enlace, como parámetros de ruta incompatibles. Las respuestas de validación que ya tienen cuerpo se conservan. No se cambian otros códigos como 404 o 415, ni se convierten fallos de negocio o de PostgreSQL en 400. Development y los logs internos permanecen disponibles. Sin cambios en handlers, persistencia, esquema, migraciones o dependencias.
 
 Validación: build con 0 errores y 0 advertencias; dotnet test código 0, sin proyectos de tests. HTTP en Development: PATCH numérico, mal formado, array, null y vacío, y POST/PUT incompatibles devolvieron exactamente el JSON genérico con 400. Inventado y demás validaciones conservaron su mensaje. Resolved devolvió 200 y GET confirmó texto. Restaurado el estado original y comparados los seis tickets por ID; 404 y health intactos. API detenida, sin commit ni push.
+
+### 021 — Reglas explícitas de transición de estados
+
+Estado: implementada el 20 de octubre de 2026; evoluciona la decisión 018, que inicialmente permitía cualquier cambio entre estados válidos.
+
+Decisión: separar la tabla de transiciones en `Models/TicketStatusTransitions.cs`, clase estática con IsAllowed(currentStatus, requestedStatus), sin HTTP, EF Core ni servicios. Su switch permite Open → InProgress; InProgress → Resolved u Open; Resolved → Closed, InProgress u Open; Closed → Open. Otros cambios devuelven false. El endpoint resuelve por separado la igualdad como operación idempotente.
+
+Motivo: expresar una máquina de estados sencilla y mantener las reglas de negocio independientes del transporte y la persistencia, sin introducir capas ni dependencias.
+
+Consecuencia: PATCH conserva su DTO y validaciones 400/404. Si el estado coincide devuelve 200 con el ticket sin asignar ni guardar; si la transición no está permitida devuelve 409 con error, currentStatus y requestedStatus. Solo las transiciones permitidas modifican Status y llaman a SaveChangesAsync. Las respuestas conservan enums como texto y los errores JSON breves. No hay cambios de esquema ni migraciones. Los otros endpoints mantienen sus handlers. No se incorpora control de concurrencia entre peticiones simultáneas en esta etapa; las pruebas son secuenciales.
+
+Validación: build con 0 errores y 0 advertencias; dotnet test código 0, sin proyectos de tests. HTTP real verificó las 16 combinaciones, los errores 400 y 404, persistencia mediante GET y conservación de las demás propiedades. Se restauró el estado original siguiendo las reglas y se compararon los seis tickets por ID. API detenida tras pruebas fuera del sandbox autorizadas; sin commit ni push.
 
 ## Mantenimiento del registro
 
