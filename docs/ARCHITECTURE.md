@@ -1,14 +1,14 @@
 # Arquitectura — HelpDesk.NET
 
-Última actualización: 2026-10-08.
+Última actualización: 2026-10-13.
 
 ## Estado actual
 
-El repositorio contiene la solución `HelpDesk.NET.slnx` y el único proyecto ASP.NET Core Web API `HelpDesk.Api` (`net10.0`). `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Los dos GET acceden a `Tickets`; la tabla estaba vacía durante las pruebas.
+El repositorio contiene la solución `HelpDesk.NET.slnx` y el único proyecto ASP.NET Core Web API `HelpDesk.Api` (`net10.0`). `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Los dos GET, POST y PUT acceden a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
 
 `GET /api/tickets` inyecta el contexto y usa `ToListAsync` para devolver HTTP 200 con el array de tickets, incluido `[]` si la tabla está vacía. `GET /api/tickets/{id}` usa `FirstOrDefaultAsync` y devuelve 200 con el objeto o 404 sin cuerpo. Health mantiene HTTP 200 con `{"status":"ok"}`.
 
-POST, PUT y DELETE siguen trabajando sobre `List<Ticket>` con los tres ejemplos iniciales. Sus DTOs, validación y respuestas no cambian. Durante esta transición las lecturas y escrituras utilizan almacenes independientes: las escrituras en memoria no aparecen en los GET. No hay servicios, repositorios ni capas adicionales.
+POST inyecta el contexto, registra el nuevo ticket con `Add` y lo persiste con `SaveChangesAsync` antes de responder 201. PUT consulta una entidad seguida por EF Core con `FirstOrDefaultAsync`, valida y guarda sus textos con `SaveChangesAsync` antes de responder 200. DELETE sigue trabajando sobre `List<Ticket>` con los tres ejemplos iniciales. Durante esta transición sus eliminaciones en memoria no aparecen en los GET; un mismo ID puede identificar objetos distintos en cada almacén. No hay servicios, repositorios ni capas adicionales.
 
 ## Decisiones iniciales
 
@@ -24,13 +24,13 @@ Consecuencia: el alcance funcional completo se desarrollará por etapas; cada et
 
 ### 002 — Backend previsto con .NET 10, ASP.NET Core Web API y EF Core
 
-Estado: backend y lecturas persistidas implementados; persistencia de escrituras pendiente.
+Estado: backend, lecturas, creación y actualización persistidos; persistencia de DELETE pendiente.
 
 Decisión: utilizar .NET 10 y ASP.NET Core Web API para el backend, e incorporar Entity Framework Core para persistencia en la etapa correspondiente.
 
 Motivo: aprender desarrollo de APIs y acceso a datos dentro del ecosistema .NET.
 
-Consecuencia: entorno comprobado con SDK .NET 10.0.112 y runtime ASP.NET Core 10.0.12. PostgreSQL y Npgsql se han elegido para la primera integración (decisión 012). Se incorporan EF Core/Design `10.0.12` y Npgsql EF Core `10.0.3`, compatibles con `net10.0`. GET utiliza PostgreSQL; las escrituras de los demás endpoints siguen siendo temporales.
+Consecuencia: entorno comprobado con SDK .NET 10.0.112 y runtime ASP.NET Core 10.0.12. PostgreSQL y Npgsql se han elegido para la primera integración (decisión 012). Se incorporan EF Core/Design `10.0.12` y Npgsql EF Core `10.0.3`, compatibles con `net10.0`. GET, POST y PUT utilizan PostgreSQL; DELETE sigue siendo temporal.
 
 ### 003 — Estructura inicial sencilla
 
@@ -94,19 +94,19 @@ Consecuencia inicial (histórica): los textos se inicializan con `string.Empty` 
 
 ### 009 — Creación de tickets en memoria mediante POST
 
-Estado: implementada para la práctica educativa; entrada evolucionada a DTO en la decisión 010.
+Estado: implementación inicial histórica; entrada evolucionada a DTO en la decisión 010 y persistencia sustituida en la decisión 015.
 
 Decisión inicial: registrar `POST /api/tickets` directamente en `Program.cs`, recibiendo un `Ticket` desde el cuerpo JSON. La decisión 010 sustituye esta entrada por un DTO para delimitar los datos recibidos. Calcular el ID mediante `tickets.Max(ticket => ticket.Id) + 1`, asignar `DateTime.UtcNow`, añadir el objeto a la lista compartida con GET y responder con `Results.Created($"/api/tickets/{ticket.Id}", ticket)`.
 
 Motivo: aprender deserialización del cuerpo, creación de recursos y la respuesta HTTP 201 sin añadir capas ni dependencias.
 
-Consecuencia actual: el servidor asigna ID y fecha al nuevo ticket; la respuesta incluye el ticket y una cabecera `Location` que permite consultarlo mediante GET. La lista comienza con tres ejemplos, pero DELETE permite dejarla vacía: en ese caso, el cálculo actual con `Max` falla y POST devuelve HTTP 500. Eliminar el ID máximo también permite que `Max + 1` lo reutilice. La revisión del cálculo queda pendiente; POST se mantiene sin cambios en esta etapa. Los datos se pierden al reiniciar. La colección y el cálculo de ID no están sincronizados para peticiones simultáneas; esta implementación temporal se verifica con peticiones secuenciales. El endpoint valida el título obligatorio (máximo 100 caracteres) y la descripción obligatoria antes de asignar ID y fecha o añadir el ticket. Usa `string.IsNullOrWhiteSpace` y `Title.Length`; el primer fallo devuelve HTTP 400 mediante `Results.BadRequest` con un JSON que contiene `error`. Las peticiones inválidas no modifican la colección. La persistencia permanece pendiente.
+Consecuencia histórica (antes de la decisión 015): el servidor asigna ID y fecha al nuevo ticket; la respuesta incluye el ticket y una cabecera `Location` que permite consultarlo mediante GET. La lista comienza con tres ejemplos, pero DELETE permite dejarla vacía: en ese caso, el cálculo actual con `Max` falla y POST devuelve HTTP 500. Eliminar el ID máximo también permite que `Max + 1` lo reutilice. La revisión del cálculo queda pendiente; POST se mantiene sin cambios en esta etapa. Los datos se pierden al reiniciar. La colección y el cálculo de ID no están sincronizados para peticiones simultáneas; esta implementación temporal se verifica con peticiones secuenciales. El endpoint valida el título obligatorio (máximo 100 caracteres) y la descripción obligatoria antes de asignar ID y fecha o añadir el ticket. Usa `string.IsNullOrWhiteSpace` y `Title.Length`; el primer fallo devuelve HTTP 400 mediante `Results.BadRequest` con un JSON que contiene `error`. Las peticiones inválidas no modifican la colección. La persistencia permanece pendiente.
 
 ### 010 — DTO de entrada para crear tickets
 
 Estado: implementada.
 
-Decisión: crear `DTOs/CreateTicketDto.cs` con únicamente `Title` y `Description`, inicializadas con `string.Empty`. POST recibe este DTO, mantiene las validaciones manuales existentes y, si son correctas, construye un `Ticket` mediante un inicializador de objeto. Copia los textos y asigna ID y fecha UTC en el servidor.
+Decisión: crear `DTOs/CreateTicketDto.cs` con únicamente `Title` y `Description`, inicializadas con `string.Empty`. POST recibe este DTO, mantiene las validaciones manuales existentes y, si son correctas, construye un `Ticket` mediante un inicializador de objeto. Copia los textos y asigna fecha UTC en el servidor; desde la decisión 015 el ID lo genera PostgreSQL.
 
 Motivo: separar el contrato de creación del modelo de dominio y evitar que propiedades internas se incorporen accidentalmente a la entrada del cliente al evolucionar `Ticket`.
 
@@ -114,17 +114,17 @@ Consecuencia: el DTO no contiene ID ni fecha; los campos JSON adicionales se ign
 
 ### 011 — Actualización en memoria con PUT y validación compartida
 
-Estado: implementada.
+Estado: implementación inicial histórica; persistencia sustituida en la decisión 016.
 
 Decisión: crear `DTOs/UpdateTicketDto.cs` con `Title` y `Description`, inicializadas con `string.Empty`. Registrar PUT por ID directamente en `Program.cs`. Buscar primero el ticket; si existe, validar y actualizar únicamente sus textos. Devolver HTTP 404 si no existe, HTTP 400 con JSON de error si falla la validación, o HTTP 200 con el objeto actualizado.
 
 Motivo: aprender actualización idempotente y conservar las propiedades administradas por el servidor, evitando duplicar las reglas de creación y actualización.
 
-Consecuencia: ID y fecha de creación permanecen intactos; repetir los mismos datos mantiene el mismo estado. Los DTOs de creación y actualización son independientes. La función local `ValidateTicket` recibe dos textos anulables y devuelve el primer mensaje de error o `null`. Centraliza las reglas ya existentes sin servicios ni capas adicionales; POST conserva sus respuestas y comportamiento. La colección sigue siendo temporal y no está sincronizada para peticiones simultáneas.
+Consecuencia: ID y fecha de creación permanecen intactos; repetir los mismos datos mantiene el mismo estado. Los DTOs de creación y actualización son independientes. La función local `ValidateTicket` recibe dos textos anulables y devuelve el primer mensaje de error o `null`. Centraliza las reglas ya existentes sin servicios ni capas adicionales; POST conserva sus respuestas y comportamiento. En esta etapa inicial, la colección era temporal y no estaba sincronizada para peticiones simultáneas.
 
 ### 012 — Preparación de EF Core con PostgreSQL
 
-Estado: contexto, registro y esquema implementados; GET persistidos (decisión 014), escrituras pendientes.
+Estado: contexto, registro y esquema implementados; GET persistidos (decisión 014), POST persistido (decisión 015) y PUT persistido (decisión 016); DELETE pendiente.
 
 Decisión: añadir EF Core y Design `10.0.12` y el proveedor oficial del proyecto Npgsql `10.0.3` (requiere EF Core >= 10.0.4 y < 11). Design usa `PrivateAssets=all`. Crear `Data/HelpDeskDbContext.cs` en el único proyecto, con constructor que recibe `DbContextOptions<HelpDeskDbContext>` y `DbSet<Ticket> Tickets`. Registrar con `AddDbContext` y `UseNpgsql`; su duración predeterminada es scoped.
 
@@ -132,7 +132,7 @@ Motivo: introducir acceso relacional y DI progresivamente sin reemplazar todaví
 
 Consecuencia: el mapeo configura ID como clave identity by default, título obligatorio/máximo 100, descripción obligatoria y fecha timestamptz. La clase de dominio no necesita atributos ni propiedades nuevas. `IsRequired` configura nulabilidad del esquema; las reglas contra textos vacíos o espacios siguen siendo responsabilidad de la validación HTTP. Npgsql requiere fechas UTC al persistir timestamptz; los valores actuales ya se crean con UTC.
 
-La cadena se obtiene de `ConnectionStrings:DefaultConnection`, mediante User Secrets en Development o `ConnectionStrings__DefaultConnection` en el entorno. Solo se versiona el identificador no sensible del almacén; no se han guardado credenciales reales. User Secrets no cifra los datos y se limita al desarrollo. El contexto comprueba que hay una cadena al resolverse; el registro no abre conexiones ni crea tablas; los GET lo solicitan ahora para consultar (decisión 014). No se llama a `EnsureCreated`, `Migrate` o `SaveChanges`. La migración inicial está aplicada en `helpdesk_db`, verificada al cierre (decisión 013). Instalación/configuración local y etapas pendientes documentadas en `POSTGRESQL.md`.
+La cadena se obtiene de `ConnectionStrings:DefaultConnection`, mediante User Secrets en Development o `ConnectionStrings__DefaultConnection` en el entorno. Solo se versiona el identificador no sensible del almacén; no se han guardado credenciales reales. User Secrets no cifra los datos y se limita al desarrollo. El contexto comprueba que hay una cadena al resolverse; el registro no abre conexiones ni crea tablas; los GET lo solicitan ahora para consultar (decisión 014). No se llama a `EnsureCreated` ni `Migrate`; POST y PUT utilizan `SaveChangesAsync` desde las decisiones 015 y 016 respectivamente. La migración inicial está aplicada en `helpdesk_db`, verificada al cierre (decisión 013). Instalación/configuración local y etapas pendientes documentadas en `POSTGRESQL.md`.
 
 ### 013 — Primera migración InitialCreate
 
@@ -142,23 +142,47 @@ Decisión: alinear la lectura de configuración con `ConnectionStrings:DefaultCo
 
 Motivo: versionar el esquema inicial y permitir reproducir las herramientas, manteniendo secretos fuera del código.
 
-Consecuencia: `Migrations` contiene la creación de `Tickets`, metadatos del modelo objetivo y la instantánea usada para futuras diferencias. `Up` define las cuatro columnas y su clave identity; `Down` describe la reversión. La generación no aplicó SQL ni modificó datos. Después el desarrollador aplicó `InitialCreate`; la revisión de cierre confirmó su registro en `__EFMigrationsHistory` de `helpdesk_db`. No se reaplicó ni revirtió la migración. Los GET ya utilizan esa tabla; las escrituras siguen en memoria.
+Consecuencia: `Migrations` contiene la creación de `Tickets`, metadatos del modelo objetivo y la instantánea usada para futuras diferencias. `Up` define las cuatro columnas y su clave identity; `Down` describe la reversión. La generación no aplicó SQL ni modificó datos. Después el desarrollador aplicó `InitialCreate`; la revisión de cierre confirmó su registro en `__EFMigrationsHistory` de `helpdesk_db`. No se reaplicó ni revirtió la migración. Los GET, POST y PUT ya utilizan esa tabla; DELETE sigue en memoria.
 
 ### 014 — GET asíncronos con EF Core
 
-Estado: implementada; migración de escrituras pendiente.
+Estado: implementada; POST y PUT migrados posteriormente (decisiones 015 y 016), DELETE pendiente.
 
 Decisión: inyectar `HelpDeskDbContext` en las dos Minimal APIs GET. Obtener el listado con `ToListAsync` y buscar por ID con `FirstOrDefaultAsync`, usando `async`/`await` y manteniendo HTTP 200 o 404.
 
 Motivo: aprender consultas asíncronas y DI sobre PostgreSQL de forma incremental.
 
-Consecuencia: GET consulta la tabla persistida y deja de leer los ejemplos en memoria. POST, PUT y DELETE conservan su lista y comportamiento: sus cambios aún no se reflejan en GET. No se generan migraciones ni se modifica el modelo. Las pruebas reales confirmaron 200 con tabla vacía y 404 por ID inexistente; el caso de ID existente queda pendiente por falta de filas.
+Consecuencia inicial: GET consulta la tabla persistida y deja de leer los ejemplos en memoria. En esta etapa POST, PUT y DELETE conservaban su lista; la decisión 015 migra posteriormente POST. No se generan migraciones ni se modifica el modelo. Las pruebas reales confirmaron 200 con tabla vacía y 404 por ID inexistente; el caso de ID existente queda pendiente por falta de filas.
 
-## Comprobaciones y pendientes al cierre del 8 de octubre de 2026
+## Comprobaciones y pendientes históricos al cierre del 8 de octubre de 2026
 
 Build correcto sin errores ni advertencias. GET del listado devolvió 200 con `[]`; GET por ID inexistente, 404 sin cuerpo. No se verificó la rama 200 por ID porque la tabla está vacía. La revisión de archivos versionados/no ignorados no detectó credenciales y staging estaba vacío.
 
 La coexistencia de almacenes es temporal: POST devuelve una ubicación de GET, pero el ticket creado en memoria aún no existe en PostgreSQL. PUT y DELETE tampoco afectan la tabla. Pendiente migrar esas escrituras con operaciones asíncronas y `SaveChangesAsync` por tareas autorizadas, y eliminar la lista al completar esa transición. El cálculo actual `Max + 1` falla con lista vacía y puede reutilizar IDs eliminados; la generación identity está configurada en PostgreSQL pero POST todavía no la utiliza. La lista tampoco está sincronizada para concurrencia. Tests automatizados y futuras funcionalidades siguen pendientes.
+
+### 015 — POST asíncrono con EF Core
+
+Estado: implementada el 13 de octubre de 2026; sustituye la persistencia en memoria de la decisión 009.
+
+Decisión: mantener POST en `Program.cs`, con `CreateTicketDto`, `ValidateTicket` e inyección de `HelpDeskDbContext`. Crear `Ticket` con Title, Description y fecha UTC sin asignar Id; registrar con `dbContext.Tickets.Add(ticket)` y guardar con `await dbContext.SaveChangesAsync()` antes de responder con `Results.Created`.
+
+Motivo: aprender seguimiento de entidades, guardado asíncrono y generación de claves en PostgreSQL sin añadir capas.
+
+Consecuencia: `Add` marca la entidad como Added; `SaveChangesAsync` ejecuta el INSERT y actualiza el ID del objeto con el generado por la columna identity existente. La respuesta conserva HTTP 201, el ticket y Location con su ID; los datos inválidos siguen devolviendo 400 antes de registrar o guardar. POST deja de depender de la lista y de `Max + 1`. El esquema no cambia y no se generan migraciones. En esta etapa PUT y DELETE conservaban la lista temporal; la decisión 016 migra posteriormente PUT. DELETE continúa pendiente.
+
+Validación: build sin errores ni advertencias; nueve POST inválidos con 400 sin cambios; POST válido con 201 e ID 1 generado; ambos GET recuperan el ticket antes y después de reiniciar. Se dejó un único ticket de prueba en la tabla inicialmente vacía, sin eliminar datos. PostgreSQL conserva la fecha con precisión de microsegundos. `dotnet test` terminó con código 0, pero no hay proyectos de tests automatizados. Las comprobaciones HTTP requirieron autorización fuera del sandbox por el bloqueo de sockets.
+
+### 016 — PUT asíncrono y seguimiento de cambios con EF Core
+
+Estado: implementada el 13 de octubre de 2026; sustituye la persistencia en memoria de la decisión 011.
+
+Decisión: conservar `UpdateTicketDto` e inyectar `HelpDeskDbContext` en PUT. Buscar por ID mediante `FirstOrDefaultAsync`, devolver 404 si no existe y validar con `ValidateTicket` antes de modificar. Cambiar únicamente Title y Description, guardar con `await dbContext.SaveChangesAsync()` y devolver 200 con el ticket actualizado.
+
+Motivo: aprender cómo el contexto sigue una entidad consultada, detecta sus cambios y los persiste sin llamar a `Update` ni añadir servicios o repositorios.
+
+Consecuencia: la consulta usa el seguimiento predeterminado. Al guardar, EF Core compara los valores originales con los actuales y ejecuta la actualización necesaria. Id y CreatedAt permanecen intactos; las entradas inválidas devuelven 400 sin modificar la entidad. El esquema no cambia y no se generan migraciones. GET y POST mantienen su implementación; DELETE conserva la lista temporal y es la única operación pendiente de migración.
+
+Validación: build correcto sin errores ni advertencias; `dotnet test` con código 0, sin proyectos de tests. PUT válido devolvió 200; GET por ID y listado confirmaron los textos guardados con ID y fecha originales. Repetir PUT mantuvo el mismo resultado. Nueve entradas inválidas devolvieron 400 sin cambios y un ID inexistente devolvió 404 sin cuerpo, incluso con entrada inválida. Se creó y actualizó un ticket de prueba (ID 5), conservando los cuatro tickets previos. API detenida tras las pruebas HTTP autorizadas fuera del sandbox por el bloqueo de sockets. Sin commit ni push.
 
 ## Mantenimiento del registro
 

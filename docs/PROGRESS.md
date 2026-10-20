@@ -1,6 +1,6 @@
 # Progreso — HelpDesk.NET
 
-Última actualización: 2026-10-08.
+Última actualización: 2026-10-13.
 
 ## Funcionalidades completadas
 
@@ -17,19 +17,19 @@
 
 - Endpoint `GET /api/tickets/{id}`: recibe `int id` y `HelpDeskDbContext`, y consulta PostgreSQL con `await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id)`. Devuelve HTTP 200 con el ticket o HTTP 404 sin cuerpo si no existe.
 
-- Endpoint `POST /api/tickets`: recibe un `CreateTicketDto` desde JSON y construye internamente un nuevo `Ticket`, asigna `Id` con el mayor identificador de la lista más uno y `CreatedAt` con `DateTime.UtcNow`, añade el objeto a la colección y devuelve HTTP 201 con JSON y cabecera `Location` mediante `Results.Created`.
+- Endpoint `POST /api/tickets`: recibe `CreateTicketDto` y `HelpDeskDbContext` mediante DI, conserva `ValidateTicket` y construye un `Ticket` con los textos y `CreatedAt = DateTime.UtcNow`, sin asignar ID. Usa `dbContext.Tickets.Add(ticket)` y `await dbContext.SaveChangesAsync()`; PostgreSQL genera el ID y EF Core lo incorpora al objeto antes de devolver HTTP 201 con JSON y cabecera `Location` mediante `Results.Created`.
 
 - Validación compartida de POST y PUT mediante la función local `ValidateTicket` en `Program.cs`: título obligatorio con máximo de 100 caracteres y descripción obligatoria. Se rechazan campos ausentes, `null`, vacíos o compuestos solamente por espacios con HTTP 400 y JSON `{"error":"mensaje explicativo"}`. Se devuelve el primer error sin añadir ni modificar tickets.
 
 - Primer DTO `CreateTicketDto` creado en `HelpDesk.Api/DTOs/CreateTicketDto.cs`, con únicamente `Title` y `Description`. Separa la entrada del POST del modelo de dominio.
 
-- Endpoint `PUT /api/tickets/{id}` con `UpdateTicketDto` (`Title` y `Description`): busca el ticket, devuelve 404 si no existe, valida los textos y actualiza únicamente esos dos campos. Conserva ID y fecha de creación y devuelve HTTP 200 con el ticket actualizado.
+- Endpoint `PUT /api/tickets/{id}` con `UpdateTicketDto` (`Title` y `Description`): inyecta `HelpDeskDbContext`, busca con `FirstOrDefaultAsync`, devuelve 404 si no existe y conserva `ValidateTicket` con respuesta 400. Actualiza únicamente los textos de la entidad seguida por EF Core y guarda con `SaveChangesAsync`. Conserva ID y fecha de creación y devuelve HTTP 200 con el ticket actualizado.
 
 - Endpoint `DELETE /api/tickets/{id}`: busca el ticket en la lista compartida, devuelve HTTP 404 sin cuerpo si no existe, o lo elimina y devuelve HTTP 204 sin cuerpo.
 
 - Preparación de PostgreSQL y EF Core: paquetes EF Core/Design `10.0.12` y Npgsql EF Core `10.0.3`; `Data/HelpDeskDbContext.cs`, `DbSet<Ticket>` y mapeo del modelo; contexto registrado mediante DI y cadena de conexión externa `ConnectionStrings:DefaultConnection` con User Secrets o variable de entorno. Guía Linux Mint 22.3 en `docs/POSTGRESQL.md`. Migración `InitialCreate` aplicada por el desarrollador; los dos GET ya consultan PostgreSQL.
 
-`Ticket` se utiliza para la colección y las respuestas; POST y PUT reciben sus respectivos DTOs. GET lee datos persistidos en PostgreSQL; POST, PUT y DELETE todavía operan en memoria.
+`Ticket` se utiliza para la colección y las respuestas; POST y PUT reciben sus respectivos DTOs. GET, POST y PUT utilizan PostgreSQL; DELETE todavía opera en memoria.
 
 ## Cierre de sesión — 8 de octubre de 2026
 
@@ -51,14 +51,42 @@ Comprobaciones de cierre:
 - No se ejecutó `dotnet test`: no hay proyectos de tests automatizados. Las comprobaciones HTTP/SQL se ejecutaron con autorización fuera del sandbox por el bloqueo de sockets. Servidor detenido.
 - Solo se actualizó documentación en este cierre; código, arquitectura y funcionalidades no se modificaron.
 
+## Avance — 13 de octubre de 2026
+
+POST migrado a EF Core, conservando DTO, validación y contrato HTTP. Solo cambió este endpoint en `Program.cs`; PUT, DELETE y su lista temporal permanecen intactos. No se modificó el modelo ni se generaron o aplicaron migraciones. El cierre del 8 de octubre anterior es un registro histórico.
+
+Comprobaciones realizadas:
+
+- `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias.
+- `dotnet test HelpDesk.NET.slnx --no-restore`: terminó con código 0; no hay proyectos de tests ni casos automatizados ejecutados.
+- Nueve POST inválidos (campos ausentes, null, vacíos, espacios y título de 101 caracteres): HTTP 400 con mensaje `error`; listado idéntico antes y después.
+- Un POST válido: HTTP 201, textos esperados, fecha UTC, ID 1 generado y `Location: /api/tickets/1`.
+- Ambos GET: HTTP 200 y ticket creado recuperado. Tras detener y arrancar nuevamente la API, ambos GET conservan el ticket.
+- La comparación de fechas tiene en cuenta que PostgreSQL conserva microsegundos (seis decimales), mientras el objeto recién creado puede devolver siete decimales de .NET.
+- La tabla estaba vacía antes de las pruebas. Se dejó un único ticket de prueba persistido; no se eliminaron datos ni se llamó a PUT o DELETE.
+- El sandbox bloqueó sockets al arrancar la API y realizar peticiones. Las comprobaciones HTTP se completaron fuera del sandbox con autorización. API detenida al terminar.
+- No se hizo commit ni push.
+
+## Avance de PUT — 13 de octubre de 2026
+
+PUT migrado a PostgreSQL con seguimiento de entidades de EF Core y guardado asíncrono. Conserva DTO, validación y respuestas 200/400/404; solo actualiza Title y Description. GET, POST, DELETE y la lista temporal no se modificaron en esta etapa. Sin cambios de modelo, migraciones ni capas adicionales.
+
+Comprobaciones realizadas:
+
+- `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias.
+- `dotnet test HelpDesk.NET.slnx --no-restore`: código 0; no existen proyectos de tests automatizados ni casos ejecutados.
+- Ticket exclusivo de prueba creado mediante POST (ID 5). PUT válido: 200 con textos actualizados, conservando ID y CreatedAt incluso al enviar esos campos adicionales en JSON. Repetir PUT mantiene el mismo resultado.
+- Nueve PUT inválidos (campos ausentes, null, vacíos, espacios y título de 101 caracteres): 400 con mensaje de error. Un GET después de cada petición confirmó que el ticket no cambió.
+- PUT por ID comprobado como inexistente: 404 sin cuerpo, tanto con textos válidos como con entrada inválida; se conserva la búsqueda antes de validar.
+- GET por ID y listado confirmaron los cambios persistidos mediante nuevas peticiones. Los cuatro tickets previos permanecieron intactos; se dejó el ticket de prueba actualizado, sin borrar datos.
+- El sandbox bloqueó el arranque y las peticiones por restricciones de sockets; las pruebas HTTP se completaron con autorización fuera del sandbox. API detenida al terminar.
+- No se hizo commit ni push.
+
 ## Problemas conocidos
 
-- Estado transitorio: GET lee PostgreSQL; POST, PUT y DELETE siguen en memoria. Crear, actualizar o eliminar mediante esos endpoints no modifica los resultados de GET.
-- Tabla vacía durante las pruebas: pendiente comprobar GET por ID existente cuando haya datos persistidos.
-- Tras eliminar todos los tickets, POST válido devuelve HTTP 500: `Max` falla sobre la lista vacía. Además, `Max + 1` puede reutilizar el ID del ticket de mayor identificador si se elimina. El cálculo de IDs queda pendiente de revisión en una tarea autorizada; POST no se ha modificado.
-- La colección es temporal: los tickets creados se pierden al reiniciar la API.
-- `List<Ticket>` y el cálculo `Max + 1` no están sincronizados para peticiones simultáneas. Esta práctica comprueba peticiones secuenciales; la concurrencia queda pendiente.
-- El sandbox bloqueó inicialmente la apertura del socket; la comprobación de arranque se completó con autorización fuera del sandbox.
+- Estado transitorio: GET, POST y PUT utilizan PostgreSQL, pero DELETE sigue usando los tres ejemplos en memoria. Sus eliminaciones no afectan a GET ni a los tickets persistidos. Coincidir en ID entre ambos almacenes no implica que sea el mismo ticket.
+- `List<Ticket>` sigue siendo temporal y no está sincronizada para peticiones simultáneas de DELETE. Sus cambios se pierden al reiniciar.
+- POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
 - No hay proyectos de tests automatizados todavía.
 - Las rutas sin un endpoint registrado devolverán 404.
@@ -67,9 +95,8 @@ Comprobaciones de cierre:
 
 Estos pasos son orientativos y requieren una tarea solicitada:
 
-1. Migrar POST a EF Core cuando se solicite: generación de ID en PostgreSQL y guardado con `SaveChangesAsync`, conservando validación y respuesta 201.
-2. Verificar GET por ID con un ticket persistido; después migrar PUT y DELETE por etapas autorizadas. Retirar la lista únicamente cuando ningún endpoint dependa de ella.
-3. Incorporar usuarios, técnicos, administradores, prioridades, categorías, asignaciones, estados, comentarios e historial por tareas concretas.
-4. Añadir autenticación y autorización, tests automatizados, frontend con Angular y TypeScript y Docker en etapas posteriores.
+1. Migrar DELETE a EF Core en una tarea autorizada. Retirar la lista únicamente cuando ningún endpoint dependa de ella.
+2. Incorporar usuarios, técnicos, administradores, prioridades, categorías, asignaciones, estados, comentarios e historial por tareas concretas.
+3. Añadir autenticación y autorización, tests automatizados, frontend con Angular y TypeScript y Docker en etapas posteriores.
 
 Cada cambio importante debe actualizar este documento y, si afecta al diseño, `ARCHITECTURE.md`.

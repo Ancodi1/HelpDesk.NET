@@ -21,31 +21,6 @@ var app = builder.Build();
 
 app.MapGet("/api/health", () => new { status = "ok" });
 
-var tickets = new List<Ticket>
-{
-    new Ticket
-    {
-        Id = 1,
-        Title = "No puedo acceder al correo",
-        Description = "El correo muestra un error al iniciar sesión.",
-        CreatedAt = new DateTime(2026, 10, 6, 10, 0, 0, DateTimeKind.Utc)
-    },
-    new Ticket
-    {
-        Id = 2,
-        Title = "La impresora no imprime",
-        Description = "Los documentos permanecen en la cola de impresión.",
-        CreatedAt = new DateTime(2026, 10, 6, 11, 0, 0, DateTimeKind.Utc)
-    },
-    new Ticket
-    {
-        Id = 3,
-        Title = "No tengo conexión a Internet",
-        Description = "El equipo no puede acceder a páginas web.",
-        CreatedAt = new DateTime(2026, 10, 6, 12, 0, 0, DateTimeKind.Utc)
-    }
-};
-
 app.MapGet("/api/tickets", async (HelpDeskDbContext dbContext) =>
 {
     var tickets = await dbContext.Tickets.ToListAsync();
@@ -65,7 +40,7 @@ app.MapGet("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =>
     return Results.Ok(ticket);
 });
 
-app.MapPost("/api/tickets", (CreateTicketDto createTicketDto) =>
+app.MapPost("/api/tickets", async (CreateTicketDto createTicketDto, HelpDeskDbContext dbContext) =>
 {
     var error = ValidateTicket(createTicketDto.Title, createTicketDto.Description);
 
@@ -76,20 +51,20 @@ app.MapPost("/api/tickets", (CreateTicketDto createTicketDto) =>
 
     var ticket = new Ticket
     {
-        Id = tickets.Max(ticket => ticket.Id) + 1,
         Title = createTicketDto.Title,
         Description = createTicketDto.Description,
         CreatedAt = DateTime.UtcNow
     };
 
-    tickets.Add(ticket);
+    dbContext.Tickets.Add(ticket);
+    await dbContext.SaveChangesAsync();
 
     return Results.Created($"/api/tickets/{ticket.Id}", ticket);
 });
 
-app.MapPut("/api/tickets/{id}", (int id, UpdateTicketDto updateTicketDto) =>
+app.MapPut("/api/tickets/{id}", async (int id, UpdateTicketDto updateTicketDto, HelpDeskDbContext dbContext) =>
 {
-    var ticket = tickets.FirstOrDefault(ticket => ticket.Id == id);
+    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
 
     if (ticket is null)
     {
@@ -106,19 +81,22 @@ app.MapPut("/api/tickets/{id}", (int id, UpdateTicketDto updateTicketDto) =>
     ticket.Title = updateTicketDto.Title;
     ticket.Description = updateTicketDto.Description;
 
+    await dbContext.SaveChangesAsync();
+
     return Results.Ok(ticket);
 });
 
-app.MapDelete("/api/tickets/{id}", (int id) =>
+app.MapDelete("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =>
 {
-    var ticket = tickets.FirstOrDefault(ticket => ticket.Id == id);
+    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
 
     if (ticket is null)
     {
         return Results.NotFound();
     }
 
-    tickets.Remove(ticket);
+    dbContext.Tickets.Remove(ticket);
+    await dbContext.SaveChangesAsync();
 
     return Results.NoContent();
 });
