@@ -26,5 +26,9 @@ public class HelpDeskDbContext : DbContext
         ticket.Property(ticket => ticket.Status)
             .HasConversion<string>()
             .HasDefaultValue(TicketStatus.Open);
+        ticket.Property(ticket => ticket.Priority)
+            .HasConversion<string>()
+            .HasDefaultValue(TicketPriority.Medium)
+            .HasSentinel(TicketPriority.Medium);
     }
 }

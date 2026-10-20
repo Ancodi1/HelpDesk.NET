@@ -71,11 +71,17 @@ app.MapPost("/api/tickets", async (CreateTicketDto createTicketDto, HelpDeskDbCo
         return Results.BadRequest(new { error });
     }
 
+    if (!TicketPriorityValidation.TryParse(createTicketDto.Priority, out var priority))
+    {
+        return Results.BadRequest(new { error = "La prioridad debe ser Low, Medium, High o Critical." });
+    }
+
     var ticket = new Ticket
     {
         Title = createTicketDto.Title,
         Description = createTicketDto.Description,
-        CreatedAt = DateTime.UtcNow
+        CreatedAt = DateTime.UtcNow,
+        Priority = priority
     };
 
     dbContext.Tickets.Add(ticket);
@@ -140,6 +146,31 @@ app.MapPatch("/api/tickets/{id}/status", async (int id, UpdateTicketStatusDto up
     }
 
     ticket.Status = requestedStatus;
+    await dbContext.SaveChangesAsync();
+
+    return Results.Ok(ticket);
+});
+
+app.MapPatch("/api/tickets/{id}/priority", async (int id, UpdateTicketPriorityDto updateTicketPriorityDto, HelpDeskDbContext dbContext) =>
+{
+    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
+
+    if (ticket is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!TicketPriorityValidation.TryParse(updateTicketPriorityDto.Priority, out var priority))
+    {
+        return Results.BadRequest(new { error = "La prioridad debe ser Low, Medium, High o Critical." });
+    }
+
+    if (ticket.Priority == priority)
+    {
+        return Results.Ok(ticket);
+    }
+
+    ticket.Priority = priority;
     await dbContext.SaveChangesAsync();
 
     return Results.Ok(ticket);

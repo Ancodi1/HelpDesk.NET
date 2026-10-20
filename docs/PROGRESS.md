@@ -87,7 +87,7 @@ Comprobaciones realizadas:
 - `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
-- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Infraestructura y 20 casos PostgreSQL preparados (POST/GET/PUT/PATCH/DELETE), pendientes de ejecución con configuración disponible; guía en POSTGRESQL_TESTS.md.
+- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Infraestructura PostgreSQL segura y 49 casos de integración descubiertos, incluidos los de prioridad. El desarrollador comunica 59 pruebas previas superadas; en esta sesión se ejecutan las 54 sin PostgreSQL, pendientes las 49 de base por configuración ausente; guía en POSTGRESQL_TESTS.md.
 - Conflicto MSB3277 resuelto: referencia explícita a Microsoft.EntityFrameworkCore.Relational 10.0.12 en la API, propagada a Tests. Restore, build y 16 tests sin advertencias.
 - Las rutas sin un endpoint registrado devolverán 404.
 
@@ -96,7 +96,7 @@ Comprobaciones realizadas:
 Estos pasos son orientativos y requieren una tarea solicitada:
 
 1. Ampliar las funcionalidades del dominio únicamente mediante tareas solicitadas; las transiciones de estado ya están implementadas.
-2. Incorporar usuarios, técnicos, administradores, prioridades, categorías, asignaciones, reglas de transición de estados, comentarios e historial por tareas concretas.
+2. Incorporar usuarios, técnicos, administradores, categorías, asignaciones, comentarios e historial por tareas concretas. Prioridades y transiciones de estado ya están implementadas.
 3. Añadir autenticación y autorización, ampliar los tests automatizados, incorporar frontend con Angular y TypeScript y Docker en etapas posteriores.
 
 Cada cambio importante debe actualizar este documento y, si afecta al diseño, `ARCHITECTURE.md`.
@@ -256,3 +256,25 @@ Resultados reales:
 - Descubrimiento mediante --list-tests --filter 'Category=PostgreSQL': 20 casos (tres anteriores y 17 nuevos), sin ejecutar fixture ni conexiones.
 - HELPDESK_TEST_CONNECTION_STRING ausente: 0 pruebas PostgreSQL ejecutadas; no se declaran superadas. Pendientes de ejecución con configuración validada.
 - git diff --check correcto. Verificaciones fuera del sandbox con autorización por restricciones de MSBuild. Sin cambios de producción, reglas, migraciones, paquetes ni seguridad; sin commit ni push.
+
+## Prioridades de tickets — 20 de octubre de 2026
+
+El desarrollador comunica las 59 pruebas anteriores superadas y cambios guardados en GitHub. La revisión local parte de un repositorio limpio; este registro distingue ese resultado de las comprobaciones ejecutadas en esta sesión.
+
+Implementado TicketPriority (Low, Medium, High, Critical), Ticket.Priority inicializado en Medium y conversión EF a texto con default Medium. HasSentinel(Medium) hace explícito el valor que permite usar el default al insertar y evita tratar Low (cero en C#) como ausencia de valor. Nueva función pura TicketPriorityValidation.TryParse compartida por POST y PATCH, con nombres exactos y rechazo de null, números escritos como texto, vacíos y desconocidos. JSON sigue usando el conversor central de enums.
+
+CreateTicketDto recibe Priority opcional como string nullable inicializado en Medium: omitirla conserva compatibilidad; null explícito es inválido. POST conserva validación de textos y añade validación de prioridad antes de registrar o guardar. Nuevo UpdateTicketPriorityDto y PATCH /api/tickets/{id}/priority: consulta y 404 si no existe, validación 400, retorno 200 sin SaveChangesAsync si coincide, o asignación exclusiva de Priority y guardado asíncrono. PUT sigue limitado a textos y las transiciones de Status no cambian.
+
+Generada 20261020105220_AddTicketPriority, Designer y snapshot. Up añade exclusivamente Priority como text NOT NULL DEFAULT 'Medium': al aplicarse los tickets anteriores reciben Medium conservando sus otras columnas y filas. Down elimina solo Priority y perdería esos valores al revertir. Revisados código y SQL; no hay recreación de Tickets, borrado de registros ni aplicación de migraciones en esta sesión. Generación y script con configuración temporal de diseño Testing sin credenciales y sin conectar; no se usó helpdesk_db. Desarrollo necesita revisión y aplicación manual de la migración antes de usar el modelo actualizado.
+
+Pruebas añadidas: 15 sin PostgreSQL (cuatro prioridades válidas, nueve entradas inválidas, defaults y metadatos EF/sentinel/conversión) y 29 HTTP PostgreSQL en TicketEndpointsTests.Priority.cs, parte de la misma clase, fixture y limpieza existentes. Cubren POST con las cuatro prioridades y errores; PATCH con las cuatro, repetición, prioridades inválidas/ausentes/null/numéricas, JSON incorrecto y 404, preservando otras propiedades. El POST existente comprueba Medium al omitir prioridad. Las comparaciones comunes incluyen Priority y PUT se prueba con prioridad High para detectar reinicializaciones.
+
+Verificaciones reales:
+
+- dotnet restore HelpDesk.NET.slnx: correcto.
+- dotnet build HelpDesk.NET.slnx: 0 errores y 0 advertencias.
+- dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL': 54 ejecutadas, 54 superadas, 0 fallidas y 0 omitidas.
+- Listado con --list-tests --filter 'Category=PostgreSQL': 49 casos descubiertos, sin ejecución (20 anteriores y 29 nuevos). Total definido: 103 casos.
+- HELPDESK_TEST_CONNECTION_STRING ausente en el proceso: no se ejecutaron las pruebas PostgreSQL ni se aplicó AddTicketPriority en ninguna base. Persistencia real pendiente en esta sesión. Al ejecutar los tests con configuración segura, la fixture aplicará la migración solo a helpdesk_test_db.
+- SQL de AddTicketStatus a AddTicketPriority revisado: ALTER TABLE Tickets ADD Priority text NOT NULL DEFAULT Medium y registro de historial; no ejecutado. git diff --check correcto.
+- Verificaciones de build/tests fuera del sandbox con autorización por restricciones de MSBuild. Sin cambios de dependencias o seguridad de pruebas; sin commit ni push.

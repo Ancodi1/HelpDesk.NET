@@ -14,6 +14,8 @@ La serialización JSON de las Minimal APIs se configura centralmente con `Config
 
 PATCH aplica las transiciones definidas en `TicketStatusTransitions` y devuelve 409 para cambios prohibidos; repetir el estado actual devuelve 200 sin guardar (decisión 021).
 
+Ticket incorpora Priority (Medium por defecto), independiente de Status. POST permite indicarla y PATCH /api/tickets/{id}/priority la modifica sin afectar otros campos. AddTicketPriority está generada y pendiente de aplicar; véase decisión 028.
+
 ## Decisiones iniciales
 
 ### 001 — Desarrollo incremental orientado al aprendizaje
@@ -323,6 +325,22 @@ Motivo: cubrir persistencia y preservación de propiedades en PUT/PATCH, rechazo
 Consecuencia: registrar títulos GUID antes de guardar y los IDs propios después permite limpieza limitada a esos registros incluso cuando PUT cambia el título o falla una aserción. El POST previo mantiene la limpieza por su título original si falla antes de leer el ID. No se comparan ni borran conjuntos globales que puedan interferir con otras ejecuciones. No hay nuevas dependencias ni cambios de seguridad, esquema o API. Interrupciones o fallos de conexión pueden impedir la limpieza; no se amplía la garantía a procesos abortados.
 
 Validación: restore/build correctos, 0 errores y 0 advertencias; 39 tests sin PostgreSQL superados. Descubiertos 20 casos PostgreSQL, tres previos más 17 nuevos, mediante listado sin ejecución. Variable ausente en este proceso: no se conecta ni se ejecuta PostgreSQL; verificación funcional pendiente. Diff correcto; sin commit ni push.
+
+### 028 — Prioridad independiente y evolución aditiva del esquema
+
+Estado: implementada el 20 de octubre de 2026; migración generada y revisada, no aplicada en esta sesión.
+
+Decisión: definir TicketPriority con Low, Medium, High y Critical y añadir Ticket.Priority=Medium. Configurar HasConversion<string>(), HasDefaultValue(Medium) y HasSentinel(Medium). Compartir una función pura de validación de nombres exactos entre POST y el nuevo PATCH de prioridad. DTOs mantienen strings para rechazar números JSON durante el enlace y textos numéricos mediante validación explícita.
+
+Motivo: expresar urgencia independientemente de la fase del ticket, conservar compatibilidad de creación y evolucionar el esquema sin perder datos. El sentinel explícito garantiza que Low (valor cero del enum) se trate como valor real de inserción, no como ausencia que active el default Medium.
+
+Consecuencia: POST acepta Priority opcional, con Medium al omitirla; null explícito es inválido. PATCH /api/tickets/{id}/priority busca primero el ticket, devuelve 404 si no existe, 400 por prioridad inválida, y 200 sin asignar ni guardar si coincide. Para un cambio válido asigna solo Priority y guarda con EF. No hay restricciones entre prioridades. PUT conserva Priority y no cambian las reglas de Status. El conversor JSON central devuelve los nombres de ambos enums.
+
+Migración 20261020105220_AddTicketPriority: Up solo añade Priority text NOT NULL DEFAULT 'Medium' en Tickets. Al aplicarse, las filas anteriores reciben Medium sin borrar ni recrear la tabla; Down solo elimina la columna y pierde sus valores. Snapshot y Designer actualizados. No se aplica sobre desarrollo automáticamente. El esquema anterior debe migrarse tras revisión antes de usar el modelo actualizado.
+
+Pruebas: 15 casos nuevos sin base para nombres válidos/invalidos, defaults y metadatos EF; 29 casos PostgreSQL de POST/PATCH, JSON, idempotencia, 404 y conservación de campos. Se agrupan en otro archivo de la misma clase parcial de integración, reutilizando fixture, validación y limpieza por GUID/ID. Las comparaciones previas también incluyen Priority. No hay nuevas dependencias ni cambios de seguridad.
+
+Validación real: restore/build sin errores ni advertencias; 54 pruebas sin PostgreSQL superadas, 0 fallidas. Descubiertos 49 casos PostgreSQL sin ejecutarlos por variable ausente. El desarrollador comunica que los 59 casos previos pasaron antes de esta etapa. SQL aditivo revisado sin ejecutar; migración y pruebas de persistencia pendientes de aplicación/ejecución en entorno seguro. Diff correcto; sin commit ni push.
 
 ## Mantenimiento del registro
 

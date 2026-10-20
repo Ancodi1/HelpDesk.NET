@@ -7,4 +7,5 @@ public class Ticket
     public string Description { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public TicketStatus Status { get; set; } = TicketStatus.Open;
+    public TicketPriority Priority { get; set; } = TicketPriority.Medium;
 }

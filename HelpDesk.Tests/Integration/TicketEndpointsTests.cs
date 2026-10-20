@@ -10,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace HelpDesk.Tests.Integration;
 
 [Trait("Category", "PostgreSQL")]
-public class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
+public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFixture<PostgreSqlFixture>, IAsyncLifetime
 {
     private readonly string title = $"integration-{Guid.NewGuid():N}";
     private readonly HashSet<int> ownedTicketIds = [];
@@ -34,6 +34,7 @@ public class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFixture<Pos
         Assert.Equal(title, ticket.Title);
         Assert.Equal(Description, ticket.Description);
         Assert.Equal(TicketStatus.Open, ticket.Status);
+        Assert.Equal(TicketPriority.Medium, ticket.Priority);
         Assert.Equal(DateTimeKind.Utc, ticket.CreatedAt.Kind);
         Assert.NotEqual(default, ticket.CreatedAt);
         Assert.Equal($"/api/tickets/{ticket.Id}", response.Headers.Location?.OriginalString);
@@ -44,6 +45,7 @@ public class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFixture<Pos
         Assert.Equal(title, stored.Title);
         Assert.Equal(Description, stored.Description);
         Assert.Equal(TicketStatus.Open, stored.Status);
+        Assert.Equal(TicketPriority.Medium, stored.Priority);
         // PostgreSQL conserva microsegundos, frente a los ticks de 100 ns de .NET.
         Assert.Equal(ticket.CreatedAt.Ticks / 10, stored.CreatedAt.Ticks / 10);
     }
@@ -69,6 +71,7 @@ public class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFixture<Pos
         Assert.Equal(title, returned.Title);
         Assert.Equal(Description, returned.Description);
         Assert.Equal(TicketStatus.Open, returned.Status);
+        Assert.Equal(TicketPriority.Medium, returned.Priority);
         Assert.Equal(ticket.CreatedAt.Ticks / 10, returned.CreatedAt.Ticks / 10);
     }
 
@@ -92,7 +95,7 @@ public class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFixture<Pos
     [Fact]
     public async Task PutTicket_UpdatesTextsAndPreservesOtherProperties()
     {
-        var original = await CreateTicketAsync(TicketStatus.Resolved);
+        var original = await CreateTicketAsync(TicketStatus.Resolved, TicketPriority.High);
         var updatedTitle = $"updated-{Guid.NewGuid():N}";
         ownedTitles.Add(updatedTitle);
         const string updatedDescription = "Descripción actualizada por PUT.";
@@ -108,6 +111,7 @@ public class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFixture<Pos
         Assert.Equal(original.Id, updated.Id);
         Assert.Equal(original.CreatedAt, updated.CreatedAt);
         Assert.Equal(original.Status, updated.Status);
+        Assert.Equal(original.Priority, updated.Priority);
         await AssertStoredAndReturnedAsync(updated);
     }
 
@@ -257,12 +261,12 @@ public class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFixture<Pos
         await AssertStoredAndReturnedAsync(control);
     }
 
-    private async Task<Ticket> CreateTicketAsync(TicketStatus status = TicketStatus.Open)
+    private async Task<Ticket> CreateTicketAsync(TicketStatus status = TicketStatus.Open, TicketPriority priority = TicketPriority.Medium)
     {
         var ticket = new Ticket
         {
             Title = $"integration-{Guid.NewGuid():N}", Description = Description,
-            CreatedAt = DateTime.UtcNow, Status = status
+            CreatedAt = DateTime.UtcNow, Status = status, Priority = priority
         };
         ownedTitles.Add(ticket.Title);
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
@@ -304,6 +308,7 @@ public class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFixture<Pos
         Assert.Equal(expected.Description, actual.Description);
         Assert.Equal(expected.CreatedAt, actual.CreatedAt);
         Assert.Equal(expected.Status, actual.Status);
+        Assert.Equal(expected.Priority, actual.Priority);
     }
 
     private static async Task AssertHasErrorAsync(HttpResponseMessage response)
