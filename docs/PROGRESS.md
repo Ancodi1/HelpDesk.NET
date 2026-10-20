@@ -87,7 +87,8 @@ Comprobaciones realizadas:
 - `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
-- No hay proyectos de tests automatizados todavía.
+- Primer proyecto de tests unitarios `HelpDesk.Tests` implementado: 16 casos de transiciones. Pendientes pruebas de integración automatizadas.
+- Conflicto MSB3277 resuelto: referencia explícita a Microsoft.EntityFrameworkCore.Relational 10.0.12 en la API, propagada a Tests. Restore, build y 16 tests sin advertencias.
 - Las rutas sin un endpoint registrado devolverán 404.
 
 ## Próximos pasos
@@ -96,7 +97,7 @@ Estos pasos son orientativos y requieren una tarea solicitada:
 
 1. Ampliar las funcionalidades del dominio únicamente mediante tareas solicitadas; las transiciones de estado ya están implementadas.
 2. Incorporar usuarios, técnicos, administradores, prioridades, categorías, asignaciones, reglas de transición de estados, comentarios e historial por tareas concretas.
-3. Añadir autenticación y autorización, tests automatizados, frontend con Angular y TypeScript y Docker en etapas posteriores.
+3. Añadir autenticación y autorización, ampliar los tests automatizados, incorporar frontend con Angular y TypeScript y Docker en etapas posteriores.
 
 Cada cambio importante debe actualizar este documento y, si afecta al diseño, `ARCHITECTURE.md`.
 
@@ -170,3 +171,34 @@ Verificaciones:
 - Id, Title, Description y CreatedAt intactos; PATCH ignora valores adicionales para título e ID. Restaurado el estado original siguiendo transiciones permitidas. Comparación final por ID: los seis tickets idénticos al inicio, sin crear ni borrar datos.
 - Pruebas HTTP fuera del sandbox con autorización por restricción de sockets. API de pruebas detenida. Sin repetir POST, PUT ni DELETE; sus handlers no se modifican.
 - Sin cambios de esquema, migraciones, dependencias ni capas. Sin commit ni push.
+
+## Primeras pruebas unitarias con xUnit — 20 de octubre de 2026
+
+Creado `HelpDesk.Tests` para net10.0, añadido a `HelpDesk.NET.slnx` y referenciado a HelpDesk.Api mediante ProjectReference. Usa xUnit 2.9.3, Microsoft.NET.Test.Sdk 17.14.1 y xunit.runner.visualstudio 3.1.4 de la plantilla local; retirados el test vacío y coverlet.collector por no necesitar cobertura en esta etapa. Sin mocking ni infraestructura adicional.
+
+`TicketStatusTransitionsTests.cs` contiene tres Theory con InlineData: siete transiciones permitidas (Assert.True), cinco prohibidas (Assert.False) y cuatro estados iguales (Assert.False). Cubren las 16 combinaciones de los estados definidos. La igualdad no es una transición permitida para IsAllowed; el endpoint gestiona por separado la respuesta idempotente 200. No se modifica código de producción: enum, clase y método ya son públicos.
+
+Verificaciones:
+
+- `dotnet build HelpDesk.NET.slnx`: código 0, 0 errores, 1 advertencia MSB3277 por versiones transitivas de EF Core Relational 10.0.4 y 10.0.12. No se han cambiado dependencias de persistencia para corregirla fuera de este alcance.
+- `dotnet test HelpDesk.NET.slnx`: código 0; 16 pruebas descubiertas y ejecutadas, 16 superadas, 0 fallidas y 0 omitidas. La misma advertencia aparece durante la compilación previa.
+- SDK usado: 10.0.113; pruebas para net10.0 ejecutadas por VSTest 18.0.2.
+- La plantilla requirió permiso para su caché de usuario. Build falló inicialmente en sandbox sin diagnóstico; test mostró bloqueo de sockets de los canales internos de MSBuild. Ambos comandos completados fuera del sandbox con autorización.
+- No se arrancó la API, no se usó PostgreSQL ni se realizaron peticiones HTTP.
+- `git diff --check`: correcto. Sin commit ni push.
+
+## Alineación de EF Core Relational — 20 de octubre de 2026
+
+Identificada la causa mediante `dotnet nuget why` y project.assets.json: Design 10.0.12 introducía Relational 10.0.12 en la API, pero PrivateAssets=all impedía propagar Design a Tests. Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3 admite EF Core/Relational en el rango [10.0.4, 11.0.0), por lo que Tests resolvía Relational 10.0.4. La API compilada contra 10.0.12 entraba en conflicto con esa referencia durante la compilación de Tests.
+
+Cambio mínimo: añadir PackageReference a Microsoft.EntityFrameworkCore.Relational 10.0.12 en HelpDesk.Api.csproj. Ahora ambos grafos resuelven 10.0.12 y la dependencia de ejecución ya no depende de Design para su alineación. Se mantienen net10.0, Npgsql 10.0.3, xUnit y demás versiones. No se suprime MSB3277.
+
+Verificaciones completadas fuera del sandbox con autorización por las restricciones de MSBuild ya comprobadas:
+
+- `dotnet restore HelpDesk.NET.slnx`: código 0, sin advertencias.
+- `dotnet build HelpDesk.NET.slnx`: código 0, 0 errores y 0 advertencias.
+- `dotnet test HelpDesk.NET.slnx`: código 0, 16 superadas, 0 fallidas, 0 omitidas y sin advertencias.
+- `dotnet nuget why HelpDesk.NET.slnx Microsoft.EntityFrameworkCore.Relational`: confirma 10.0.12 en API y Tests.
+- `git diff --check`: correcto. Sin cambios en tests, endpoints, reglas o migraciones; sin API arrancada ni acceso a PostgreSQL. Sin commit ni push.
+
+Las advertencias consignadas en la etapa anterior son resultados históricos, resueltos por este cambio.

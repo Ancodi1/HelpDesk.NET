@@ -4,7 +4,7 @@
 
 ## Estado actual
 
-El repositorio contiene la solución `HelpDesk.NET.slnx` y el único proyecto ASP.NET Core Web API `HelpDesk.Api` (`net10.0`). `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Todo el CRUD accede a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
+El repositorio contiene la solución `HelpDesk.NET.slnx` y los proyectos `HelpDesk.Api` (ASP.NET Core Web API) y `HelpDesk.Tests` (pruebas unitarias xUnit), ambos para `net10.0`. `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Todo el CRUD accede a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
 
 `GET /api/tickets` inyecta el contexto y usa `ToListAsync` para devolver HTTP 200 con el array de tickets, incluido `[]` si la tabla está vacía. `GET /api/tickets/{id}` usa `FirstOrDefaultAsync` y devuelve 200 con el objeto o 404 sin cuerpo. Health mantiene HTTP 200 con `{"status":"ok"}`.
 
@@ -249,6 +249,30 @@ Motivo: expresar una máquina de estados sencilla y mantener las reglas de negoc
 Consecuencia: PATCH conserva su DTO y validaciones 400/404. Si el estado coincide devuelve 200 con el ticket sin asignar ni guardar; si la transición no está permitida devuelve 409 con error, currentStatus y requestedStatus. Solo las transiciones permitidas modifican Status y llaman a SaveChangesAsync. Las respuestas conservan enums como texto y los errores JSON breves. No hay cambios de esquema ni migraciones. Los otros endpoints mantienen sus handlers. No se incorpora control de concurrencia entre peticiones simultáneas en esta etapa; las pruebas son secuenciales.
 
 Validación: build con 0 errores y 0 advertencias; dotnet test código 0, sin proyectos de tests. HTTP real verificó las 16 combinaciones, los errores 400 y 404, persistencia mediante GET y conservación de las demás propiedades. Se restauró el estado original siguiendo las reglas y se compararon los seis tickets por ID. API detenida tras pruebas fuera del sandbox autorizadas; sin commit ni push.
+
+### 022 — Primer proyecto de pruebas unitarias xUnit
+
+Estado: implementada el 20 de octubre de 2026; inicia las pruebas automatizadas previstas en la decisión 005.
+
+Decisión: añadir HelpDesk.Tests (net10.0) a la solución con ProjectReference a HelpDesk.Api. Usar xUnit 2.9.3, Microsoft.NET.Test.Sdk 17.14.1 y xunit.runner.visualstudio 3.1.4, sin colector de cobertura, mocking ni infraestructura adicional. TicketStatusTransitionsTests llama directamente a la función pública IsAllowed mediante tres Theory con InlineData y Assert.True/False.
+
+Motivo: verificar las reglas puras de negocio de forma rápida y aislada, sin servidor HTTP ni PostgreSQL.
+
+Consecuencia: 16 casos cubren siete transiciones permitidas, cinco prohibidas y cuatro igualdades. IsAllowed devuelve false para estados iguales; la idempotencia HTTP pertenece al endpoint y no se prueba aquí. Referenciar la API permite compilar contra sus tipos públicos y no ejecuta Program. No se modifican reglas ni visibilidad de producción. Las pruebas de integración siguen pendientes. Las referencias anteriores a ausencia de tests describen etapas históricas.
+
+Validación: build código 0, 0 errores y 1 advertencia MSB3277 por EF Core Relational transitivo 10.0.4/10.0.12; se registra para revisión específica sin alterar persistencia en esta tarea. dotnet test: 16 ejecutadas, 16 superadas, 0 fallidas, 0 omitidas. SDK 10.0.113. Ambos comandos completados fuera del sandbox con autorización por restricciones del entorno. Diff verificado; sin API arrancada ni acceso a PostgreSQL. Sin commit ni push.
+
+### 023 — Referencia explícita a EF Core Relational
+
+Estado: implementada el 20 de octubre de 2026; resuelve la advertencia registrada en la decisión 022.
+
+Decisión: añadir Microsoft.EntityFrameworkCore.Relational 10.0.12 como dependencia directa de HelpDesk.Api, manteniendo EF Core y Design 10.0.12 y Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3.
+
+Motivo: Design aporta Relational 10.0.12 solo al grafo de la API por PrivateAssets=all. En Tests, Npgsql resolvía la versión mínima 10.0.4 de su rango [10.0.4, 11.0.0), provocando MSB3277 al referenciar la API compilada contra 10.0.12. La referencia explícita de ejecución propaga la versión correcta a los consumidores de la API.
+
+Consecuencia: ambos proyectos resuelven Relational 10.0.12, compatible con el rango de Npgsql y net10.0. No se añaden referencias EF en Tests, no se actualizan otros paquetes y no se suprimen advertencias. Sin cambios de negocio, endpoints, tests o migraciones.
+
+Validación: restore y build correctos sin advertencias ni errores; test ejecutó 16 casos, 16 superados, 0 fallidos y 0 omitidos, sin advertencias. Grafo verificado con dotnet nuget why; diff correcto. Comandos fuera del sandbox con autorización por restricciones de MSBuild. Sin uso de PostgreSQL, commit ni push.
 
 ## Mantenimiento del registro
 
