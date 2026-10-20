@@ -286,6 +286,32 @@ Consecuencia: la prueba verifica el contrato existente: 200, application/json y 
 
 Validación: restore y build correctos con 0 errores y 0 advertencias; test con 17 superadas, 0 fallidas y 0 omitidas, sin advertencias. Comandos fuera del sandbox con autorización por restricciones de NuGet/MSBuild. Diff correcto; sin conexiones ni operaciones con PostgreSQL, commit o push.
 
+### 025 — Integración PostgreSQL aislada y activación por filtro
+
+Estado: infraestructura y tres pruebas implementadas y compiladas; validación sobre PostgreSQL pendiente de configuración manual.
+
+Decisión: implementar en HelpDesk.Tests/Integration una fábrica específica, fixture xUnit y validador de conexión. Exigir HELPDESK_TEST_CONNECTION_STRING sin fallback, base exacta helpdesk_test_db, usuario exclusivo helpdesk_test_user, contraseña explícita y host local. Rechazar opciones fuera de una lista cerrada antes de conectar. Comprobar mediante SELECT la base y usuario efectivos y que el rol no tenga SUPERUSER, CREATEDB o CREATEROLE antes de MigrateAsync. Mantener abierta esa conexión de verificación durante la preparación. Base/rol se crean manualmente; no se usan conexiones administrativas ni EnsureCreated/EnsureDeleted.
+
+Motivo: probar con el motor y migraciones reales sin escribir en helpdesk_db, separando credenciales y evitando depender de secretos de desarrollo. El rol debe carecer también de permisos de escritura sobre desarrollo y de membresías privilegiadas; preparación manual descrita en POSTGRESQL_TESTS.md.
+
+Consecuencia: ConfigureTestServices sustituye HelpDeskDbContext, DbContextOptions y su IDbContextOptionsConfiguration original, exclusivamente en Testing. La fábrica usa TestServer y suprime logs de proveedor; los errores propios no incluyen secretos. Cada instancia de prueba genera un GUID para su título y limpia únicamente sus filas mediante DisposeAsync y DELETE filtrado. No hay resets globales ni reinicio de secuencias. Interrupciones o pérdida de conexión pueden dejar filas; no se garantiza limpieza tras abortar el proceso. No coordina migraciones de procesos distintos. Sin cambios de API, esquema versionado o dependencias.
+
+Ejecución: las pruebas PostgreSQL tienen Trait Category=PostgreSQL. El comando con filtro Category!=PostgreSQL mantiene los tests actuales sin base configurada; solicitar PostgreSQL o ejecutar todo sin filtro falla claramente si falta configuración. No se oculta esa ausencia mediante skip o conexión alternativa.
+
+Validación real: restore/build correctos sin errores ni advertencias. Pruebas sin PostgreSQL: 25 superadas (17 existentes y ocho del validador), 0 fallidas. No existe configuración de pruebas en esta sesión; no se conectó a PostgreSQL ni se ejecutaron los tres casos HTTP PostgreSQL. Quedan pendientes la preparación manual, verificación del destino y ejecución. Diff correcto; sin commit ni push.
+
+### 026 — Validación repetible de la conexión de pruebas
+
+Estado: corregida el 20 de octubre de 2026.
+
+Decisión: permitir Include Error Detail, Persist Security Info y Enlist únicamente con false, además de la lista cerrada original. Mantener la validación tanto en la fixture como en el constructor de TicketApiFactory. Separar errores de sintaxis, claves no admitidas, valores inválidos y restricciones de seguridad sin revelar configuración ni inner exceptions.
+
+Motivo: una prueba reprodujo que Validate añadía esas tres claves y luego rechazaba su propia salida cuando la fábrica la validaba otra vez. No es necesario eliminar controles ni cambiar el flujo de conexión para resolverlo.
+
+Consecuencia: la normalización es repetible; siguen siendo obligatorios helpdesk_test_db, helpdesk_test_user, contraseña explícita y servidor local. Pruebas con NpgsqlConnectionStringBuilder verifican contraseñas ficticias especiales y las opciones inseguras siguen rechazadas. Sin cambios de fixture, fábrica, API, esquema ni paquetes.
+
+Validación: regresión reproducida antes de corregir; después restore/build sin errores ni advertencias y 39 pruebas sin PostgreSQL superadas. Variable real ausente en el proceso del agente: contraseña no inspeccionada y tres pruebas PostgreSQL no ejecutadas. No se asume una causa adicional en la configuración del usuario. Diff correcto; sin commit ni push.
+
 ## Mantenimiento del registro
 
 Ante un cambio arquitectónico importante, registra la decisión, su estado, motivos y consecuencias. Si reemplaza una decisión previa, conserva el motivo de la evolución y actualiza el estado anterior. Refleja también el avance en `PROGRESS.md`.

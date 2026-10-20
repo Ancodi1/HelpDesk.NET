@@ -87,7 +87,7 @@ Comprobaciones realizadas:
 - `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
-- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Pruebas CRUD de integración pendientes.
+- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Infraestructura y tres pruebas PostgreSQL preparadas, pendientes de configuración y ejecución; guía en POSTGRESQL_TESTS.md.
 - Conflicto MSB3277 resuelto: referencia explícita a Microsoft.EntityFrameworkCore.Relational 10.0.12 en la API, propagada a Tests. Restore, build y 16 tests sin advertencias.
 - Las rutas sin un endpoint registrado devolverán 404.
 
@@ -217,3 +217,27 @@ Verificaciones realizadas fuera del sandbox con autorización por las restriccio
 - `dotnet build HelpDesk.NET.slnx`: 0 errores, 0 advertencias.
 - `dotnet test HelpDesk.NET.slnx`: 17 superadas (16 unitarias y una HTTP), 0 fallidas, 0 omitidas, sin advertencias.
 - `git diff --check`: correcto. Sin commit ni push.
+
+## Infraestructura PostgreSQL de pruebas — 20 de octubre de 2026
+
+Implementada exclusivamente en HelpDesk.Tests/Integration: PostgreSqlTestSettings valida la conexión explícita de entorno sin fallback; TicketApiFactory reemplaza contexto, opciones y configurador EF original solo en Testing; PostgreSqlFixture verifica existencia, base/usuario efectivos y ausencia de privilegios elevados antes de aplicar las migraciones existentes. Destino admitido: PostgreSQL local, helpdesk_test_db, rol dedicado helpdesk_test_user con contraseña. Lista cerrada de claves; mensajes sin cadena completa ni contraseñas. El rol y la base deben prepararse manualmente. No se crean ni borran bases ni se usa la configuración de desarrollo.
+
+Tres pruebas Category=PostgreSQL preparadas: POST 201 con verificación de persistencia y Location; GET 200 de un ticket insertado en la base; GET 404 de ID comprobado como ausente. Datos con título GUID por prueba y limpieza asíncrona limitada a ese título, con comprobación posterior. No se vacían tablas ni se alteran otros registros. La limpieza no puede ejecutarse si el proceso se interrumpe o la base deja de estar accesible; límites y preparación manual en POSTGRESQL_TESTS.md.
+
+Verificaciones reales:
+
+- HELPDESK_TEST_CONNECTION_STRING no configurada: no se abrió ninguna conexión PostgreSQL, no se verificó la existencia de la base ni se aplicaron migraciones. Las tres pruebas PostgreSQL NO se ejecutaron; no se declaran superadas.
+- dotnet restore HelpDesk.NET.slnx y dotnet build HelpDesk.NET.slnx: correctos, 0 errores y 0 advertencias.
+- dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL': 25 superadas, 0 fallidas y 0 omitidas. Incluye las 17 anteriores y ocho validaciones de configuración sin red. Las tres PostgreSQL se excluyen por filtro, no se omiten silenciosamente.
+- Los tests PostgreSQL se solicitan con --filter 'Category=PostgreSQL'. Sin configuración válida, la fixture detiene esos tests con error antes de conectar. Ejecutar sin filtro también los incluye y exige configuración segura.
+- git diff --check correcto. Comandos de restore/build/test fuera del sandbox con autorización por restricciones de MSBuild. Sin cambios de producción, paquetes, migraciones ni reglas; sin commit ni push.
+
+## Depuración del validador PostgreSQL — 20 de octubre de 2026
+
+Causa reproducida con prueba de regresión, inicialmente fallida en Validate línea 38: la fixture pasaba la salida normalizada a TicketApiFactory, que volvía a validarla. Validate añadía Include Error Detail=false, Persist Security Info=false y Enlist=false, pero su propia lista de claves rechazaba esas opciones. Corregido el validador para aceptar exclusivamente false en esas tres claves; la salida puede validarse repetidamente sin relajar base, usuario, host ni las opciones restantes. Fixture y fábrica revisadas, sin cambios.
+
+Separados mensajes seguros para sintaxis, opción no permitida, valor inválido y configuración de seguridad incorrecta. Sin claves desconocidas, valores, contraseñas o inner exceptions en el diagnóstico. Añadidas pruebas de regresión, rechazo de las tres opciones con true, diagnósticos y conservación de contraseñas ficticias con punto y coma, comillas simples/dobles, signo igual y combinaciones usando NpgsqlConnectionStringBuilder. Guía actualizada para composición y quoting ADO.NET.
+
+Resultados: restore y build correctos (0 errores, 0 advertencias); dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL': 39 superadas, 0 fallidas, 0 omitidas. La primera ejecución aislada de la regresión falló antes de corregir; después pasó con toda la suite sin base. Comandos fuera del sandbox con autorización. git diff --check correcto.
+
+HELPDESK_TEST_CONNECTION_STRING no está disponible en este proceso: no se pudo comprobar la contraseña real ni atribuirle un error de escapado. No se conectó a PostgreSQL ni se ejecutaron los tres tests PostgreSQL. Pendiente ejecutar con la variable real tras validarla. Sin cambios en producción, migraciones o dependencias; sin commit ni push.
