@@ -87,7 +87,7 @@ Comprobaciones realizadas:
 - `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
-- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Infraestructura PostgreSQL segura y 49 casos de integración descubiertos, incluidos los de prioridad. El desarrollador comunica 59 pruebas previas superadas; en esta sesión se ejecutan las 54 sin PostgreSQL, pendientes las 49 de base por configuración ausente; guía en POSTGRESQL_TESTS.md.
+- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Suite actual: 70 casos sin PostgreSQL superados y 81 casos PostgreSQL descubiertos. Los de base no se ejecutaron en la etapa de categorías por configuración ausente; guía en POSTGRESQL_TESTS.md.
 - Conflicto MSB3277 resuelto: referencia explícita a Microsoft.EntityFrameworkCore.Relational 10.0.12 en la API, propagada a Tests. Restore, build y 16 tests sin advertencias.
 - Las rutas sin un endpoint registrado devolverán 404.
 
@@ -96,7 +96,7 @@ Comprobaciones realizadas:
 Estos pasos son orientativos y requieren una tarea solicitada:
 
 1. Ampliar las funcionalidades del dominio únicamente mediante tareas solicitadas; las transiciones de estado ya están implementadas.
-2. Incorporar usuarios, técnicos, administradores, categorías, asignaciones, comentarios e historial por tareas concretas. Prioridades y transiciones de estado ya están implementadas.
+2. Incorporar usuarios, técnicos, administradores, asignaciones, comentarios e historial por tareas concretas. Categorías, prioridades y transiciones de estado ya están implementadas.
 3. Añadir autenticación y autorización, ampliar los tests automatizados, incorporar frontend con Angular y TypeScript y Docker en etapas posteriores.
 
 Cada cambio importante debe actualizar este documento y, si afecta al diseño, `ARCHITECTURE.md`.
@@ -278,3 +278,23 @@ Verificaciones reales:
 - HELPDESK_TEST_CONNECTION_STRING ausente en el proceso: no se ejecutaron las pruebas PostgreSQL ni se aplicó AddTicketPriority en ninguna base. Persistencia real pendiente en esta sesión. Al ejecutar los tests con configuración segura, la fixture aplicará la migración solo a helpdesk_test_db.
 - SQL de AddTicketStatus a AddTicketPriority revisado: ALTER TABLE Tickets ADD Priority text NOT NULL DEFAULT Medium y registro de historial; no ejecutado. git diff --check correcto.
 - Verificaciones de build/tests fuera del sandbox con autorización por restricciones de MSBuild. Sin cambios de dependencias o seguridad de pruebas; sin commit ni push.
+
+## Categorías de tickets — 20 de octubre de 2026
+
+Implementados TicketCategory (Hardware, Software, Network, Access, Other), Ticket.Category=Other y TicketCategoryValidation.TryParse para nombres exactos. EF convierte a texto y configura Other como default y sentinel, conservando Hardware (cero del enum) como valor explícito de inserción. El conversor JSON central sigue devolviendo enums como texto.
+
+POST permite Category opcional mediante CreateTicketDto: omitida asigna Other; null explícito, números, vacíos y nombres desconocidos son inválidos. UpdateTicketCategoryDto y PATCH /api/tickets/{id}/category permiten cambiar solo Category: 404 si no existe, 400 si la entrada es inválida, 200 sin asignar ni guardar si coincide, o guardado exclusivo de Category para un cambio válido. No cambian PUT, las reglas de estados ni la lógica de prioridades.
+
+Generada 20261020110201_AddTicketCategory con Designer y snapshot. Up contiene únicamente ADD Category text NOT NULL DEFAULT 'Other'. Al aplicarse, todos los tickets previos recibirán Other sin recrear Tickets ni borrar filas. Down solo elimina Category y perdería sus valores. Migraciones anteriores intactas. Generación y SQL de revisión con configuración temporal Testing sin credenciales ni conexiones. No se aplicó la migración a desarrollo ni a ninguna otra base en esta sesión. Antes de usar el modelo actualizado sobre el esquema anterior se debe revisar y aplicar manualmente la migración.
+
+Pruebas: 16 casos sin PostgreSQL añadidos para cinco nombres válidos, nueve inválidos, defaults y mapeo/sentinel; 32 casos PostgreSQL nuevos para creación con cada categoría, errores, PATCH válido, repetición de cada categoría y 404. El POST previo verifica Other al omitir categoría. GET y consulta independiente comprueban persistencia; PATCH envía también propiedades ajenas y verifica que se ignoran. Comparaciones comunes incluyen Category, y PUT prepara una categoría Network para verificar su conservación. Todos los casos reutilizan la clase parcial, fixture, fábrica, validación y limpieza por GUID/ID existentes. Sin nuevas dependencias ni cambios de seguridad.
+
+Resultados reales:
+
+- dotnet restore HelpDesk.NET.slnx: correcto.
+- dotnet build HelpDesk.NET.slnx: 0 errores y 0 advertencias.
+- dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL': 70 ejecutadas y superadas, 0 fallidas, 0 omitidas.
+- --list-tests --filter 'Category=PostgreSQL': 81 casos descubiertos, sin ejecución (49 anteriores y 32 nuevos). Total definido: 151.
+- HELPDESK_TEST_CONNECTION_STRING no disponible en este proceso: no se abrieron conexiones ni se ejecutaron los tests PostgreSQL. No se declaran superados. La ejecución segura pendiente aplicará las migraciones solo a helpdesk_test_db mediante la fixture.
+- SQL AddTicketPriority → AddTicketCategory revisado: ALTER TABLE Tickets ADD Category text NOT NULL DEFAULT Other y registro de historial, sin ejecutar. git diff --check correcto.
+- Restore/build/test y listado fuera del sandbox con autorización por restricciones de MSBuild. Sin commit ni push.

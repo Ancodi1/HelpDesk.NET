@@ -76,12 +76,18 @@ app.MapPost("/api/tickets", async (CreateTicketDto createTicketDto, HelpDeskDbCo
         return Results.BadRequest(new { error = "La prioridad debe ser Low, Medium, High o Critical." });
     }
 
+    if (!TicketCategoryValidation.TryParse(createTicketDto.Category, out var category))
+    {
+        return Results.BadRequest(new { error = "La categoría debe ser Hardware, Software, Network, Access u Other." });
+    }
+
     var ticket = new Ticket
     {
         Title = createTicketDto.Title,
         Description = createTicketDto.Description,
         CreatedAt = DateTime.UtcNow,
-        Priority = priority
+        Priority = priority,
+        Category = category
     };
 
     dbContext.Tickets.Add(ticket);
@@ -171,6 +177,31 @@ app.MapPatch("/api/tickets/{id}/priority", async (int id, UpdateTicketPriorityDt
     }
 
     ticket.Priority = priority;
+    await dbContext.SaveChangesAsync();
+
+    return Results.Ok(ticket);
+});
+
+app.MapPatch("/api/tickets/{id}/category", async (int id, UpdateTicketCategoryDto updateTicketCategoryDto, HelpDeskDbContext dbContext) =>
+{
+    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
+
+    if (ticket is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!TicketCategoryValidation.TryParse(updateTicketCategoryDto.Category, out var category))
+    {
+        return Results.BadRequest(new { error = "La categoría debe ser Hardware, Software, Network, Access u Other." });
+    }
+
+    if (ticket.Category == category)
+    {
+        return Results.Ok(ticket);
+    }
+
+    ticket.Category = category;
     await dbContext.SaveChangesAsync();
 
     return Results.Ok(ticket);

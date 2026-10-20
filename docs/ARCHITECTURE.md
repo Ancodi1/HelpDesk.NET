@@ -16,6 +16,8 @@ PATCH aplica las transiciones definidas en `TicketStatusTransitions` y devuelve 
 
 Ticket incorpora Priority (Medium por defecto), independiente de Status. POST permite indicarla y PATCH /api/tickets/{id}/priority la modifica sin afectar otros campos. AddTicketPriority está generada y pendiente de aplicar; véase decisión 028.
 
+Category clasifica el ticket mediante TicketCategory, con Other por defecto. Se admite en POST y se modifica mediante PATCH /api/tickets/{id}/category; AddTicketCategory está generada sin aplicar en esta sesión (decisión 029).
+
 ## Decisiones iniciales
 
 ### 001 — Desarrollo incremental orientado al aprendizaje
@@ -341,6 +343,20 @@ Migración 20261020105220_AddTicketPriority: Up solo añade Priority text NOT NU
 Pruebas: 15 casos nuevos sin base para nombres válidos/invalidos, defaults y metadatos EF; 29 casos PostgreSQL de POST/PATCH, JSON, idempotencia, 404 y conservación de campos. Se agrupan en otro archivo de la misma clase parcial de integración, reutilizando fixture, validación y limpieza por GUID/ID. Las comparaciones previas también incluyen Priority. No hay nuevas dependencias ni cambios de seguridad.
 
 Validación real: restore/build sin errores ni advertencias; 54 pruebas sin PostgreSQL superadas, 0 fallidas. Descubiertos 49 casos PostgreSQL sin ejecutarlos por variable ausente. El desarrollador comunica que los 59 casos previos pasaron antes de esta etapa. SQL aditivo revisado sin ejecutar; migración y pruebas de persistencia pendientes de aplicación/ejecución en entorno seguro. Diff correcto; sin commit ni push.
+
+### 029 — Categorías con enum y migración aditiva
+
+Estado: implementada el 20 de octubre de 2026; migración generada/revisada, aplicación y pruebas PostgreSQL pendientes en esta sesión.
+
+Decisión: TicketCategory define Hardware, Software, Network, Access y Other. Ticket.Category se inicializa en Other y el contexto configura conversión string, default Other y sentinel Other. La función pura TicketCategoryValidation.TryParse valida nombres exactos y se comparte entre POST y PATCH, siguiendo el patrón de prioridades sin añadir capas o paquetes.
+
+Motivo: clasificar el tipo de incidencia independientemente de estado y prioridad, preservar clientes que omiten categoría y conservar los tickets previos al evolucionar el esquema. El sentinel evita confundir Hardware (valor cero) con ausencia de valor al insertar.
+
+Consecuencia: CreateTicketDto acepta Category como texto opcional inicializado en Other; null explícito se rechaza. PATCH recibe UpdateTicketCategoryDto, busca primero por ID, devuelve 404 si no existe, valida con 400 y devuelve 200 sin escritura si coincide. Solo Category cambia y se guarda cuando corresponde; no hay transiciones entre categorías. El conversor JSON existente conserva nombres de enums. Status, Priority, textos y fecha no se alteran por este PATCH.
+
+Migración 20261020110201_AddTicketCategory: Up solo añade Category text NOT NULL DEFAULT 'Other' a Tickets, asignando Other a los registros anteriores al aplicarse. No hay eliminación/recreación de tabla ni cambios a migraciones previas. Down elimina solo la columna y pierde sus valores. Snapshot y Designer actualizados. No se aplica automáticamente en desarrollo; la API actualizada necesita el esquema migrado tras revisión.
+
+Validación: restore/build sin errores ni advertencias; 70 casos sin PostgreSQL superados (16 nuevos). Descubiertos 81 PostgreSQL (32 nuevos) con --list-tests sin ejecución, por variable de pruebas ausente. Pruebas preparadas de POST, PATCH, JSON, idempotencia, GET y preservación de propiedades con la infraestructura y limpieza existentes. SQL revisado sin ejecutar. No se accede a helpdesk_db; diff correcto, sin commit ni push.
 
 ## Mantenimiento del registro
 

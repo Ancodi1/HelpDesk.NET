@@ -35,6 +35,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
         Assert.Equal(Description, ticket.Description);
         Assert.Equal(TicketStatus.Open, ticket.Status);
         Assert.Equal(TicketPriority.Medium, ticket.Priority);
+        Assert.Equal(TicketCategory.Other, ticket.Category);
         Assert.Equal(DateTimeKind.Utc, ticket.CreatedAt.Kind);
         Assert.NotEqual(default, ticket.CreatedAt);
         Assert.Equal($"/api/tickets/{ticket.Id}", response.Headers.Location?.OriginalString);
@@ -46,6 +47,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
         Assert.Equal(Description, stored.Description);
         Assert.Equal(TicketStatus.Open, stored.Status);
         Assert.Equal(TicketPriority.Medium, stored.Priority);
+        Assert.Equal(TicketCategory.Other, stored.Category);
         // PostgreSQL conserva microsegundos, frente a los ticks de 100 ns de .NET.
         Assert.Equal(ticket.CreatedAt.Ticks / 10, stored.CreatedAt.Ticks / 10);
     }
@@ -72,6 +74,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
         Assert.Equal(Description, returned.Description);
         Assert.Equal(TicketStatus.Open, returned.Status);
         Assert.Equal(TicketPriority.Medium, returned.Priority);
+        Assert.Equal(TicketCategory.Other, returned.Category);
         Assert.Equal(ticket.CreatedAt.Ticks / 10, returned.CreatedAt.Ticks / 10);
     }
 
@@ -95,7 +98,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     [Fact]
     public async Task PutTicket_UpdatesTextsAndPreservesOtherProperties()
     {
-        var original = await CreateTicketAsync(TicketStatus.Resolved, TicketPriority.High);
+        var original = await CreateTicketAsync(TicketStatus.Resolved, TicketPriority.High, TicketCategory.Network);
         var updatedTitle = $"updated-{Guid.NewGuid():N}";
         ownedTitles.Add(updatedTitle);
         const string updatedDescription = "Descripción actualizada por PUT.";
@@ -112,6 +115,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
         Assert.Equal(original.CreatedAt, updated.CreatedAt);
         Assert.Equal(original.Status, updated.Status);
         Assert.Equal(original.Priority, updated.Priority);
+        Assert.Equal(original.Category, updated.Category);
         await AssertStoredAndReturnedAsync(updated);
     }
 
@@ -261,12 +265,13 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
         await AssertStoredAndReturnedAsync(control);
     }
 
-    private async Task<Ticket> CreateTicketAsync(TicketStatus status = TicketStatus.Open, TicketPriority priority = TicketPriority.Medium)
+    private async Task<Ticket> CreateTicketAsync(TicketStatus status = TicketStatus.Open, TicketPriority priority = TicketPriority.Medium,
+        TicketCategory category = TicketCategory.Other)
     {
         var ticket = new Ticket
         {
             Title = $"integration-{Guid.NewGuid():N}", Description = Description,
-            CreatedAt = DateTime.UtcNow, Status = status, Priority = priority
+            CreatedAt = DateTime.UtcNow, Status = status, Priority = priority, Category = category
         };
         ownedTitles.Add(ticket.Title);
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
@@ -309,6 +314,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
         Assert.Equal(expected.CreatedAt, actual.CreatedAt);
         Assert.Equal(expected.Status, actual.Status);
         Assert.Equal(expected.Priority, actual.Priority);
+        Assert.Equal(expected.Category, actual.Category);
     }
 
     private static async Task AssertHasErrorAsync(HttpResponseMessage response)

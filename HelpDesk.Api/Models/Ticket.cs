@@ -8,4 +8,5 @@ public class Ticket
     public DateTime CreatedAt { get; set; }
     public TicketStatus Status { get; set; } = TicketStatus.Open;
     public TicketPriority Priority { get; set; } = TicketPriority.Medium;
+    public TicketCategory Category { get; set; } = TicketCategory.Other;
 }

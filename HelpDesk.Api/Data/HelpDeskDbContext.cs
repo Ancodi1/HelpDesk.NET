@@ -30,5 +30,9 @@ public class HelpDeskDbContext : DbContext
             .HasConversion<string>()
             .HasDefaultValue(TicketPriority.Medium)
             .HasSentinel(TicketPriority.Medium);
+        ticket.Property(ticket => ticket.Category)
+            .HasConversion<string>()
+            .HasDefaultValue(TicketCategory.Other)
+            .HasSentinel(TicketCategory.Other);
     }
 }
