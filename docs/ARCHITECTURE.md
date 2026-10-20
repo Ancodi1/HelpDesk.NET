@@ -312,6 +312,18 @@ Consecuencia: la normalización es repetible; siguen siendo obligatorios helpdes
 
 Validación: regresión reproducida antes de corregir; después restore/build sin errores ni advertencias y 39 pruebas sin PostgreSQL superadas. Variable real ausente en el proceso del agente: contraseña no inspeccionada y tres pruebas PostgreSQL no ejecutadas. No se asume una causa adicional en la configuración del usuario. Diff correcto; sin commit ni push.
 
+### 027 — Integración de PUT, PATCH y DELETE con aislamiento por prueba
+
+Estado: 17 casos nuevos implementados y compilados, sin ejecución PostgreSQL en esta sesión por configuración ausente.
+
+Decisión: ampliar TicketEndpointsTests reutilizando sin cambios la fixture, fábrica y validador PostgreSQL. Preparar tickets específicos con GUID mediante scopes EF y recargarlos para comparar con la precisión real de PostgreSQL. Verificar cada efecto mediante GET y contexto independiente AsNoTracking. Usar un segundo ticket propio como control al probar DELETE. Mantener los casos en la colección de la clase existente.
+
+Motivo: cubrir persistencia y preservación de propiedades en PUT/PATCH, rechazo de entradas/transiciones y eliminación selectiva, sin modificar contratos ni reglas para adaptar los tests.
+
+Consecuencia: registrar títulos GUID antes de guardar y los IDs propios después permite limpieza limitada a esos registros incluso cuando PUT cambia el título o falla una aserción. El POST previo mantiene la limpieza por su título original si falla antes de leer el ID. No se comparan ni borran conjuntos globales que puedan interferir con otras ejecuciones. No hay nuevas dependencias ni cambios de seguridad, esquema o API. Interrupciones o fallos de conexión pueden impedir la limpieza; no se amplía la garantía a procesos abortados.
+
+Validación: restore/build correctos, 0 errores y 0 advertencias; 39 tests sin PostgreSQL superados. Descubiertos 20 casos PostgreSQL, tres previos más 17 nuevos, mediante listado sin ejecución. Variable ausente en este proceso: no se conecta ni se ejecuta PostgreSQL; verificación funcional pendiente. Diff correcto; sin commit ni push.
+
 ## Mantenimiento del registro
 
 Ante un cambio arquitectónico importante, registra la decisión, su estado, motivos y consecuencias. Si reemplaza una decisión previa, conserva el motivo de la evolución y actualiza el estado anterior. Refleja también el avance en `PROGRESS.md`.

@@ -2,7 +2,7 @@
 
 ## Estado
 
-Infraestructura y tres pruebas HTTP preparadas, compiladas y pendientes de ejecución sobre PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
+Infraestructura y 20 casos HTTP PostgreSQL preparados y compilados: tres de POST/GET y 17 de PUT/PATCH/DELETE. Su ejecución en esta sesión está pendiente de configuración PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
 
 ## Preparación manual
 
@@ -39,7 +39,7 @@ El validador acepta únicamente las claves Host, Port, Database, Username, Passw
 
 ## Ejecución
 
-Pruebas sin PostgreSQL (las 17 anteriores y ocho casos de configuración que no abren conexiones):
+Pruebas sin PostgreSQL (39 casos: 16 de transiciones, uno HTTP health y 22 del validador que no abren conexiones):
 
 ```bash
 dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL'
@@ -59,7 +59,7 @@ La fixture valida la cadena **antes de conectar**, abre directamente la base exi
 
 `PostgreSqlFixture` comparte la fábrica y prepara el esquema una vez por clase. `TicketApiFactory` usa Testing y reemplaza HelpDeskDbContext, sus opciones y su configurador mediante ConfigureTestServices. El comportamiento de desarrollo no cambia. No hay nuevos paquetes ni proveedores alternativos.
 
-xUnit crea una instancia de `TicketEndpointsTests` por caso. Cada una genera un título con GUID. La limpieza asíncrona elimina solo las filas cuyo título coincide con el GUID de esa instancia y comprueba que ya no existen, incluso si falla una aserción. No se vacían tablas, no se reinician secuencias ni se eliminan tickets de otros casos. Las tres pruebas comprueban POST 201 y persistencia con un contexto independiente, GET 200 de una fila preparada directamente en la base, y GET 404 de un ID previamente comprobado como ausente.
+xUnit crea una instancia de `TicketEndpointsTests` por caso. Cada una registra los títulos GUID de sus tickets antes de guardarlos y los IDs propios tras guardarlos. La limpieza asíncrona elimina solo esas filas por ID o título exacto y comprueba que ya no existen, incluso si falla una aserción o PUT cambia el título. Se conserva el título original del POST para limpiar aunque falle antes de leer la respuesta. No se vacían tablas, no se reinician secuencias ni se eliminan tickets de otros casos. Los tres casos originales comprueban POST 201 y persistencia con un contexto independiente, GET 200 de una fila preparada directamente en la base, y GET 404 de un ID previamente comprobado como ausente. Los 17 nuevos cubren PUT válido, título vacío/largo y 404; cuatro transiciones PATCH válidas, conflicto Open → Closed con sus datos, repetición de cada estado, estado inválido y 404; DELETE válido conservando un segundo ticket de control y DELETE 404. Tras cada modificación se comprueba GET y una consulta AsNoTracking en otro scope; para DELETE se confirma la ausencia tanto por HTTP como en la base. Los casos de error y repetición comprueban todas las propiedades sin cambios.
 
 Si se interrumpe el proceso o se pierde la conexión, la limpieza no puede garantizarse: revisar manualmente solo los tickets `integration-<GUID>` de la ejecución afectada. No borrar globalmente por prefijo ni vaciar la base. Evitar ejecuciones simultáneas de la preparación de esquema; el aislamiento por GUID protege las filas, pero no coordina migraciones entre procesos distintos.
 
@@ -72,3 +72,9 @@ La validación distingue mensajes de sintaxis ADO.NET incorrecta, opción no per
 Para componer cadenas programáticamente, asignar Host, Database, Username y Password como propiedades de NpgsqlConnectionStringBuilder y obtener ConnectionString. El constructor aplica las comillas necesarias para conservar punto y coma, comillas y signo igual dentro del valor; no concatenar contraseñas. No imprimir el resultado ni la contraseña. La carga por read indicada arriba conserva el texto recibido, pero ese texto debe tener sintaxis ADO.NET válida.
 
 Depuración del 20 de octubre: una prueba reprodujo el rechazo de la salida de Validate al volver a pasarla a Validate. La fixture normalizaba la cadena y la fábrica la validaba de nuevo; las opciones de seguridad añadidas no figuraban en la lista permitida. Corregido aceptándolas solo con false, manteniendo ambos controles. Las pruebas con contraseñas ficticias especiales pasan. La variable real no estuvo disponible en el proceso del agente; no se pudo inspeccionar su contraseña ni ejecutar los tres tests PostgreSQL. Este diagnóstico no atribuye a la contraseña real una causa no comprobada.
+
+## Verificación de la ampliación PUT/PATCH/DELETE — 20 de octubre de 2026
+
+Restore y build correctos (0 errores y 0 advertencias). Las 39 pruebas sin PostgreSQL pasan. Los 20 casos PostgreSQL se descubren con `dotnet test HelpDesk.NET.slnx --no-build --list-tests --filter 'Category=PostgreSQL'`; listar no ejecuta la fixture ni abre conexiones. La variable no está disponible en el proceso del agente, así que no se ha ejecutado ningún caso PostgreSQL en esta ampliación y no se declaran superados.
+
+Todos los casos permanecen en TicketEndpointsTests y comparten la fixture existente; xUnit no los ejecuta simultáneamente dentro de la misma colección. Los GUID/IDs por instancia y scopes independientes evitan compartir datos mutables con otras pruebas. Continúa pendiente ejecutar las 20 pruebas con configuración segura y comprobar su limpieza real. El proceso abortado o una conexión perdida todavía pueden impedir la limpieza.

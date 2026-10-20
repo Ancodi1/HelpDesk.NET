@@ -87,7 +87,7 @@ Comprobaciones realizadas:
 - `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
-- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Infraestructura y tres pruebas PostgreSQL preparadas, pendientes de configuración y ejecución; guía en POSTGRESQL_TESTS.md.
+- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Infraestructura y 20 casos PostgreSQL preparados (POST/GET/PUT/PATCH/DELETE), pendientes de ejecución con configuración disponible; guía en POSTGRESQL_TESTS.md.
 - Conflicto MSB3277 resuelto: referencia explícita a Microsoft.EntityFrameworkCore.Relational 10.0.12 en la API, propagada a Tests. Restore, build y 16 tests sin advertencias.
 - Las rutas sin un endpoint registrado devolverán 404.
 
@@ -241,3 +241,18 @@ Separados mensajes seguros para sintaxis, opción no permitida, valor inválido 
 Resultados: restore y build correctos (0 errores, 0 advertencias); dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL': 39 superadas, 0 fallidas, 0 omitidas. La primera ejecución aislada de la regresión falló antes de corregir; después pasó con toda la suite sin base. Comandos fuera del sandbox con autorización. git diff --check correcto.
 
 HELPDESK_TEST_CONNECTION_STRING no está disponible en este proceso: no se pudo comprobar la contraseña real ni atribuirle un error de escapado. No se conectó a PostgreSQL ni se ejecutaron los tres tests PostgreSQL. Pendiente ejecutar con la variable real tras validarla. Sin cambios en producción, migraciones o dependencias; sin commit ni push.
+
+## Ampliación de integración PUT/PATCH/DELETE — 20 de octubre de 2026
+
+TicketEndpointsTests añade 17 casos PostgreSQL a los tres existentes: PUT válido, título vacío, título de 101 caracteres y 404; PATCH Open → InProgress, InProgress → Resolved, Resolved → Closed, Closed → Open, Open → Closed con conflicto explicativo, repetición de cada uno de los cuatro estados, estado inválido y 404; DELETE válido con ticket de control y DELETE inexistente. Verifican respuestas, GET posterior y lectura AsNoTracking independiente. PUT conserva Id/CreatedAt/Status; PATCH conserva las otras propiedades; errores y repeticiones dejan el ticket completo intacto. DELETE comprueba ausencia real y conservación del ticket de control.
+
+Reutilizados PostgreSqlFixture, TicketApiFactory y PostgreSqlTestSettings sin cambios. La limpieza registra títulos GUID antes de guardar y los IDs propios después, de modo que soporta cambios de título por PUT y fallos de aserciones. Solo borra por IDs propios o títulos exactos; no hay snapshots globales, borrados masivos ni dependencias del orden de otros tests. Los nuevos casos siguen en la clase existente, con instancias y scopes separados. La limpieza no está garantizada si se aborta el proceso o se pierde el acceso a la base.
+
+Resultados reales:
+
+- dotnet restore HelpDesk.NET.slnx: correcto.
+- dotnet build HelpDesk.NET.slnx: 0 errores y 0 advertencias.
+- dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL': 39 ejecutadas, 39 superadas, 0 fallidas y 0 omitidas.
+- Descubrimiento mediante --list-tests --filter 'Category=PostgreSQL': 20 casos (tres anteriores y 17 nuevos), sin ejecutar fixture ni conexiones.
+- HELPDESK_TEST_CONNECTION_STRING ausente: 0 pruebas PostgreSQL ejecutadas; no se declaran superadas. Pendientes de ejecución con configuración validada.
+- git diff --check correcto. Verificaciones fuera del sandbox con autorización por restricciones de MSBuild. Sin cambios de producción, reglas, migraciones, paquetes ni seguridad; sin commit ni push.
