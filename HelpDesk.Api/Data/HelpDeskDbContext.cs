@@ -33,6 +33,17 @@ public class HelpDeskDbContext : DbContext
 
         var ticket = modelBuilder.Entity<Ticket>();
 
+        ticket.HasOne(ticket => ticket.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(ticket => ticket.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        ticket.HasOne(ticket => ticket.AssignedToUser)
+            .WithMany()
+            .HasForeignKey(ticket => ticket.AssignedToUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        ticket.HasIndex(ticket => ticket.CreatedByUserId);
+        ticket.HasIndex(ticket => ticket.AssignedToUserId);
+
         ticket.HasKey(ticket => ticket.Id);
         ticket.Property(ticket => ticket.Id).UseIdentityByDefaultColumn();
         ticket.Property(ticket => ticket.Title).IsRequired().HasMaxLength(100);

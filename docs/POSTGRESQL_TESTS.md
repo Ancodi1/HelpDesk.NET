@@ -2,7 +2,7 @@
 
 ## Estado
 
-Infraestructura y 207 casos PostgreSQL preparados y compilados: HTTP de tickets y usuarios, y persistencia de usuarios. Su ejecución en esta sesión está pendiente de configuración PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
+Infraestructura y 245 casos PostgreSQL preparados y compilados: HTTP de tickets y usuarios, persistencia, relaciones y asignaciones. Su ejecución en esta sesión está pendiente de configuración PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
 
 ## Preparación manual
 
@@ -39,7 +39,7 @@ El validador acepta únicamente las claves Host, Port, Database, Username, Passw
 
 ## Ejecución
 
-Pruebas sin PostgreSQL (111 casos: transiciones, prioridades, categorías, usuarios, migración, configuración segura y HTTP health):
+Pruebas sin PostgreSQL (120 casos: transiciones, prioridades, categorías, usuarios, migración, configuración segura y HTTP health):
 
 ```bash
 dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL'
@@ -118,3 +118,15 @@ Dos tests de concurrencia crean una fábrica derivada de fixture.Factory que añ
 Se registran los correos GUID antes de enviar solicitudes, incluyendo los nuevos de PUT, y se utiliza la limpieza propia existente. No se modifican fixture, fábrica base, validador ni seguridad. No hay nuevas migraciones. Conexión de pruebas ausente en esta sesión: no se ejecutan PostgreSQL ni peticiones manuales contra desarrollo. Los comandos manuales del README escriben datos y quedan para revisión del usuario.
 
 Verificación real: restore/build correctos sin advertencias, 111 casos sin PostgreSQL superados y 207 casos PostgreSQL descubiertos sin ejecución. git diff --check correcto. Los 220 casos comunicados por el desarrollador corresponden a la etapa anterior; no se atribuye ese resultado a una ejecución de PostgreSQL en esta sesión.
+
+## Relaciones y asignación — etapa 8.3
+
+El desarrollador comunica las 318 pruebas anteriores superadas. Se añaden nueve sin PostgreSQL y 38 PostgreSQL en TicketEndpointsTests.Relations.cs. Total: 365 (120 sin PostgreSQL y 245 PostgreSQL). La conexión segura está ausente en esta sesión: únicamente se ejecutaron las 120 sin base y se descubrieron los 245 casos PostgreSQL. No se abrió ninguna conexión ni se aplicaron migraciones.
+
+La fixture existente aplicará AddTicketUserRelations exclusivamente a helpdesk_test_db al ejecutar la suite con configuración validada. La migración y SQL se revisaron antes, sin DDL sobre desarrollo. Las comprobaciones sin base verifican que Up solo añade columnas anulables, índices y FK RESTRICT. No se ha demostrado en esta sesión la migración sobre filas históricas reales; sus operaciones son aditivas y los tests cubren tickets creados con el formato anterior, con ambos IDs null.
+
+Integración cubre creadores por rol, creación anterior/null, errores, asignación a Technician/Admin, rechazo a User/inexistente, reasignación/desasignación, idempotencia, campos protegidos, persistencia de IDs/navegaciones, filtros y paginación combinando tickets relacionados y sin relaciones, FK y rechazo del borrado SQL de usuarios referenciados. El borrado del test se limita a su usuario GUID propio y no añade ningún endpoint DELETE.
+
+Dos tests pausan el guardado después de la validación y eliminan un usuario propio todavía sin referencias para comprobar 409 de POST/assignment por FK. Otro pausa la asignación, cambia el rol por HTTP y comprueba el límite conocido: las comprobaciones previas sin bloqueo común pueden dejar User con un ticket asignado. El test documenta el comportamiento actual, no una garantía de atomicidad. Los interceptores viven en fábricas derivadas de la segura existente, con timeout de 15 segundos; no cambian conexión, preparación del esquema ni validación de destino.
+
+La limpieza se reordena obligatoriamente: primero los tickets por IDs/títulos propios y después los usuarios propios por IDs/correos exactos en finally. No se borran referencias de tickets ajenos ni se amplía ningún filtro global. Si la limpieza de tickets falla, la FK puede impedir también la de usuarios; se comunica el fallo y siguen vigentes los límites ante abortos y pérdida de conexión. No se debilitan las restricciones para limpiar.

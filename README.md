@@ -21,6 +21,7 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 
 - CRUD de tickets con persistencia en PostgreSQL.
 - Consulta, creación y actualización REST de usuarios con roles `User`, `Technician` y `Admin`.
+- Creador opcional y asignación/reasignación/desasignación de técnicos en tickets.
 - Listado con filtros combinables, búsqueda sin distinguir mayúsculas y paginación.
 - Validación de título obligatorio, máximo de 100 caracteres, y descripción obligatoria.
 - Estados con transiciones controladas y respuesta `409 Conflict` cuando el cambio no está permitido.
@@ -58,9 +59,9 @@ dotnet-tools.json     # Herramienta local dotnet-ef
 
 La solución mantiene una estructura sencilla: los endpoints utilizan directamente el contexto de EF Core y las reglas de transición se expresan en una función independiente.
 
-## Usuarios y roles — etapa 8.2
+## Usuarios y roles
 
-`User` tiene Id identity, Name obligatorio (máximo 100), Email obligatorio (máximo 254), Role con valor inicial `User` y CreatedAt en UTC. EF guarda Role como texto y CreatedAt como `timestamp with time zone`. Los endpoints utilizan DTOs independientes de la entidad. No hay relaciones con Ticket, DELETE de usuarios, autenticación ni contraseñas.
+`User` tiene Id identity, Name obligatorio (máximo 100), Email obligatorio (máximo 254), Role con valor inicial `User` y CreatedAt en UTC. EF guarda Role como texto y CreatedAt como `timestamp with time zone`. Los endpoints utilizan DTOs independientes de la entidad. Los tickets pueden referenciar al usuario como creador o asignado. No hay DELETE de usuarios, autenticación ni contraseñas.
 
 Email se normaliza mediante `Trim().ToLowerInvariant()`: se pierde su capitalización original. El índice único y el CHECK de PostgreSQL conservan la política canónica de la etapa 8.1. POST/PUT rechazan campos ausentes, null, vacíos, espacios y longitudes excesivas. Name conserva el texto recibido y se mide antes de recortarlo; Email se mide después de normalizarlo.
 
@@ -70,7 +71,7 @@ Role admite los nombres exactos `User`, `Technician` y `Admin`; números, null y
 
 Los GET usan AsNoTracking y proyectan UserResponseDto (`id`, `name`, `email`, `role`, `createdAt`); el listado es un array ordenado por Id ascendente, sin paginación en esta etapa. POST devuelve 201 y Location; PUT devuelve 200. Duplicados devuelven 409 con `{"error":"Ya existe un usuario con ese correo electrónico."}`. Una consulta previa excluye al propio usuario en PUT y la captura de SQLSTATE 23505 del índice IX_Users_Email cubre carreras concurrentes; otros errores PostgreSQL no se convierten en conflictos.
 
-El desarrollador confirma AddUsers aplicada a desarrollo y las 220 pruebas de la etapa 8.1 superadas. Esta etapa no crea migraciones ni modifica datos de desarrollo.
+El desarrollador confirma las migraciones hasta AddUsers aplicadas a desarrollo y las 318 pruebas anteriores superadas. La nueva AddTicketUserRelations está generada y revisada, sin aplicar en esta sesión.
 
 ## API
 
@@ -85,11 +86,12 @@ URL del perfil HTTP local: `http://localhost:5085`.
 | GET | `/api/health` | `200` con `{"status":"ok"}` |
 | GET | `/api/tickets` | `200` con `items` y metadatos de paginación |
 | GET | `/api/tickets/{id}` | `200` con el ticket, o `404` |
-| POST | `/api/tickets` | `201` con el ticket y cabecera `Location`, o `400` |
+| POST | `/api/tickets` | `201` con ticket y Location, `400` o `409` por conflicto de referencia concurrente |
 | PUT | `/api/tickets/{id}` | Actualiza título y descripción; `200`, `400` o `404` |
 | PATCH | `/api/tickets/{id}/status` | Cambia el estado; `200`, `400`, `404` o `409` |
 | PATCH | `/api/tickets/{id}/priority` | Cambia la prioridad; `200`, `400` o `404` |
 | PATCH | `/api/tickets/{id}/category` | Cambia la categoría; `200`, `400` o `404` |
+| PATCH | `/api/tickets/{id}/assignment` | Asigna, reasigna o desasigna; `200`, `400`, `404` o `409` |
 | DELETE | `/api/tickets/{id}` | `204` sin cuerpo al eliminar, o `404` |
 
 ### Comprobación manual de usuarios
@@ -124,6 +126,8 @@ Respuesta ilustrativa: `201 Created`, con `Location: /api/tickets/1`.
 ```json
 {
   "id": 1,
+  "createdByUserId": null,
+  "assignedToUserId": null,
   "title": "El portátil no arranca",
   "description": "La pantalla permanece apagada al encender el equipo.",
   "createdAt": "2026-10-20T10:00:00Z",
@@ -136,6 +140,59 @@ Respuesta ilustrativa: `201 Created`, con `Location: /api/tickets/1`.
 El ID y la fecha los genera el servidor. `GET /api/tickets/1` devuelve el mismo formato; el listado devuelve estos objetos dentro de `items`, junto con los metadatos de paginación.
 
 `priority` y `category` son opcionales en POST: si se omiten, se asignan `Medium` y `Other`. Enviar `null` explícitamente no es válido. Los nombres de estados, prioridades y categorías se aceptan con la capitalización mostrada; los números y nombres desconocidos se rechazan.
+
+### Creador y asignación — etapa 8.3
+
+POST /api/tickets admite `createdByUserId` opcional. Omitirlo o enviar null conserva las peticiones anteriores. Cualquier rol puede crear tickets; un ID inexistente devuelve 400 con JSON `error`. No se infiere ningún usuario autenticado. La creación deja el ticket sin asignar, aunque lleguen campos adicionales.
+
+```json
+{
+  "title": "Pantalla sin señal",
+  "description": "Revisar el equipo.",
+  "createdByUserId": 3
+}
+```
+
+Todas las respuestas que contienen un ticket añaden `createdByUserId` y `assignedToUserId` (número o null). Las navegaciones de EF no se serializan. El listado conserva `{items,totalCount,page,pageSize,totalPages}`. PUT de tickets sigue editando solo Title/Description; ni este ni los PATCH de clasificación cambian el creador o la asignación.
+
+Asignar o reasignar requiere Technician o Admin:
+
+```http
+PATCH /api/tickets/123/assignment
+Content-Type: application/json
+
+{"assignedToUserId": 5}
+```
+
+Desasignar requiere null explícito:
+
+```json
+{"assignedToUserId": null}
+```
+
+Campo omitido, tipo incorrecto, usuario inexistente o rol User: 400. Ticket inexistente con cuerpo válido: 404. Éxito: 200 con ticket completo; repetir la asignación válida o la desasignación no guarda cambios. Si un usuario desaparece entre la validación y el guardado, una violación de las nuevas FK devuelve 409. No cambia el estado ni hay restricciones adicionales por estado.
+
+PUT /api/users/{id} devuelve 409 si se solicita Role=User mientras tiene tickets asignados, sin guardar tampoco los demás campos. Primero hay que reasignarlos o desasignarlos. Ser solo creador no limita cambios de rol. Las FK son opcionales, independientes e indexadas; PostgreSQL impide borrar usuarios referenciados mediante ON DELETE RESTRICT, sin borrar tickets en cascada. No se añade DELETE de usuarios.
+
+**Límite de consistencia:** las comprobaciones de rol y asignaciones son consultas previas sin bloqueo común. Un cambio de rol concurrente puede superar ambas comprobaciones y dejar un usuario User con tickets asignados; una escritura SQL directa también puede hacerlo. Las FK garantizan existencia, no rol. Un test controlado documenta esta carrera; no se promete consistencia transaccional para ella. Asignaciones simultáneas al mismo ticket siguen la última escritura que se guarde.
+
+### Revisar y aplicar AddTicketUserRelations manualmente
+
+Migración `20261021120235_AddTicketUserRelations`: dos columnas integer NULL en Tickets, dos índices y dos FK a Users con RESTRICT. Los tickets anteriores conservan sus campos y reciben null en las nuevas relaciones; no hay backfill, usuarios ficticios ni reconstrucción de tabla. Down elimina las dos relaciones/columnas y pierde sus valores, conservando los demás datos de tickets.
+
+La API actualizada necesita el esquema nuevo antes de utilizarse, incluido PUT de usuarios. Revisar el SQL y las migraciones pendientes; el DDL requiere bloqueos sobre Tickets durante su aplicación. Estos comandos son para revisión y ejecución manual del usuario; no se han aplicado migraciones en esta sesión:
+
+```bash
+dotnet ef migrations script AddUsers AddTicketUserRelations --project HelpDesk.Api --startup-project HelpDesk.Api --context HelpDeskDbContext --output /tmp/helpdesk-ticket-user-relations-review.sql
+```
+
+Ejecutar primero la suite PostgreSQL con la conexión segura de pruebas descrita en la guía. Tras revisar el resultado, respaldar la base de desarrollo y aplicar manualmente la migración durante una parada coordinada de la API:
+
+```bash
+dotnet ef database update AddTicketUserRelations --project HelpDesk.Api --startup-project HelpDesk.Api --context HelpDeskDbContext -- --environment Development
+```
+
+Comparar el número de tickets antes/después, comprobar los nuevos campos null en los tickets previos y verificar GET, creación, asignación, desasignación y rechazo de roles/IDs inválidos con datos de prueba propios. Los clientes con esquemas JSON estrictos deberán admitir los dos campos nuevos.
 
 ### Filtrar y paginar tickets
 
@@ -287,7 +344,7 @@ Respuesta esperada: `{"status":"ok"}`. Este endpoint comprueba que la API respon
 
 ## Pruebas automatizadas
 
-La suite contiene **318 casos**: 111 sin PostgreSQL y 207 de integración PostgreSQL. La última verificación de esta etapa registra **111 superados y 207 descubiertos sin ejecutar** por falta de configuración de pruebas; no acredita una ejecución completa de los 318.
+La suite contiene **365 casos**: 120 sin PostgreSQL y 245 de integración PostgreSQL. La última verificación de esta etapa registra **120 superados y 245 descubiertos sin ejecutar** por falta de configuración de pruebas; no acredita una ejecución completa de los 365.
 
 Las pruebas unitarias verifican transiciones, validaciones y mapeos. Una prueba HTTP de salud utiliza WebApplicationFactory y TestServer en memoria, sin arrancar Kestrel manualmente. Para ejecutar todos los casos que no necesitan base de datos:
 
@@ -319,7 +376,7 @@ Si falta la cadena o no supera la validación del destino, los casos PostgreSQL 
 
 Previsión de evolución, pendiente de implementación:
 
-- Asignación de incidencias y evolución de la gestión de usuarios.
+- Comentarios, historial y evolución de la gestión de usuarios.
 - Autenticación y autorización.
 - Interfaz web para gestionar los tickets.
 

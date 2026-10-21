@@ -52,7 +52,7 @@ public class UserModelTests
         Assert.Equal(nameof(User.Email), Assert.Single(index.Properties).Name);
         Assert.Equal("timestamp with time zone", entity.FindProperty(nameof(User.CreatedAt))!.GetColumnType());
         Assert.Empty(entity.GetForeignKeys());
-        Assert.Empty(db.Model.FindEntityType(typeof(Ticket))!.GetForeignKeys());
+        Assert.Equal(2, db.Model.FindEntityType(typeof(Ticket))!.GetForeignKeys().Count());
         // Los CHECK se conservan en el modelo de diseño, no en el modelo optimizado de ejecución.
         var design = db.GetService<Microsoft.EntityFrameworkCore.Metadata.IDesignTimeModel>().Model;
         Assert.Equal("\"Email\" = lower(btrim(\"Email\"))",

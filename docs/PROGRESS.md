@@ -87,7 +87,7 @@ Comprobaciones realizadas:
 - `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
-- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Suite actual: 111 casos sin PostgreSQL superados y 207 casos PostgreSQL descubiertos. Los de base no se ejecutaron en la etapa 8.2 por configuración ausente; guía en POSTGRESQL_TESTS.md.
+- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Suite actual: 120 casos sin PostgreSQL superados y 245 casos PostgreSQL descubiertos. Los de base no se ejecutaron en la etapa 8.3 por configuración ausente; guía en POSTGRESQL_TESTS.md.
 - Conflicto MSB3277 resuelto: referencia explícita a Microsoft.EntityFrameworkCore.Relational 10.0.12 en la API, propagada a Tests. Restore, build y 16 tests sin advertencias.
 - Las rutas sin un endpoint registrado devolverán 404.
 
@@ -96,7 +96,7 @@ Comprobaciones realizadas:
 Estos pasos son orientativos y requieren una tarea solicitada:
 
 1. Ampliar las funcionalidades del dominio únicamente mediante tareas solicitadas; las transiciones de estado ya están implementadas.
-2. Incorporar asignaciones, comentarios e historial por tareas concretas. Modelo y endpoints GET/POST/PUT de usuarios, categorías, prioridades y transiciones de estado ya están implementados.
+2. Incorporar comentarios e historial por tareas concretas. Relaciones y asignación de técnicos, endpoints GET/POST/PUT de usuarios, categorías, prioridades y transiciones ya están implementados.
 3. Añadir autenticación y autorización, ampliar los tests automatizados, incorporar frontend con Angular y TypeScript y Docker en etapas posteriores.
 
 Cada cambio importante debe actualizar este documento y, si afecta al diseño, `ARCHITECTURE.md`.
@@ -352,3 +352,32 @@ Verificaciones reales de esta etapa:
 - git diff --check correcto. Sin commit ni push; cambios pendientes de revisión del usuario.
 
 Limitaciones actuales: listado de usuarios completo sin paginar; endpoints sin autenticación por el alcance de esta etapa. Validación de correo sintáctica, no comprueba entrega ni todas las equivalencias Unicode. No se generan ni aplican migraciones; no se ejecutan los curl del README porque escriben datos de la base elegida.
+
+## Etapa 8.3: relaciones y asignación — 21 de octubre de 2026
+
+El desarrollador comunica migraciones hasta AddUsers aplicadas y las 318 pruebas anteriores superadas; código 8.2 guardado en GitHub. Esta sesión parte de repositorio limpio y no consulta ni modifica desarrollo.
+
+Ticket incorpora CreatedByUserId y AssignedToUserId anulables, con navegaciones excluidas de JSON y dos relaciones explícitas uno a muchos, índices y RESTRICT. POST admite creador opcional de cualquier rol, valida su existencia con 400 y conserva las creaciones anteriores sin creador. Las respuestas de tickets añaden los dos IDs; el listado sigue paginado con el mismo sobre. PUT continúa modificando solo los textos y los PATCH de clasificación conservan ambas relaciones.
+
+PATCH /api/tickets/{id}/assignment asigna/reasigna a Technician o Admin, acepta null explícito para desasignar, devuelve 400 por ID/rol inválido y cuerpo incompleto, 404 por ticket inexistente y 200 con ticket actualizado. Repetir un destino válido no guarda. POST/PATCH convierten violaciones de las dos nuevas FK en 409 si desaparece el usuario tras validarlo. PUT de usuarios impide cambiar a User mientras existan asignaciones (409). No hay autenticación ni nuevos DELETE.
+
+AddTicketUserRelations (20261021120235) generada con configuración temporal de diseño Testing, sin credenciales/conexión. Revisados Up, Down y SQL incremental: dos columnas int NULL, dos índices y dos FK RESTRICT; no hay operaciones destructivas en Up ni cambios de datos previos. No se aplica en ninguna base. Down pierde los dos IDs al retirar las columnas; el resto del ticket permanece. La API necesita el esquema migrado antes de utilizarse.
+
+Nueve casos nuevos sin PostgreSQL (modelo, JSON/DTO y seguridad de operaciones de migración) y 38 nuevos de integración: creadores por rol y compatibilidad sin creador, errores, persistencia/navegaciones, asignación/reasignación/desasignación, campos protegidos, listado filtrado/paginado con tickets sin relaciones, FK y borrado restringido, degradación de rol y carreras controladas. Helpers compartidos comparan los nuevos IDs; limpieza ahora tickets propios antes que usuarios propios. Seguridad de fixture/fábrica/validador intacta.
+
+Límite identificado al cerrar la implementación inicial (resuelto por la revisión siguiente): validaciones previas sin bloqueo común no garantizan rol técnico ante asignación y cambio de rol simultáneos. Un test reproduce conceptualmente esa carrera con pausa después de validar (compilado, pendiente de PostgreSQL). No se promete atomicidad ni se añade un trigger. PostgreSQL solo garantiza existencia y restricciones de borrado. Asignaciones simultáneas al mismo ticket usan última escritura.
+
+Verificaciones reales: restore correcto tras fallo inicial del sandbox sin diagnóstico; build sin errores ni advertencias; 120 pruebas sin PostgreSQL superadas, 0 fallidas/omitidas. Descubiertos 245 casos PostgreSQL sin ejecutarlos; total definido 365. HELPDESK_TEST_CONNECTION_STRING ausente, ninguna conexión PostgreSQL ni aplicación de migraciones. Comprobación EF de snapshot sin cambios pendientes. git diff --check correcto. Pendiente ejecutar los 245 casos con conexión segura y comprobar limpieza real, después revisar/aplicar manualmente AddTicketUserRelations. Sin commit ni push.
+
+
+## Etapa 8.3: concurrencia entre asignación y rol — 21 de octubre de 2026
+
+El usuario comunica 245 pruebas PostgreSQL y 120 sin PostgreSQL superadas antes de esta revisión. Al iniciar esta sesión ya había cambios locales con transacciones, bloqueos y pruebas concurrentes; se conservaron y revisaron, sin atribuirlos a una ejecución de esta sesión.
+
+La solución mantiene una transacción ReadCommitted hasta confirmar cada escritura: PATCH bloquea la fila del destino con FOR SHARE y valida su rol bajo ese bloqueo; PUT lee y bloquea el usuario con FOR NO KEY UPDATE antes de consultar sus asignaciones. Si PATCH confirma primero, PUT ve la asignación y devuelve 409. Si PUT confirma primero la degradación, PATCH lee User y devuelve 400. El orden de bloqueos de filas es usuario y después escritura del ticket; PUT no bloquea filas de tickets al consultar su existencia. Los bloqueos compartidos permiten asignaciones a tickets distintos del mismo técnico. Desasignar no abre una transacción explícita ni bloquea usuarios. Los retornos tempranos y errores liberan el bloqueo al disponer la transacción. Contratos y mensajes se conservan.
+
+La suite concurrente contiene doce casos: ocho combinaciones de ambos órdenes, Technician/Admin y asignación/reasignación; dos casos de independencia entre usuarios; uno de asignaciones simultáneas a tickets distintos del mismo técnico; y uno de borrado bloqueado hasta commit y rechazado después por FK. Usa peticiones HTTP solapadas, interceptores y TaskCompletionSource; pg_blocking_pids confirma la espera real antes de liberar la primera operación. No usa Task.Delay; los límites temporales solo detectan fallos. Se verifica la persistencia mediante contextos independientes y se reutiliza la limpieza de datos propios.
+
+Validación ejecutada en esta sesión: restore correcto; build correcto, cero errores y advertencias; 120 pruebas sin PostgreSQL superadas, cero fallidas u omitidas. Restore y build fallaron inicialmente en sandbox sin diagnóstico útil y se repitieron fuera con autorización. Descubrimiento de pruebas PostgreSQL completado sin ejecutar la fixture. HELPDESK_TEST_CONNECTION_STRING ausente: no se ejecutó ninguna prueba PostgreSQL ni se abrió conexión. La ejecución real de la nueva concurrencia queda pendiente; no se declara superada. git diff --check correcto.
+
+Sin nuevas dependencias, capas, cambios de esquema o migraciones adicionales. No se aplicaron migraciones ni se accedió a desarrollo; sin commit ni push. La garantía corresponde a estas operaciones HTTP; no impone una restricción de rol a escrituras SQL externas. Asignaciones simultáneas sobre el mismo ticket siguen usando última escritura, fuera del alcance solicitado.

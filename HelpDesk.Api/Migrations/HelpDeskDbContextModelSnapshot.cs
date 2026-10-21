@@ -30,6 +30,9 @@ namespace HelpDesk.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("AssignedToUserId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -38,6 +41,9 @@ namespace HelpDesk.Api.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -61,6 +67,10 @@ namespace HelpDesk.Api.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssignedToUserId");
+
+                    b.HasIndex("CreatedByUserId");
 
                     b.ToTable("Tickets");
                 });
@@ -101,6 +111,23 @@ namespace HelpDesk.Api.Migrations
                         {
                             t.HasCheckConstraint("CK_Users_Email_Normalized", "\"Email\" = lower(btrim(\"Email\"))");
                         });
+                });
+
+            modelBuilder.Entity("HelpDesk.Api.Models.Ticket", b =>
+                {
+                    b.HasOne("HelpDesk.Api.Models.User", "AssignedToUser")
+                        .WithMany()
+                        .HasForeignKey("AssignedToUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("HelpDesk.Api.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AssignedToUser");
+
+                    b.Navigation("CreatedByUser");
                 });
 #pragma warning restore 612, 618
         }

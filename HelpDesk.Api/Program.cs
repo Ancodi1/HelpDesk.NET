@@ -140,8 +140,13 @@ app.MapPost("/api/tickets", async (CreateTicketDto createTicketDto, HelpDeskDbCo
         return Results.BadRequest(new { error = "La categoría debe ser Hardware, Software, Network, Access u Other." });
     }
 
+    if (createTicketDto.CreatedByUserId is int creatorId &&
+        !await dbContext.Users.AnyAsync(user => user.Id == creatorId))
+        return Results.BadRequest(new { error = "El usuario creador no existe." });
+
     var ticket = new Ticket
     {
+        CreatedByUserId = createTicketDto.CreatedByUserId,
         Title = createTicketDto.Title,
         Description = createTicketDto.Description,
         CreatedAt = DateTime.UtcNow,
@@ -150,7 +155,14 @@ app.MapPost("/api/tickets", async (CreateTicketDto createTicketDto, HelpDeskDbCo
     };
 
     dbContext.Tickets.Add(ticket);
-    await dbContext.SaveChangesAsync();
+    try
+    {
+        await dbContext.SaveChangesAsync();
+    }
+    catch (DbUpdateException exception) when (IsTicketUserForeignKeyViolation(exception))
+    {
+        return Results.Conflict(new { error = "El usuario relacionado ya no está disponible. Revisa el ticket y vuelve a intentarlo." });
+    }
 
     return Results.Created($"/api/tickets/{ticket.Id}", ticket);
 });
@@ -266,6 +278,45 @@ app.MapPatch("/api/tickets/{id}/category", async (int id, UpdateTicketCategoryDt
     return Results.Ok(ticket);
 });
 
+app.MapPatch("/api/tickets/{id}/assignment", async (int id, UpdateTicketAssignmentDto dto, HelpDeskDbContext dbContext) =>
+{
+    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
+    if (ticket is null)
+        return Results.NotFound();
+
+    // Desasignar no requiere proteger ningún rol; la escritura de EF ya es atómica.
+    await using var transaction = dto.AssignedToUserId.HasValue
+        ? await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted)
+        : null;
+    if (dto.AssignedToUserId is int userId)
+    {
+        // SHARE permite asignaciones simultáneas, pero impide cambiar el rol hasta el commit.
+        var assignee = await dbContext.Users
+            .FromSqlInterpolated($"SELECT * FROM \"Users\" WHERE \"Id\" = {userId} FOR SHARE")
+            .AsNoTracking().SingleOrDefaultAsync();
+        if (assignee is null)
+            return Results.BadRequest(new { error = "El usuario asignado no existe." });
+        if (assignee.Role is not (UserRole.Technician or UserRole.Admin))
+            return Results.BadRequest(new { error = "Solo se puede asignar un ticket a Technician o Admin." });
+    }
+
+    if (ticket.AssignedToUserId == dto.AssignedToUserId)
+        return Results.Ok(ticket);
+
+    ticket.AssignedToUserId = dto.AssignedToUserId;
+    try
+    {
+        await dbContext.SaveChangesAsync();
+        if (transaction is not null)
+            await transaction.CommitAsync();
+    }
+    catch (DbUpdateException exception) when (IsTicketUserForeignKeyViolation(exception))
+    {
+        return Results.Conflict(new { error = "El usuario relacionado ya no está disponible. Revisa el ticket y vuelve a intentarlo." });
+    }
+    return Results.Ok(ticket);
+});
+
 app.MapDelete("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =>
 {
     var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
@@ -324,7 +375,11 @@ app.MapPost("/api/users", async (CreateUserDto dto, HelpDeskDbContext dbContext)
 
 app.MapPut("/api/users/{id}", async (int id, UpdateUserDto dto, HelpDeskDbContext dbContext) =>
 {
-    var user = await dbContext.Users.FirstOrDefaultAsync(user => user.Id == id);
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+    // Bloquear y leer en la misma consulta evita validar una versión anterior a la espera.
+    var user = await dbContext.Users
+        .FromSqlInterpolated($"SELECT * FROM \"Users\" WHERE \"Id\" = {id} FOR NO KEY UPDATE")
+        .SingleOrDefaultAsync();
     if (user is null)
         return Results.NotFound();
 
@@ -335,12 +390,16 @@ app.MapPut("/api/users/{id}", async (int id, UpdateUserDto dto, HelpDeskDbContex
     if (await dbContext.Users.AnyAsync(other => other.Email == email && other.Id != id))
         return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
 
+    if (role == UserRole.User && await dbContext.Tickets.AnyAsync(ticket => ticket.AssignedToUserId == id))
+        return Results.Conflict(new { error = "No se puede cambiar a User mientras tenga tickets asignados. Reasigna o desasigna primero." });
+
     user.Name = dto.Name!;
     user.Email = email;
     user.Role = role;
     try
     {
         await dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
     }
     catch (DbUpdateException exception) when (IsDuplicateUserEmail(exception))
     {
@@ -377,6 +436,12 @@ static bool IsDuplicateUserEmail(DbUpdateException exception) => exception.Inner
 {
     SqlState: PostgresErrorCodes.UniqueViolation,
     ConstraintName: "IX_Users_Email"
+};
+
+static bool IsTicketUserForeignKeyViolation(DbUpdateException exception) => exception.InnerException is PostgresException
+{
+    SqlState: PostgresErrorCodes.ForeignKeyViolation,
+    ConstraintName: "FK_Tickets_Users_CreatedByUserId" or "FK_Tickets_Users_AssignedToUserId"
 };
 
 public partial class Program { }

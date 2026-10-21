@@ -14,11 +14,11 @@ La serialización JSON de las Minimal APIs se configura centralmente con `Config
 
 PATCH aplica las transiciones definidas en `TicketStatusTransitions` y devuelve 409 para cambios prohibidos; repetir el estado actual devuelve 200 sin guardar (decisión 021).
 
-Ticket incorpora Priority (Medium por defecto), independiente de Status. POST permite indicarla y PATCH /api/tickets/{id}/priority la modifica sin afectar otros campos. AddTicketPriority está generada y pendiente de aplicar; véase decisión 028.
+Ticket incorpora Priority (Medium por defecto), independiente de Status. POST permite indicarla y PATCH /api/tickets/{id}/priority la modifica sin afectar otros campos. AddTicketPriority está aplicada según el desarrollador; véase su evolución en decisión 028.
 
-Category clasifica el ticket mediante TicketCategory, con Other por defecto. Se admite en POST y se modifica mediante PATCH /api/tickets/{id}/category; AddTicketCategory está generada sin aplicar en esta sesión (decisión 029).
+Category clasifica el ticket mediante TicketCategory, con Other por defecto. Se admite en POST y se modifica mediante PATCH /api/tickets/{id}/category; AddTicketCategory está aplicada según el desarrollador (decisión 029).
 
-User y UserRole tienen persistencia independiente de Ticket. La etapa 8.2 añade GET (listado/ID), POST y PUT con DTOs y validación compartida (decisión 032). El desarrollador comunica AddUsers aplicada a desarrollo y las 220 pruebas de la etapa 8.1 superadas; esta sesión no conecta a desarrollo.
+Ticket referencia opcionalmente a User como creador y asignado mediante dos relaciones independientes (decisión 033). La etapa 8.2 añade GET (listado/ID), POST y PUT con DTOs y validación compartida (decisión 032). El desarrollador comunica AddUsers aplicada a desarrollo y las 318 pruebas hasta la etapa 8.2 superadas; esta sesión no conecta a desarrollo.
 
 ## Decisiones iniciales
 
@@ -399,6 +399,38 @@ Un AnyAsync sobre Email normalizado permite anticipar 409; PUT excluye su propio
 Pruebas: unitarias de validación y defaults de DTOs; HTTP PostgreSQL en la misma clase parcial/fixture con correos GUID y limpieza propia. Un SaveChangesInterceptor exclusivo de dos tests sincroniza las solicitudes después de AnyAsync para comprobar las carreras POST/POST y PUT/PUT contra el índice real, con un límite temporal para detectar fallos de sincronización. Se añade a una fábrica derivada de la ya validada sin cambiar destino, logs ni controles de seguridad. Se comprueba persistencia y conservación del usuario que pierde la carrera.
 
 Sin cambios de modelo, contexto, migraciones, paquetes, endpoints/contrato de tickets ni relaciones. Sin autenticación, DELETE de usuarios o contraseñas. Los roles son editables por estos endpoints durante esta etapa; el control de acceso queda para una tarea posterior. El listado completo no tiene límite de tamaño todavía.
+
+### 033 — Relaciones opcionales de creador y técnico asignado
+
+Estado: implementada el 21 de octubre de 2026; AddTicketUserRelations generada/revisada sin aplicar. Verificación PostgreSQL pendiente en esta sesión por conexión ausente.
+
+Decisión: Ticket incorpora CreatedByUserId y AssignedToUserId como int? y navegaciones CreatedByUser/AssignedToUser opcionales. Fluent API configura dos HasOne/WithMany independientes, con índices no únicos y DeleteBehavior.Restrict. No se añaden colecciones inversas a User porque todavía no se utilizan. JsonIgnore en las navegaciones conserva respuestas de tickets basadas en entidad, añadiendo solo los dos IDs públicos, sin objetos de usuario ni ciclos. El sobre paginado no cambia.
+
+Motivo: preservar tickets y clientes anteriores mediante null, representar autoría y responsabilidad independientemente y dejar la integridad de existencia a PostgreSQL. ON DELETE RESTRICT impide borrar un usuario con referencias persistidas sin resolverlas primero; nunca se borran tickets en cascada. No se crea endpoint DELETE de usuarios.
+
+POST de tickets recibe CreatedByUserId opcional y comprueba existencia para cualquier rol. Ausente/null es válido, inexistente devuelve 400. AssignedToUserId no se acepta en creación. PUT de tickets sigue limitado a textos; PATCH de estado/prioridad/categoría no cambia las relaciones. PATCH assignment usa UpdateTicketAssignmentDto con JsonRequired: campo ausente o tipo incorrecto produce 400, null explícito desasigna. Tras buscar el ticket (404), valida usuario y rol Technician/Admin (400), asigna solo el FK y guarda; repetir un destino válido no guarda. No añade restricciones por estado.
+
+POST de tickets y PATCH assignment convierten únicamente 23503 de FK_Tickets_Users_CreatedByUserId o FK_Tickets_Users_AssignedToUserId en 409 con texto fijo, para una eliminación concurrente tras la comprobación previa. No se capturan errores de infraestructura ni otras restricciones como si fueran validación.
+
+PUT de usuarios rechaza Role=User con 409 cuando existen tickets asignados, antes de asignar cualquier campo. Ser creador no impide cambiar el rol; Technician y Admin siguen siendo destinos válidos con asignaciones. Se incorpora esta comprobación por la nueva regla de asignación, manteniendo DTO y demás respuestas.
+
+Límite de la implementación inicial, sustituido por la decisión 034: los chequeos de rol y asignaciones no comparten bloqueo/transacción entre endpoints. Una degradación de rol y asignación concurrentes pueden superar ambos chequeos y persistir User con tickets asignados. FK no valida roles y SQL directo también evita las reglas HTTP. Un test con interceptor pausa la asignación después de validarla, permite el cambio de rol y constata esa limitación; no se presenta como garantía resuelta. Resolverla requeriría una decisión posterior sobre bloqueo común/aislamiento o reglas en base. La asignación concurrente del mismo ticket no tiene token de concurrencia; prevalece la última escritura.
+
+Migración 20261021120235_AddTicketUserRelations: Up solo añade dos integer NULL, índices y FK RESTRICT a Tickets. No altera columnas anteriores, actualiza filas, crea usuarios, borra o reconstruye tablas. Down retira FK/índices/columnas nuevas; pierde relaciones al revertir pero conserva el resto del ticket. SQL incremental desde AddUsers revisado sin ejecutar. La API actualizada necesita aplicar el esquema antes de arrancar; el DDL toma bloqueos de tabla.
+
+Pruebas de modelo, serialización y operaciones de migración sin conexión. Integración en la clase parcial existente con scopes y datos GUID propios, incluido el rechazo SQL de usuarios inexistentes/borrado referenciado, carreras de eliminación y límite concurrente de rol. La limpieza cambia de orden: tickets propios primero, usuarios propios después (finally), respetando las FK. Fixture, fábrica base, validador y destino seguro sin cambios. No se garantiza limpieza si el proceso se interrumpe o la conexión falla.
+
+### 034 — Exclusión entre asignación y cambio de rol en PostgreSQL
+
+Estado: solución local revisada el 21 de octubre de 2026; compilada, ejecución PostgreSQL pendiente por conexión de pruebas ausente.
+
+Decisión: transacciones explícitas ReadCommitted en asignación a un usuario y PUT de usuarios. PATCH obtiene FOR SHARE sobre la fila del destino mediante SQL parametrizado y lee su rol en esa misma consulta. PUT obtiene FOR NO KEY UPDATE al leer el usuario; consulta después las asignaciones y conserva 409 si se solicita User con tickets asignados. Ambos mantienen el bloqueo hasta commit o disposición de la transacción. Desasignar solo necesita la escritura atómica habitual de EF Core.
+
+Motivo: los chequeos previos independientes permitían que ambas operaciones validaran antes de persistir y produjeran User con un ticket asignado. Los dos modos de bloqueo son incompatibles, por lo que el segundo solicitante valida después de la confirmación del primero. ReadCommitted permite a la consulta posterior de asignaciones observar el commit que desbloqueó al PUT. FOR KEY SHARE no bastaría: permite actualizaciones del rol.
+
+Consecuencias: orden de bloqueo de filas usuario → escritura del ticket; PUT consulta tickets sin bloquear sus filas. No se serializan asignaciones a tickets distintos del mismo usuario ni operaciones de usuarios independientes. La fila del usuario se bloquea también en PUT que modifica otros campos para evitar conversiones posteriores de bloqueo. No se añaden bloqueos explícitos de tabla, reintentos, triggers, paquetes ni migraciones. Se conservan contratos y errores HTTP. SQL ajeno a estos endpoints no queda sujeto a esta regla de rol.
+
+Pruebas: doce casos concurrentes para ambos órdenes, roles válidos, asignación/reasignación, independencia de usuarios, compatibilidad de asignaciones y borrado restringido. Sincronización con interceptores y TaskCompletionSource; observación de pg_blocking_pids para demostrar espera real, sin Task.Delay. Compiladas y descubiertas, sin ejecución PostgreSQL en esta sesión. Las 120 pruebas sin PostgreSQL sí se ejecutaron y superaron.
 
 ## Mantenimiento del registro
 

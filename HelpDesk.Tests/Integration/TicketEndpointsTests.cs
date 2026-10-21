@@ -266,12 +266,13 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     }
 
     private async Task<Ticket> CreateTicketAsync(TicketStatus status = TicketStatus.Open, TicketPriority priority = TicketPriority.Medium,
-        TicketCategory category = TicketCategory.Other)
+        TicketCategory category = TicketCategory.Other, int? createdByUserId = null, int? assignedToUserId = null)
     {
         var ticket = new Ticket
         {
             Title = $"integration-{Guid.NewGuid():N}", Description = Description,
-            CreatedAt = DateTime.UtcNow, Status = status, Priority = priority, Category = category
+            CreatedAt = DateTime.UtcNow, Status = status, Priority = priority, Category = category,
+            CreatedByUserId = createdByUserId, AssignedToUserId = assignedToUserId
         };
         ownedTitles.Add(ticket.Title);
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
@@ -315,6 +316,8 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
         Assert.Equal(expected.Status, actual.Status);
         Assert.Equal(expected.Priority, actual.Priority);
         Assert.Equal(expected.Category, actual.Category);
+        Assert.Equal(expected.CreatedByUserId, actual.CreatedByUserId);
+        Assert.Equal(expected.AssignedToUserId, actual.AssignedToUserId);
     }
 
     private static async Task AssertHasErrorAsync(HttpResponseMessage response)
@@ -329,11 +332,11 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     {
         try
         {
-            await CleanupUsersAsync();
+            await CleanupTicketsAsync();
         }
         finally
         {
-            await CleanupTicketsAsync();
+            await CleanupUsersAsync();
         }
     }
 
