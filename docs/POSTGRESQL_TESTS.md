@@ -1,8 +1,8 @@
-# Pruebas de tickets con PostgreSQL aislado
+# Pruebas de persistencia con PostgreSQL aislado
 
 ## Estado
 
-Infraestructura y 127 casos HTTP PostgreSQL preparados y compilados: CRUD, estados, prioridades, categorías y listado filtrado/paginado. Su ejecución en esta sesión está pendiente de configuración PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
+Infraestructura y 141 casos PostgreSQL preparados y compilados: HTTP de tickets y persistencia de usuarios. Su ejecución en esta sesión está pendiente de configuración PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
 
 ## Preparación manual
 
@@ -39,7 +39,7 @@ El validador acepta únicamente las claves Host, Port, Database, Username, Passw
 
 ## Ejecución
 
-Pruebas sin PostgreSQL (70 casos: transiciones, prioridades, categorías, configuración segura y HTTP health):
+Pruebas sin PostgreSQL (79 casos: transiciones, prioridades, categorías, usuarios, migración, configuración segura y HTTP health):
 
 ```bash
 dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL'
@@ -98,3 +98,11 @@ Añadidos 46 casos HTTP en TicketEndpointsTests.List.cs. Total: 197 casos, 70 si
 Los nuevos casos verifican filtros y combinación, búsqueda en título/descripción con capitalización distinta, comodines literales y texto parecido a SQL, ausencia de resultados, orden con empates de CreatedAt, páginas consecutivas sin duplicados, totales, límite de 100, errores de parámetros y desbordamiento del desplazamiento. Los conjuntos filtrados usan GUID exclusivos. La prueba sin filtros compara el listado predeterminado con una lectura ordenada del contexto sin modificar filas ajenas; requiere que no haya escrituras externas simultáneas entre ambas lecturas. Los 81 casos previos permanecen como regresiones del resto de endpoints.
 
 Se conserva íntegra la infraestructura y la limpieza por títulos exactos/IDs propios. No se crean migraciones ni se cambia el esquema. Restore/build correctos; 70 pruebas sin PostgreSQL ejecutadas y superadas; 127 PostgreSQL descubiertas sin ejecución. HELPDESK_TEST_CONNECTION_STRING ausente: no se ha conectado a ninguna base. Pendiente ejecutar el comando PostgreSQL con la configuración segura descrita arriba y comprobar la limpieza real.
+
+## Usuarios y roles — 21 de octubre de 2026
+
+Catorce casos PostgreSQL nuevos en TicketEndpointsTests.Users.cs reutilizan la misma clase parcial y fixture: no se crean endpoints para probar persistencia. Se cubren roles como texto, default SQL, fecha UTC, límites de longitud/NOT NULL, unicidad al insertar y actualizar, y rechazo del correo no canónico por SQL directo. Tres casos mantienen un ticket propio como control y lo comprueban mediante GET y contexto independiente. Los 127 casos HTTP anteriores siguen como regresiones.
+
+Cada prueba registra correos GUID exactos antes de escribir e IDs de sus entidades al generarse, incluyendo variantes de correo usadas en comprobaciones SQL. Dispose elimina solo esas filas y verifica su ausencia; la limpieza de tickets sigue en finally aunque falle la de usuarios. No se borran conjuntos globales ni se reinician secuencias. Siguen vigentes los límites de limpieza ante interrupción/pérdida de conexión.
+
+AddUsers se generó y su SQL se revisó sin aplicarlo. Solo crea Users y su índice; al ejecutar esta suite con configuración segura la fixture aplicará las migraciones pendientes únicamente a helpdesk_test_db. No se cambia la fixture, fábrica ni validador de seguridad. Conexión ausente en esta sesión: no se ejecutaron las 141 pruebas PostgreSQL ni se comprobó su limpieza real. Las 79 pruebas sin base pasaron. Total definido: 220 casos.

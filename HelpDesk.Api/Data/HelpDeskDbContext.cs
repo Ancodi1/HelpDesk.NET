@@ -11,10 +11,25 @@ public class HelpDeskDbContext : DbContext
     }
 
     public DbSet<Ticket> Tickets => Set<Ticket>();
+    public DbSet<User> Users => Set<User>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        var user = modelBuilder.Entity<User>();
+        user.ToTable("Users", table => table.HasCheckConstraint(
+            "CK_Users_Email_Normalized", "\"Email\" = lower(btrim(\"Email\"))"));
+        user.HasKey(user => user.Id);
+        user.Property(user => user.Id).UseIdentityByDefaultColumn();
+        user.Property(user => user.Name).IsRequired().HasMaxLength(100);
+        user.Property(user => user.Email).IsRequired().HasMaxLength(254);
+        user.HasIndex(user => user.Email).IsUnique();
+        user.Property(user => user.Role)
+            .HasConversion<string>()
+            .HasDefaultValue(UserRole.User)
+            .HasSentinel(UserRole.User);
+        user.Property(user => user.CreatedAt).HasColumnType("timestamp with time zone");
 
         var ticket = modelBuilder.Entity<Ticket>();
 

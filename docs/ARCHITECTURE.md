@@ -18,6 +18,8 @@ Ticket incorpora Priority (Medium por defecto), independiente de Status. POST pe
 
 Category clasifica el ticket mediante TicketCategory, con Other por defecto. Se admite en POST y se modifica mediante PATCH /api/tickets/{id}/category; AddTicketCategory está generada sin aplicar en esta sesión (decisión 029).
 
+User y UserRole añaden persistencia independiente de usuarios, sin relaciones con Ticket ni endpoints. AddUsers está generada y revisada sin aplicar en esta sesión (decisión 031).
+
 ## Decisiones iniciales
 
 ### 001 — Desarrollo incremental orientado al aprendizaje
@@ -369,6 +371,20 @@ Motivo: componer consultas LINQ diferidas para que PostgreSQL filtre y limite la
 Consecuencias: filtros combinables, búsqueda literal mediante ILIKE con escape de comodines y parámetros EF; CountAsync previo a OrderByDescending(CreatedAt), ThenByDescending(Id), Skip y Take. TotalPages usa aritmética long y vale cero sin resultados. TicketPageDto conserva tickets completos. Se rompe únicamente el contrato del listado anterior en array; los demás endpoints y reglas permanecen intactos. Conteo y página son dos consultas sin transacción de snapshot; escrituras concurrentes pueden cambiar totales o desplazar filas entre peticiones. La ordenación estable resuelve empates en datos sin cambios.
 
 Pruebas HTTP en TicketEndpointsTests.List.cs, en la misma clase parcial, fixture y limpieza por IDs/títulos propios. No se cambian las protecciones de helpdesk_test_db ni las migraciones existentes.
+
+### 031 — Usuarios independientes y correo canónico único
+
+Estado: implementada el 21 de octubre de 2026; AddUsers generada/revisada sin aplicar. Pruebas PostgreSQL pendientes por configuración ausente.
+
+Decisión: User contiene Id identity by default, Name requerido varchar(100), Email requerido varchar(254), Role convertido a texto con default y sentinel User, y CreatedAt timestamptz. UserRole define User, Technician y Admin. El objeto inicia CreatedAt con DateTime.UtcNow; Npgsql rechaza fechas no UTC al escribir. DbSet<User> y Fluent API se añaden al contexto existente sin capas, paquetes ni relación con Ticket.
+
+Email se normaliza al asignar con Trim y ToLowerInvariant. Se combina un índice único convencional sobre Email con CHECK Email = lower(btrim(Email)): el motor exige la representación canónica, también para escrituras ajenas a EF. SQL directo con mayúsculas se rechaza, no se transforma. El índice protege ante concurrencia; una comprobación previa de existencia no lo sustituye. Se descarta la extensión citext para evitar un requisito adicional y mantener varchar(254). La política considera insensible a mayúsculas toda la dirección, incluida la parte local; se pierde la grafía original. No valida formato ni equivalencias específicas de proveedores. Futuras consultas por igualdad deben normalizar su parámetro. Revisar el comportamiento de lower y la configuración regional de PostgreSQL si se van a admitir direcciones internacionalizadas: .NET y PostgreSQL tienen reglas de capitalización propias. No se garantiza equivalencia de todas las representaciones Unicode.
+
+IsRequired implica NOT NULL, no validación de strings vacíos o espacios. Esta etapa configura persistencia; la validación de entrada se definirá al crear endpoints. No se añaden restricciones de valores de Role en SQL, siguiendo el patrón de los enums de tickets.
+
+AddUsers.Up crea exclusivamente Users (PK y CHECK incluidos) y IX_Users_Email único. Down elimina únicamente Users; revierte el esquema perdiendo los usuarios que contenga. El SQL generado incluye el registro convencional en __EFMigrationsHistory. No contiene ALTER/DROP/UPDATE/DELETE sobre Tickets ni datos iniciales. Snapshot y Designer incorporan solo User, manteniendo el mapeo de Ticket.
+
+Pruebas sin base inspeccionan metadatos, roles, normalización, defaults y operaciones de migración. Los casos PostgreSQL están en la clase parcial TicketEndpointsTests.Users.cs para compartir la fixture existente sin preparaciones de esquema paralelas. Limpieza por correos GUID exactos e IDs de entidades propias, y limpieza de tickets en finally. Infraestructura y validación de seguridad sin cambios; no se usa helpdesk_db.
 
 ## Mantenimiento del registro
 

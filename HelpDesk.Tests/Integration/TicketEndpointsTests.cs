@@ -327,6 +327,18 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
 
     public async Task DisposeAsync()
     {
+        try
+        {
+            await CleanupUsersAsync();
+        }
+        finally
+        {
+            await CleanupTicketsAsync();
+        }
+    }
+
+    private async Task CleanupTicketsAsync()
+    {
         // xUnit crea una instancia por prueba y ejecuta DisposeAsync aunque falle una aserción.
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<HelpDeskDbContext>();

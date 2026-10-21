@@ -87,7 +87,7 @@ Comprobaciones realizadas:
 - `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
-- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Suite actual: 70 casos sin PostgreSQL superados y 127 casos PostgreSQL descubiertos. Los de base no se ejecutaron en la etapa de listado por configuración ausente; guía en POSTGRESQL_TESTS.md.
+- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Suite actual: 79 casos sin PostgreSQL superados y 141 casos PostgreSQL descubiertos. Los de base no se ejecutaron en la etapa de usuarios por configuración ausente; guía en POSTGRESQL_TESTS.md.
 - Conflicto MSB3277 resuelto: referencia explícita a Microsoft.EntityFrameworkCore.Relational 10.0.12 en la API, propagada a Tests. Restore, build y 16 tests sin advertencias.
 - Las rutas sin un endpoint registrado devolverán 404.
 
@@ -96,7 +96,7 @@ Comprobaciones realizadas:
 Estos pasos son orientativos y requieren una tarea solicitada:
 
 1. Ampliar las funcionalidades del dominio únicamente mediante tareas solicitadas; las transiciones de estado ya están implementadas.
-2. Incorporar usuarios, técnicos, administradores, asignaciones, comentarios e historial por tareas concretas. Categorías, prioridades y transiciones de estado ya están implementadas.
+2. Incorporar endpoints de usuarios, asignaciones, comentarios e historial por tareas concretas. Modelo de usuarios/roles, categorías, prioridades y transiciones de estado ya están implementados.
 3. Añadir autenticación y autorización, ampliar los tests automatizados, incorporar frontend con Angular y TypeScript y Docker en etapas posteriores.
 
 Cada cambio importante debe actualizar este documento y, si afecta al diseño, `ARCHITECTURE.md`.
@@ -308,3 +308,25 @@ Cambio de contrato documentado: el listado deja de devolver un array. Los otros 
 Añadidos 46 casos HTTP PostgreSQL en TicketEndpointsTests.List.cs: valores de filtros y combinación, búsqueda por ambos textos sin distinguir mayúsculas, texto literal con comodines/SQL, resultados vacíos, valores predeterminados, orden con empates, páginas consecutivas sin duplicados, totales, límite 100 y parámetros inválidos/desbordamientos. Reutilizan fixture/fábrica y limpieza limitada a títulos GUID e IDs propios. Los 81 casos anteriores conservan las regresiones de los demás endpoints.
 
 Verificaciones reales: dotnet restore correcto; dotnet build --no-restore sin errores ni advertencias; dotnet test --no-build --filter 'Category!=PostgreSQL': 70 superadas, 0 fallidas, 0 omitidas. Listado de 127 casos PostgreSQL sin ejecución. Los primeros restore/build fallaron dentro del sandbox sin diagnóstico útil; se completaron fuera con autorización. HELPDESK_TEST_CONNECTION_STRING ausente en el proceso: no se ejecutó PostgreSQL, no se abrieron conexiones ni se aplicaron migraciones. Pendiente ejecutar los 127 casos con configuración segura para verificar comportamiento y limpieza real. git diff --check correcto. Sin commit ni push.
+
+## Etapa 8: modelo de usuarios y roles — 21 de octubre de 2026
+
+Implementados User (Id, Name, Email, Role y CreatedAt) y UserRole (User, Technician, Admin). DbSet Users y Fluent API con identity, NOT NULL y longitudes 100/254, índice único de Email, conversión de Role a texto con default User, y timestamp with time zone. CreatedAt inicial UTC; Npgsql exige UTC al persistir. Email se recorta y pasa a minúsculas invariantes al asignarlo; CHECK en PostgreSQL exige correo canónico. SQL directo debe normalizar previamente. No hay validación de sintaxis ni equivalencias Unicode/proveedor; revisar política regional para direcciones internacionalizadas. NOT NULL no sustituye la futura validación de cadenas vacías.
+
+Generada 20261021113150_AddUsers, Designer y snapshot con EF 10.0.12 y configuración temporal Testing sin credenciales ni conexión. Revisados Up, Down y SQL incremental AddTicketCategory → AddUsers: únicamente CREATE TABLE Users con PK/CHECK, CREATE UNIQUE INDEX y registro de historial. Down solo elimina Users. No se toca Tickets ni se insertan usuarios ficticios. No se aplica la migración a ninguna base en esta sesión; desarrollo queda para revisión/aplicación manual.
+
+Nueve casos nuevos sin base: roles/default UTC, normalización repetible, metadatos y conversión de roles, ausencia de relaciones y operaciones acotadas de la migración. Catorce nuevos PostgreSQL: persistencia de los tres roles con representación SQL y fecha UTC, límites exactos 100/254, default SQL User, duplicados exactos y por capitalización, actualización duplicada, null y longitudes excesivas, SQL no canónico y fecha no UTC. Los casos de persistencia conservan un ticket propio como control. Reutilizan la clase parcial, fixture/fábrica y validación existentes. Limpieza limitada a correos GUID exactos e IDs propios; tickets se limpian en finally.
+
+Sin endpoints de usuarios, autenticación, contraseñas, relaciones, paquetes, cambios del contrato HTTP de tickets, commit ni push.
+
+Verificaciones reales de cierre:
+
+- dotnet restore HelpDesk.NET.slnx correcto; primer intento en sandbox terminó con código 1 sin diagnóstico, repetido fuera con autorización.
+- dotnet build HelpDesk.NET.slnx --no-restore: 0 errores, 0 advertencias.
+- dotnet test HelpDesk.NET.slnx --no-build --filter 'Category!=PostgreSQL': 79 superadas, 0 fallidas y 0 omitidas (nueve nuevas).
+- --list-tests --filter 'Category=PostgreSQL': 141 casos descubiertos (14 nuevos), sin ejecución ni conexiones.
+- dotnet ef migrations has-pending-model-changes: no hay diferencias entre modelo y snapshot. SQL incremental generado y revisado, sin ejecutarlo.
+- HELPDESK_TEST_CONNECTION_STRING ausente: no se verificó persistencia, restricciones ni limpieza contra PostgreSQL. Quedan pendientes los 141 casos con conexión segura; no se accedió a helpdesk_db ni se aplicaron migraciones.
+- git diff --check correcto. Program.cs, Ticket y archivos de seguridad de pruebas sin cambios. Sin commit ni push.
+
+Antes de aplicar manualmente: revisar el SQL y migraciones previas pendientes, confirmar que Users no existe por una creación ajena a EF, y aceptar la política de correo canónico. Si se requieren direcciones internacionalizadas, revisar capitalización regional de PostgreSQL frente a ToLowerInvariant. Revertir AddUsers eliminaría los usuarios almacenados.

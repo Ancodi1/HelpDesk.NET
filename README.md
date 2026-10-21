@@ -20,6 +20,7 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 ## Funcionalidades
 
 - CRUD de tickets con persistencia en PostgreSQL.
+- Modelo de usuarios y roles (`User`, `Technician`, `Admin`), con persistencia preparada; sin endpoints de usuarios.
 - Listado con filtros combinables, búsqueda sin distinguir mayúsculas y paginación.
 - Validación de título obligatorio, máximo de 100 caracteres, y descripción obligatoria.
 - Estados con transiciones controladas y respuesta `409 Conflict` cuando el cambio no está permitido.
@@ -55,6 +56,14 @@ dotnet-tools.json     # Herramienta local dotnet-ef
 ```
 
 La solución mantiene una estructura sencilla: los endpoints utilizan directamente el contexto de EF Core y las reglas de transición se expresan en una función independiente.
+
+## Usuarios y roles — etapa 8
+
+`User` tiene Id identity, Name obligatorio (máximo 100), Email obligatorio (máximo 254), Role con valor inicial `User` y CreatedAt inicializado en UTC. EF guarda Role como texto con default `User` y CreatedAt como `timestamp with time zone`. No hay relaciones con Ticket ni endpoints, autenticación o contraseñas.
+
+Email se normaliza en cada asignación mediante `Trim().ToLowerInvariant()`: se elimina la capitalización original. Un índice único sobre Email impide duplicados; un CHECK de PostgreSQL exige `Email = lower(btrim(Email))`. Una escritura SQL directa debe proporcionar un correo canónico y una fecha UTC; los correos con mayúsculas o espacios exteriores se rechazan. Las futuras búsquedas por igualdad deberán normalizar también su entrada. Esta etapa no valida sintaxis del correo, equivalencias de proveedores (puntos/alias), ni trata como iguales acentos o distintas normalizaciones Unicode. NOT NULL no rechaza por sí solo cadenas vacías ni espacios en Name; la validación de entrada se abordará con los futuros endpoints.
+
+La migración `20261021113150_AddUsers` está generada y revisada, **sin aplicar**: crea únicamente Users, su clave, CHECK e índice único. No toca Tickets ni añade usuarios ficticios. Antes de aplicarla manualmente, revisar el SQL y las migraciones anteriores pendientes; `database update` sin destino aplica todas las pendientes. `Down` elimina Users y perdería sus datos. No se requiere ninguna extensión de PostgreSQL ni nuevo paquete.
 
 ## API
 
@@ -254,7 +263,7 @@ Respuesta esperada: `{"status":"ok"}`. Este endpoint comprueba que la API respon
 
 ## Pruebas automatizadas
 
-La suite contiene **197 casos**: 70 sin PostgreSQL y 127 de integración PostgreSQL. La última verificación documentada registra **70 superados y 127 descubiertos sin ejecutar** por falta de configuración de pruebas; no acredita una ejecución completa de los 197.
+La suite contiene **220 casos**: 79 sin PostgreSQL y 141 de integración PostgreSQL. La última verificación documentada registra **79 superados y 141 descubiertos sin ejecutar** por falta de configuración de pruebas; no acredita una ejecución completa de los 220.
 
 Las pruebas unitarias verifican transiciones, validaciones y mapeos. Una prueba HTTP de salud utiliza WebApplicationFactory y TestServer en memoria, sin arrancar Kestrel manualmente. Para ejecutar todos los casos que no necesitan base de datos:
 
@@ -286,7 +295,7 @@ Si falta la cadena o no supera la validación del destino, los casos PostgreSQL 
 
 Previsión de evolución, pendiente de implementación:
 
-- Usuarios, técnicos y asignación de incidencias.
+- Endpoints de usuarios y asignación de incidencias.
 - Autenticación y autorización.
 - Interfaz web para gestionar los tickets.
 
