@@ -87,7 +87,7 @@ Comprobaciones realizadas:
 - `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
-- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Suite actual: 79 casos sin PostgreSQL superados y 141 casos PostgreSQL descubiertos. Los de base no se ejecutaron en la etapa de usuarios por configuración ausente; guía en POSTGRESQL_TESTS.md.
+- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Suite actual: 111 casos sin PostgreSQL superados y 207 casos PostgreSQL descubiertos. Los de base no se ejecutaron en la etapa 8.2 por configuración ausente; guía en POSTGRESQL_TESTS.md.
 - Conflicto MSB3277 resuelto: referencia explícita a Microsoft.EntityFrameworkCore.Relational 10.0.12 en la API, propagada a Tests. Restore, build y 16 tests sin advertencias.
 - Las rutas sin un endpoint registrado devolverán 404.
 
@@ -96,7 +96,7 @@ Comprobaciones realizadas:
 Estos pasos son orientativos y requieren una tarea solicitada:
 
 1. Ampliar las funcionalidades del dominio únicamente mediante tareas solicitadas; las transiciones de estado ya están implementadas.
-2. Incorporar endpoints de usuarios, asignaciones, comentarios e historial por tareas concretas. Modelo de usuarios/roles, categorías, prioridades y transiciones de estado ya están implementados.
+2. Incorporar asignaciones, comentarios e historial por tareas concretas. Modelo y endpoints GET/POST/PUT de usuarios, categorías, prioridades y transiciones de estado ya están implementados.
 3. Añadir autenticación y autorización, ampliar los tests automatizados, incorporar frontend con Angular y TypeScript y Docker en etapas posteriores.
 
 Cada cambio importante debe actualizar este documento y, si afecta al diseño, `ARCHITECTURE.md`.
@@ -330,3 +330,25 @@ Verificaciones reales de cierre:
 - git diff --check correcto. Program.cs, Ticket y archivos de seguridad de pruebas sin cambios. Sin commit ni push.
 
 Antes de aplicar manualmente: revisar el SQL y migraciones previas pendientes, confirmar que Users no existe por una creación ajena a EF, y aceptar la política de correo canónico. Si se requieren direcciones internacionalizadas, revisar capitalización regional de PostgreSQL frente a ToLowerInvariant. Revertir AddUsers eliminaría los usuarios almacenados.
+
+## Etapa 8.2: endpoints REST de usuarios — 21 de octubre de 2026
+
+Punto de partida comunicado por el desarrollador: etapa 8.1 guardada en GitHub, AddUsers aplicada a desarrollo y 220 pruebas superadas. Se distingue de las ejecuciones del agente documentadas anteriormente; esta sesión no verifica ni modifica desarrollo.
+
+Implementados GET /api/users (array ordenado por Id ascendente), GET /api/users/{id}, POST /api/users (201 con Location) y PUT /api/users/{id}. DTOs separados de entidad y proyecciones AsNoTracking en GET. PUT conserva Id y CreatedAt; no existe DELETE de usuarios. Name obligatorio, máximo 100; Email normalizado Trim/ToLowerInvariant, máximo 254 y formato razonable mediante MailAddress más dominio ASCII con punto y etiquetas válidas. Role exacto: User/Technician/Admin; POST usa User si se omite, PUT exige explícitamente Role. Errores JSON/validación 400, inexistentes 404, duplicados 409. Se consulta la existencia del correo y se captura además 23505 exclusivamente del índice IX_Users_Email para carreras concurrentes.
+
+Añadidas 32 pruebas sin base y 66 HTTP PostgreSQL: roles/default, validación, DTOs, consulta/orden, creación/actualización, límites exactos y excesivos, persistencia, protección de Id/CreatedAt, correos duplicados por capitalización, 404/400/409 y carreras POST/POST y PUT/PUT forzadas después de la consulta previa. Reutilizada la clase parcial, fixture y limpieza propia. Los tests previos permanecen como regresiones de tickets y persistencia; un nuevo caso también verifica un ticket propio como control.
+
+Sin cambios en modelos, contexto, esquema, migraciones o dependencias; tampoco en handlers/contrato de tickets ni seguridad de pruebas. README incluye contrato y comandos curl manuales. Sin autenticación, JWT, contraseñas, relaciones, acceso a desarrollo, commit ni push.
+
+Verificaciones reales de esta etapa:
+
+- dotnet restore HelpDesk.NET.slnx: correcto. Primer intento en sandbox terminó con código 1 sin diagnóstico; se repitió fuera con autorización.
+- dotnet build HelpDesk.NET.slnx --no-restore: correcto, 0 errores y 0 advertencias.
+- dotnet test HelpDesk.NET.slnx --no-build --filter 'Category!=PostgreSQL': 111 superadas, 0 fallidas y 0 omitidas (32 nuevas).
+- --list-tests --filter 'Category=PostgreSQL': 207 casos descubiertos, 66 nuevos, sin ejecutar. Total definido: 318 casos.
+- HELPDESK_TEST_CONNECTION_STRING ausente: ninguna conexión PostgreSQL ni prueba HTTP contra base ejecutada. Pendiente validar los 207 casos, especialmente carreras de unicidad y limpieza real, con conexión segura a helpdesk_test_db.
+- Comparación automática con HEAD: handlers de tickets idénticos. Modelos, contexto, migraciones y archivos de seguridad de pruebas sin cambios.
+- git diff --check correcto. Sin commit ni push; cambios pendientes de revisión del usuario.
+
+Limitaciones actuales: listado de usuarios completo sin paginar; endpoints sin autenticación por el alcance de esta etapa. Validación de correo sintáctica, no comprueba entrega ni todas las equivalencias Unicode. No se generan ni aplican migraciones; no se ejecutan los curl del README porque escriben datos de la base elegida.

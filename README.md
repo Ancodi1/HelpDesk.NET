@@ -20,7 +20,7 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 ## Funcionalidades
 
 - CRUD de tickets con persistencia en PostgreSQL.
-- Modelo de usuarios y roles (`User`, `Technician`, `Admin`), con persistencia preparada; sin endpoints de usuarios.
+- Consulta, creación y actualización REST de usuarios con roles `User`, `Technician` y `Admin`.
 - Listado con filtros combinables, búsqueda sin distinguir mayúsculas y paginación.
 - Validación de título obligatorio, máximo de 100 caracteres, y descripción obligatoria.
 - Estados con transiciones controladas y respuesta `409 Conflict` cuando el cambio no está permitido.
@@ -45,6 +45,7 @@ HelpDesk.Api/
   Program.cs          # Arranque, configuración y endpoints
   Models/             # Ticket, enums y reglas de negocio
   DTOs/               # Contratos de entrada y respuesta
+  Validation/         # Validación compartida de solicitudes de usuarios
   Data/               # DbContext y mapeo de entidades
   Migrations/         # Evolución del esquema PostgreSQL
 HelpDesk.Tests/
@@ -57,13 +58,19 @@ dotnet-tools.json     # Herramienta local dotnet-ef
 
 La solución mantiene una estructura sencilla: los endpoints utilizan directamente el contexto de EF Core y las reglas de transición se expresan en una función independiente.
 
-## Usuarios y roles — etapa 8
+## Usuarios y roles — etapa 8.2
 
-`User` tiene Id identity, Name obligatorio (máximo 100), Email obligatorio (máximo 254), Role con valor inicial `User` y CreatedAt inicializado en UTC. EF guarda Role como texto con default `User` y CreatedAt como `timestamp with time zone`. No hay relaciones con Ticket ni endpoints, autenticación o contraseñas.
+`User` tiene Id identity, Name obligatorio (máximo 100), Email obligatorio (máximo 254), Role con valor inicial `User` y CreatedAt en UTC. EF guarda Role como texto y CreatedAt como `timestamp with time zone`. Los endpoints utilizan DTOs independientes de la entidad. No hay relaciones con Ticket, DELETE de usuarios, autenticación ni contraseñas.
 
-Email se normaliza en cada asignación mediante `Trim().ToLowerInvariant()`: se elimina la capitalización original. Un índice único sobre Email impide duplicados; un CHECK de PostgreSQL exige `Email = lower(btrim(Email))`. Una escritura SQL directa debe proporcionar un correo canónico y una fecha UTC; los correos con mayúsculas o espacios exteriores se rechazan. Las futuras búsquedas por igualdad deberán normalizar también su entrada. Esta etapa no valida sintaxis del correo, equivalencias de proveedores (puntos/alias), ni trata como iguales acentos o distintas normalizaciones Unicode. NOT NULL no rechaza por sí solo cadenas vacías ni espacios en Name; la validación de entrada se abordará con los futuros endpoints.
+Email se normaliza mediante `Trim().ToLowerInvariant()`: se pierde su capitalización original. El índice único y el CHECK de PostgreSQL conservan la política canónica de la etapa 8.1. POST/PUT rechazan campos ausentes, null, vacíos, espacios y longitudes excesivas. Name conserva el texto recibido y se mide antes de recortarlo; Email se mide después de normalizarlo.
 
-La migración `20261021113150_AddUsers` está generada y revisada, **sin aplicar**: crea únicamente Users, su clave, CHECK e índice único. No toca Tickets ni añade usuarios ficticios. Antes de aplicarla manualmente, revisar el SQL y las migraciones anteriores pendientes; `database update` sin destino aplica todas las pendientes. `Down` elimina Users y perdería sus datos. No se requiere ninguna extensión de PostgreSQL ni nuevo paquete.
+El formato de correo se comprueba con `MailAddress.TryCreate`, sin nombres de presentación ni espacios internos. Se requiere dominio con al menos dos etiquetas ASCII de 1–63 caracteres, letras/dígitos/guiones y sin guiones en los extremos. Dominios internacionalizados deben llegar en punycode. Es una comprobación de sintaxis razonable, no de existencia ni entrega; no se normalizan alias, puntos de proveedor ni equivalencias Unicode.
+
+Role admite los nombres exactos `User`, `Technician` y `Admin`; números, null y nombres desconocidos devuelven 400. POST usa User al omitir Role. PUT requiere los tres campos editables y conserva Id/CreatedAt; los campos JSON adicionales se ignoran. Para un ID inexistente, PUT devuelve 404 antes de validar los campos del DTO, siguiendo la convención de tickets.
+
+Los GET usan AsNoTracking y proyectan UserResponseDto (`id`, `name`, `email`, `role`, `createdAt`); el listado es un array ordenado por Id ascendente, sin paginación en esta etapa. POST devuelve 201 y Location; PUT devuelve 200. Duplicados devuelven 409 con `{"error":"Ya existe un usuario con ese correo electrónico."}`. Una consulta previa excluye al propio usuario en PUT y la captura de SQLSTATE 23505 del índice IX_Users_Email cubre carreras concurrentes; otros errores PostgreSQL no se convierten en conflictos.
+
+El desarrollador confirma AddUsers aplicada a desarrollo y las 220 pruebas de la etapa 8.1 superadas. Esta etapa no crea migraciones ni modifica datos de desarrollo.
 
 ## API
 
@@ -71,6 +78,10 @@ URL del perfil HTTP local: `http://localhost:5085`.
 
 | Método | Ruta | Comportamiento |
 | --- | --- | --- |
+| GET | `/api/users` | `200` con array de DTOs ordenado por Id, incluido `[]` |
+| GET | `/api/users/{id}` | `200` con DTO o `404` |
+| POST | `/api/users` | `201` con DTO y Location, `400` o `409` |
+| PUT | `/api/users/{id}` | `200` con DTO, `400`, `404` o `409` |
 | GET | `/api/health` | `200` con `{"status":"ok"}` |
 | GET | `/api/tickets` | `200` con `items` y metadatos de paginación |
 | GET | `/api/tickets/{id}` | `200` con el ticket, o `404` |
@@ -80,6 +91,19 @@ URL del perfil HTTP local: `http://localhost:5085`.
 | PATCH | `/api/tickets/{id}/priority` | Cambia la prioridad; `200`, `400` o `404` |
 | PATCH | `/api/tickets/{id}/category` | Cambia la categoría; `200`, `400` o `404` |
 | DELETE | `/api/tickets/{id}` | `204` sin cuerpo al eliminar, o `404` |
+
+### Comprobación manual de usuarios
+
+Con la API arrancada y sobre una base elegida para pruebas manuales, estos comandos crean y actualizan un usuario. No se han ejecutado contra desarrollo en esta etapa. Sustituir `123` por el ID devuelto por POST y utilizar un correo de ejemplo distinto en cada ejecución:
+
+```bash
+curl -i http://localhost:5085/api/users
+curl -i -X POST http://localhost:5085/api/users -H 'Content-Type: application/json' -d '{"name":"Usuario de ejemplo","email":"manual-82@example.invalid"}'
+curl -i http://localhost:5085/api/users/123
+curl -i -X PUT http://localhost:5085/api/users/123 -H 'Content-Type: application/json' -d '{"name":"Usuario actualizado","email":"manual-82@example.invalid","role":"Technician"}'
+```
+
+Repetir POST con el mismo correo en mayúsculas permite comprobar 409. Enviar Name vacío, Email sin formato o Role desconocido devuelve 400 con JSON `error`. GET/PUT sobre un ID inexistente devuelve 404. No hay DELETE de usuarios para retirar este registro desde la API.
 
 ### Crear y consultar un ticket
 
@@ -263,7 +287,7 @@ Respuesta esperada: `{"status":"ok"}`. Este endpoint comprueba que la API respon
 
 ## Pruebas automatizadas
 
-La suite contiene **220 casos**: 79 sin PostgreSQL y 141 de integración PostgreSQL. La última verificación documentada registra **79 superados y 141 descubiertos sin ejecutar** por falta de configuración de pruebas; no acredita una ejecución completa de los 220.
+La suite contiene **318 casos**: 111 sin PostgreSQL y 207 de integración PostgreSQL. La última verificación de esta etapa registra **111 superados y 207 descubiertos sin ejecutar** por falta de configuración de pruebas; no acredita una ejecución completa de los 318.
 
 Las pruebas unitarias verifican transiciones, validaciones y mapeos. Una prueba HTTP de salud utiliza WebApplicationFactory y TestServer en memoria, sin arrancar Kestrel manualmente. Para ejecutar todos los casos que no necesitan base de datos:
 
@@ -295,7 +319,7 @@ Si falta la cadena o no supera la validación del destino, los casos PostgreSQL 
 
 Previsión de evolución, pendiente de implementación:
 
-- Endpoints de usuarios y asignación de incidencias.
+- Asignación de incidencias y evolución de la gestión de usuarios.
 - Autenticación y autorización.
 - Interfaz web para gestionar los tickets.
 

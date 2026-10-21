@@ -1,6 +1,8 @@
 using HelpDesk.Api.Data;
 using HelpDesk.Api.DTOs;
 using HelpDesk.Api.Models;
+using HelpDesk.Api.Validation;
+using Npgsql;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
 
@@ -279,6 +281,74 @@ app.MapDelete("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =
     return Results.NoContent();
 });
 
+app.MapGet("/api/users", async (HelpDeskDbContext dbContext) =>
+{
+    var users = await dbContext.Users.AsNoTracking().OrderBy(user => user.Id)
+        .Select(user => new UserResponseDto(user.Id, user.Name, user.Email, user.Role, user.CreatedAt))
+        .ToListAsync();
+    return Results.Ok(users);
+});
+
+app.MapGet("/api/users/{id}", async (int id, HelpDeskDbContext dbContext) =>
+{
+    var user = await dbContext.Users.AsNoTracking().Where(user => user.Id == id)
+        .Select(user => new UserResponseDto(user.Id, user.Name, user.Email, user.Role, user.CreatedAt))
+        .FirstOrDefaultAsync();
+    if (user is null)
+        return Results.NotFound();
+    return Results.Ok(user);
+});
+
+app.MapPost("/api/users", async (CreateUserDto dto, HelpDeskDbContext dbContext) =>
+{
+    var error = UserValidation.Validate(dto.Name, dto.Email, dto.Role, out var email, out var role);
+    if (error is not null)
+        return Results.BadRequest(new { error });
+
+    if (await dbContext.Users.AnyAsync(user => user.Email == email))
+        return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
+
+    var user = new User { Name = dto.Name!, Email = email, Role = role, CreatedAt = DateTime.UtcNow };
+    dbContext.Users.Add(user);
+    try
+    {
+        await dbContext.SaveChangesAsync();
+    }
+    catch (DbUpdateException exception) when (IsDuplicateUserEmail(exception))
+    {
+        // El índice sigue siendo la autoridad si dos solicitudes superan la consulta previa.
+        return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
+    }
+    return Results.Created($"/api/users/{user.Id}", ToUserResponse(user));
+});
+
+app.MapPut("/api/users/{id}", async (int id, UpdateUserDto dto, HelpDeskDbContext dbContext) =>
+{
+    var user = await dbContext.Users.FirstOrDefaultAsync(user => user.Id == id);
+    if (user is null)
+        return Results.NotFound();
+
+    var error = UserValidation.Validate(dto.Name, dto.Email, dto.Role, out var email, out var role);
+    if (error is not null)
+        return Results.BadRequest(new { error });
+
+    if (await dbContext.Users.AnyAsync(other => other.Email == email && other.Id != id))
+        return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
+
+    user.Name = dto.Name!;
+    user.Email = email;
+    user.Role = role;
+    try
+    {
+        await dbContext.SaveChangesAsync();
+    }
+    catch (DbUpdateException exception) when (IsDuplicateUserEmail(exception))
+    {
+        return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
+    }
+    return Results.Ok(ToUserResponse(user));
+});
+
 app.Run();
 
 static string? ValidateTicket(string? title, string? description)
@@ -300,5 +370,13 @@ static string? ValidateTicket(string? title, string? description)
 
     return null;
 }
+
+static UserResponseDto ToUserResponse(User user) => new(user.Id, user.Name, user.Email, user.Role, user.CreatedAt);
+
+static bool IsDuplicateUserEmail(DbUpdateException exception) => exception.InnerException is PostgresException
+{
+    SqlState: PostgresErrorCodes.UniqueViolation,
+    ConstraintName: "IX_Users_Email"
+};
 
 public partial class Program { }

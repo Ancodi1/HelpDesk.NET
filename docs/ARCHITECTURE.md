@@ -18,7 +18,7 @@ Ticket incorpora Priority (Medium por defecto), independiente de Status. POST pe
 
 Category clasifica el ticket mediante TicketCategory, con Other por defecto. Se admite en POST y se modifica mediante PATCH /api/tickets/{id}/category; AddTicketCategory está generada sin aplicar en esta sesión (decisión 029).
 
-User y UserRole añaden persistencia independiente de usuarios, sin relaciones con Ticket ni endpoints. AddUsers está generada y revisada sin aplicar en esta sesión (decisión 031).
+User y UserRole tienen persistencia independiente de Ticket. La etapa 8.2 añade GET (listado/ID), POST y PUT con DTOs y validación compartida (decisión 032). El desarrollador comunica AddUsers aplicada a desarrollo y las 220 pruebas de la etapa 8.1 superadas; esta sesión no conecta a desarrollo.
 
 ## Decisiones iniciales
 
@@ -385,6 +385,20 @@ IsRequired implica NOT NULL, no validación de strings vacíos o espacios. Esta 
 AddUsers.Up crea exclusivamente Users (PK y CHECK incluidos) y IX_Users_Email único. Down elimina únicamente Users; revierte el esquema perdiendo los usuarios que contenga. El SQL generado incluye el registro convencional en __EFMigrationsHistory. No contiene ALTER/DROP/UPDATE/DELETE sobre Tickets ni datos iniciales. Snapshot y Designer incorporan solo User, manteniendo el mapeo de Ticket.
 
 Pruebas sin base inspeccionan metadatos, roles, normalización, defaults y operaciones de migración. Los casos PostgreSQL están en la clase parcial TicketEndpointsTests.Users.cs para compartir la fixture existente sin preparaciones de esquema paralelas. Limpieza por correos GUID exactos e IDs de entidades propias, y limpieza de tickets en finally. Infraestructura y validación de seguridad sin cambios; no se usa helpdesk_db.
+
+### 032 — Endpoints de usuarios con DTOs y control de unicidad concurrente
+
+Estado: implementada el 21 de octubre de 2026; verificación HTTP PostgreSQL pendiente en esta sesión por conexión ausente.
+
+Decisión: mantener Minimal APIs en Program.cs con HelpDeskDbContext. CreateUserDto y UpdateUserDto delimitan Name, Email y Role; UserResponseDto delimita Id, Name, Email, Role y CreatedAt. Los GET proyectan DTOs en consultas AsNoTracking; el listado ordena por Id ascendente y devuelve array sin paginación. POST genera fecha UTC y devuelve 201/Location. PUT consulta primero el ID (404 si falta), valida y asigna solo campos editables, conservando Id/CreatedAt.
+
+UserValidation es una función compartida y comprobable sin base. Name obligatorio/no whitespace, longitud original máxima 100, texto conservado. Email se recorta y pasa a minúsculas invariantes antes de comprobar longitud máxima 254 y formato. MailAddress.TryCreate debe devolver la misma dirección, sin display name ni whitespace. Dominio con al menos dos etiquetas ASCII, límites de 63 caracteres, sin guiones extremos; se admite punycode, no dominios Unicode sin convertir. No se comprueba existencia/entrega ni equivalencias por proveedor. Role usa nombres exactos del enum, sin aceptar números; POST inicializa User si se omite y PUT exige Role explícito. Null explícito se rechaza. JSON incorrecto utiliza el tratamiento central ya existente.
+
+Un AnyAsync sobre Email normalizado permite anticipar 409; PUT excluye su propio ID. El índice único existente sigue siendo la garantía ante concurrencia. Se captura únicamente DbUpdateException cuya InnerException sea PostgresException con SqlState=23505 y ConstraintName=IX_Users_Email; devuelve 409 con mensaje fijo, sin datos internos. No se convierten otros errores en conflictos. PUT no escribe nada si falla la validación o la consulta previa; la escritura que falla por unicidad se revierte por PostgreSQL.
+
+Pruebas: unitarias de validación y defaults de DTOs; HTTP PostgreSQL en la misma clase parcial/fixture con correos GUID y limpieza propia. Un SaveChangesInterceptor exclusivo de dos tests sincroniza las solicitudes después de AnyAsync para comprobar las carreras POST/POST y PUT/PUT contra el índice real, con un límite temporal para detectar fallos de sincronización. Se añade a una fábrica derivada de la ya validada sin cambiar destino, logs ni controles de seguridad. Se comprueba persistencia y conservación del usuario que pierde la carrera.
+
+Sin cambios de modelo, contexto, migraciones, paquetes, endpoints/contrato de tickets ni relaciones. Sin autenticación, DELETE de usuarios o contraseñas. Los roles son editables por estos endpoints durante esta etapa; el control de acceso queda para una tarea posterior. El listado completo no tiene límite de tamaño todavía.
 
 ## Mantenimiento del registro
 

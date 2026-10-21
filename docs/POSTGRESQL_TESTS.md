@@ -2,7 +2,7 @@
 
 ## Estado
 
-Infraestructura y 141 casos PostgreSQL preparados y compilados: HTTP de tickets y persistencia de usuarios. Su ejecución en esta sesión está pendiente de configuración PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
+Infraestructura y 207 casos PostgreSQL preparados y compilados: HTTP de tickets y usuarios, y persistencia de usuarios. Su ejecución en esta sesión está pendiente de configuración PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
 
 ## Preparación manual
 
@@ -39,7 +39,7 @@ El validador acepta únicamente las claves Host, Port, Database, Username, Passw
 
 ## Ejecución
 
-Pruebas sin PostgreSQL (79 casos: transiciones, prioridades, categorías, usuarios, migración, configuración segura y HTTP health):
+Pruebas sin PostgreSQL (111 casos: transiciones, prioridades, categorías, usuarios, migración, configuración segura y HTTP health):
 
 ```bash
 dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL'
@@ -106,3 +106,15 @@ Catorce casos PostgreSQL nuevos en TicketEndpointsTests.Users.cs reutilizan la m
 Cada prueba registra correos GUID exactos antes de escribir e IDs de sus entidades al generarse, incluyendo variantes de correo usadas en comprobaciones SQL. Dispose elimina solo esas filas y verifica su ausencia; la limpieza de tickets sigue en finally aunque falle la de usuarios. No se borran conjuntos globales ni se reinician secuencias. Siguen vigentes los límites de limpieza ante interrupción/pérdida de conexión.
 
 AddUsers se generó y su SQL se revisó sin aplicarlo. Solo crea Users y su índice; al ejecutar esta suite con configuración segura la fixture aplicará las migraciones pendientes únicamente a helpdesk_test_db. No se cambia la fixture, fábrica ni validador de seguridad. Conexión ausente en esta sesión: no se ejecutaron las 141 pruebas PostgreSQL ni se comprobó su limpieza real. Las 79 pruebas sin base pasaron. Total definido: 220 casos.
+
+## Endpoints de usuarios — etapa 8.2
+
+El desarrollador comunica los 220 casos de la etapa anterior superados. Esta ampliación añade 32 casos sin base y 66 HTTP PostgreSQL en TicketEndpointsTests.UserHttp.cs. Total definido: 318 (111 sin base y 207 PostgreSQL).
+
+Los nuevos casos cubren los cuatro endpoints, roles/default, errores de cuerpo/validación, límites 100/254, listado determinista, persistencia en scopes independientes, conservación de Id/CreatedAt, duplicados exactos/normalizados, actualización del propio correo y ausencia de cambios ante errores. Se mantienen los tests de tickets; un nuevo listado comprueba además un ticket propio de control.
+
+Dos tests de concurrencia crean una fábrica derivada de fixture.Factory que añade exclusivamente un interceptor de SaveChanges. Una barrera deja pasar las dos comprobaciones previas antes de guardar, de modo que PostgreSQL debe decidir el conflicto real: una respuesta correcta y una 409 en POST/POST y PUT/PUT. La barrera tiene timeout de 15 segundos; no se sustituye proveedor ni configuración de conexión y no se vuelve a preparar el esquema en esa fábrica. Se verifica persistencia del ganador y, en PUT, que el perdedor conserva sus datos.
+
+Se registran los correos GUID antes de enviar solicitudes, incluyendo los nuevos de PUT, y se utiliza la limpieza propia existente. No se modifican fixture, fábrica base, validador ni seguridad. No hay nuevas migraciones. Conexión de pruebas ausente en esta sesión: no se ejecutan PostgreSQL ni peticiones manuales contra desarrollo. Los comandos manuales del README escriben datos y quedan para revisión del usuario.
+
+Verificación real: restore/build correctos sin advertencias, 111 casos sin PostgreSQL superados y 207 casos PostgreSQL descubiertos sin ejecución. git diff --check correcto. Los 220 casos comunicados por el desarrollador corresponden a la etapa anterior; no se atribuye ese resultado a una ejecución de PostgreSQL en esta sesión.
