@@ -2,7 +2,7 @@
 
 ## Estado
 
-Infraestructura y 20 casos HTTP PostgreSQL preparados y compilados: tres de POST/GET y 17 de PUT/PATCH/DELETE. Su ejecución en esta sesión está pendiente de configuración PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
+Infraestructura y 127 casos HTTP PostgreSQL preparados y compilados: CRUD, estados, prioridades, categorías y listado filtrado/paginado. Su ejecución en esta sesión está pendiente de configuración PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
 
 ## Preparación manual
 
@@ -39,7 +39,7 @@ El validador acepta únicamente las claves Host, Port, Database, Username, Passw
 
 ## Ejecución
 
-Pruebas sin PostgreSQL (39 casos: 16 de transiciones, uno HTTP health y 22 del validador que no abren conexiones):
+Pruebas sin PostgreSQL (70 casos: transiciones, prioridades, categorías, configuración segura y HTTP health):
 
 ```bash
 dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL'
@@ -90,3 +90,11 @@ AddTicketPriority está generada y revisada, sin aplicar en esta sesión. Al eje
 La suite define 151 casos: 70 sin PostgreSQL y 81 PostgreSQL. Los 32 nuevos de categorías están en TicketEndpointsTests.Category.cs, en la misma clase parcial y con la misma fixture y limpieza por GUID/ID. Verifican las cinco categorías en POST y PATCH, valores inválidos/null/números, JSON incorrecto, idempotencia, 404, GET y conservación de propiedades ajenas. El POST anterior comprueba Other al omitir categoría; las comparaciones comunes incluyen Category.
 
 AddTicketCategory está generada y revisada, sin aplicar en esta sesión: ADD Category text NOT NULL DEFAULT 'Other', sin recrear tablas. La fixture la aplicará a helpdesk_test_db solo al ejecutar los tests con configuración validada. La variable no está disponible en el proceso del agente, así que se ejecutaron las 70 pruebas sin PostgreSQL y se listaron los 81 casos de base sin ejecutarlos. No se declaran pasados estos últimos ni se accedió a desarrollo. La aplicación manual a desarrollo queda pendiente de revisión; el modelo actualizado requiere que exista la columna.
+
+## Listado filtrado y paginado — 21 de octubre de 2026
+
+Añadidos 46 casos HTTP en TicketEndpointsTests.List.cs. Total: 197 casos, 70 sin PostgreSQL y 127 PostgreSQL. El listado devuelve ahora TicketPageDto con items, totalCount, page, pageSize y totalPages; no devuelve un array. Las pruebas anteriores consultan tickets individuales y no requieren adaptar su deserialización.
+
+Los nuevos casos verifican filtros y combinación, búsqueda en título/descripción con capitalización distinta, comodines literales y texto parecido a SQL, ausencia de resultados, orden con empates de CreatedAt, páginas consecutivas sin duplicados, totales, límite de 100, errores de parámetros y desbordamiento del desplazamiento. Los conjuntos filtrados usan GUID exclusivos. La prueba sin filtros compara el listado predeterminado con una lectura ordenada del contexto sin modificar filas ajenas; requiere que no haya escrituras externas simultáneas entre ambas lecturas. Los 81 casos previos permanecen como regresiones del resto de endpoints.
+
+Se conserva íntegra la infraestructura y la limpieza por títulos exactos/IDs propios. No se crean migraciones ni se cambia el esquema. Restore/build correctos; 70 pruebas sin PostgreSQL ejecutadas y superadas; 127 PostgreSQL descubiertas sin ejecución. HELPDESK_TEST_CONNECTION_STRING ausente: no se ha conectado a ninguna base. Pendiente ejecutar el comando PostgreSQL con la configuración segura descrita arriba y comprobar la limpieza real.

@@ -43,11 +43,68 @@ app.UseStatusCodePages(async context =>
 
 app.MapGet("/api/health", () => new { status = "ok" });
 
-app.MapGet("/api/tickets", async (HelpDeskDbContext dbContext) =>
+app.MapGet("/api/tickets", async (HttpRequest request, HelpDeskDbContext dbContext) =>
 {
-    var tickets = await dbContext.Tickets.ToListAsync();
+    var parameters = request.Query;
+    // Validar antes de ejecutar SQL; rechazar parámetros conocidos repetidos evita ambigüedad.
+    foreach (var name in new[] { "status", "priority", "category", "search", "page", "pageSize" })
+    {
+        if (parameters[name].Count > 1)
+        {
+            return Results.BadRequest(new { error = $"El parámetro {name} no puede repetirse." });
+        }
+    }
 
-    return Results.Ok(tickets);
+    IQueryable<Ticket> query = dbContext.Tickets.AsNoTracking();
+    if (parameters.TryGetValue("status", out var statusText))
+    {
+        if (!Enum.IsDefined(typeof(TicketStatus), statusText.ToString()))
+            return Results.BadRequest(new { error = "status debe ser Open, InProgress, Resolved o Closed." });
+        var status = Enum.Parse<TicketStatus>(statusText.ToString());
+        query = query.Where(ticket => ticket.Status == status);
+    }
+    if (parameters.TryGetValue("priority", out var priorityText))
+    {
+        if (!TicketPriorityValidation.TryParse(priorityText.ToString(), out var priority))
+            return Results.BadRequest(new { error = "priority debe ser Low, Medium, High o Critical." });
+        query = query.Where(ticket => ticket.Priority == priority);
+    }
+    if (parameters.TryGetValue("category", out var categoryText))
+    {
+        if (!TicketCategoryValidation.TryParse(categoryText.ToString(), out var category))
+            return Results.BadRequest(new { error = "category debe ser Hardware, Software, Network, Access u Other." });
+        query = query.Where(ticket => ticket.Category == category);
+    }
+
+    var page = 1;
+    var pageSize = 10;
+    if (parameters.TryGetValue("page", out var pageText) &&
+        (!int.TryParse(pageText, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out page) || page < 1))
+        return Results.BadRequest(new { error = "page debe ser un entero positivo." });
+    if (parameters.TryGetValue("pageSize", out var sizeText) &&
+        (!int.TryParse(sizeText, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out pageSize) || pageSize < 1 || pageSize > 100))
+        return Results.BadRequest(new { error = "pageSize debe ser un entero entre 1 y 100." });
+
+    var offset = ((long)page - 1) * pageSize;
+    if (offset > int.MaxValue)
+        return Results.BadRequest(new { error = "La combinación de page y pageSize supera el desplazamiento máximo permitido." });
+
+    var search = parameters["search"].ToString();
+    if (search.Length > 0)
+    {
+        // ILIKE ignora mayúsculas; escapar sus comodines conserva una búsqueda literal.
+        var pattern = "%" + search.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+        query = query.Where(ticket => EF.Functions.ILike(ticket.Title, pattern, "\\") ||
+                                      EF.Functions.ILike(ticket.Description, pattern, "\\"));
+    }
+
+    var totalCount = await query.CountAsync();
+    var items = await query.OrderByDescending(ticket => ticket.CreatedAt)
+        .ThenByDescending(ticket => ticket.Id)
+        .Skip((int)offset).Take(pageSize).ToListAsync();
+    var totalPages = (int)((totalCount + (long)pageSize - 1) / pageSize);
+
+    return Results.Ok(new TicketPageDto(items, totalCount, page, pageSize, totalPages));
 });
 
 app.MapGet("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =>

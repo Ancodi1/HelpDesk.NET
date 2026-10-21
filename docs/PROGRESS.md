@@ -1,6 +1,6 @@
 # Progreso — HelpDesk.NET
 
-Última actualización: 2026-10-20.
+Última actualización: 2026-10-21.
 
 ## Funcionalidades completadas
 
@@ -13,7 +13,7 @@
 
 - Primer modelo de dominio `Ticket` creado en `HelpDesk.Api/Models/Ticket.cs`, con únicamente `Id` (`int`), `Title` (`string`), `Description` (`string`) y `CreatedAt` (`DateTime`).
 
-- Endpoint `GET /api/tickets`: recibe `HelpDeskDbContext` mediante DI y consulta PostgreSQL con `await dbContext.Tickets.ToListAsync()`. Devuelve HTTP 200 con un array JSON; una tabla vacía se devuelve como `[]`.
+- Endpoint `GET /api/tickets`: listado paginado con filtros combinables y búsqueda literal sin distinguir mayúsculas; devuelve `items`, `totalCount`, `page`, `pageSize` y `totalPages` (etapa del 21 de octubre).
 
 - Endpoint `GET /api/tickets/{id}`: recibe `int id` y `HelpDeskDbContext`, y consulta PostgreSQL con `await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id)`. Devuelve HTTP 200 con el ticket o HTTP 404 sin cuerpo si no existe.
 
@@ -87,7 +87,7 @@ Comprobaciones realizadas:
 - `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
-- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Suite actual: 70 casos sin PostgreSQL superados y 81 casos PostgreSQL descubiertos. Los de base no se ejecutaron en la etapa de categorías por configuración ausente; guía en POSTGRESQL_TESTS.md.
+- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Suite actual: 70 casos sin PostgreSQL superados y 127 casos PostgreSQL descubiertos. Los de base no se ejecutaron en la etapa de listado por configuración ausente; guía en POSTGRESQL_TESTS.md.
 - Conflicto MSB3277 resuelto: referencia explícita a Microsoft.EntityFrameworkCore.Relational 10.0.12 en la API, propagada a Tests. Restore, build y 16 tests sin advertencias.
 - Las rutas sin un endpoint registrado devolverán 404.
 
@@ -298,3 +298,13 @@ Resultados reales:
 - HELPDESK_TEST_CONNECTION_STRING no disponible en este proceso: no se abrieron conexiones ni se ejecutaron los tests PostgreSQL. No se declaran superados. La ejecución segura pendiente aplicará las migraciones solo a helpdesk_test_db mediante la fixture.
 - SQL AddTicketPriority → AddTicketCategory revisado: ALTER TABLE Tickets ADD Category text NOT NULL DEFAULT Other y registro de historial, sin ejecutar. git diff --check correcto.
 - Restore/build/test y listado fuera del sandbox con autorización por restricciones de MSBuild. Sin commit ni push.
+
+## Filtros, búsqueda y paginación — 21 de octubre de 2026
+
+GET /api/tickets admite status, priority, category, search, page y pageSize. Composición IQueryable con AsNoTracking, filtros combinables e ILIKE literal parametrizado sobre Title/Description. CountAsync se ejecuta antes de ordenar por CreatedAt e Id descendentes y aplicar Skip/Take. page=1 y pageSize=10 por defecto; máximo 100. Validación JSON 400 de enums, enteros, valores repetidos y desplazamiento fuera de int, calculado previamente en long. TotalPages usa aritmética long y vale 0 sin resultados. TicketPageDto devuelve items y metadatos; cada ticket conserva sus propiedades.
+
+Cambio de contrato documentado: el listado deja de devolver un array. Los otros endpoints, reglas, modelos, contexto, esquema y migraciones permanecen intactos. No se añaden paquetes ni capas. Conteo y página son dos consultas y pueden observar escrituras concurrentes.
+
+Añadidos 46 casos HTTP PostgreSQL en TicketEndpointsTests.List.cs: valores de filtros y combinación, búsqueda por ambos textos sin distinguir mayúsculas, texto literal con comodines/SQL, resultados vacíos, valores predeterminados, orden con empates, páginas consecutivas sin duplicados, totales, límite 100 y parámetros inválidos/desbordamientos. Reutilizan fixture/fábrica y limpieza limitada a títulos GUID e IDs propios. Los 81 casos anteriores conservan las regresiones de los demás endpoints.
+
+Verificaciones reales: dotnet restore correcto; dotnet build --no-restore sin errores ni advertencias; dotnet test --no-build --filter 'Category!=PostgreSQL': 70 superadas, 0 fallidas, 0 omitidas. Listado de 127 casos PostgreSQL sin ejecución. Los primeros restore/build fallaron dentro del sandbox sin diagnóstico útil; se completaron fuera con autorización. HELPDESK_TEST_CONNECTION_STRING ausente en el proceso: no se ejecutó PostgreSQL, no se abrieron conexiones ni se aplicaron migraciones. Pendiente ejecutar los 127 casos con configuración segura para verificar comportamiento y limpieza real. git diff --check correcto. Sin commit ni push.

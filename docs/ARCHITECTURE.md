@@ -1,12 +1,12 @@
 # Arquitectura — HelpDesk.NET
 
-Última actualización: 2026-10-20.
+Última actualización: 2026-10-21.
 
 ## Estado actual
 
 El repositorio contiene la solución `HelpDesk.NET.slnx` y los proyectos `HelpDesk.Api` (ASP.NET Core Web API) y `HelpDesk.Tests` (pruebas unitarias xUnit e integración HTTP), ambos para `net10.0`. `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Todo el CRUD accede a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
 
-`GET /api/tickets` inyecta el contexto y usa `ToListAsync` para devolver HTTP 200 con el array de tickets, incluido `[]` si la tabla está vacía. `GET /api/tickets/{id}` usa `FirstOrDefaultAsync` y devuelve 200 con el objeto o 404 sin cuerpo. Health mantiene HTTP 200 con `{"status":"ok"}`.
+`GET /api/tickets` compone un IQueryable con AsNoTracking, filtros y búsqueda ILIKE parametrizada; cuenta antes de ordenar por CreatedAt/Id descendentes y aplicar Skip/Take. Devuelve HTTP 200 con items y metadatos de paginación (decisión 030). `GET /api/tickets/{id}` usa `FirstOrDefaultAsync` y devuelve 200 con el objeto o 404 sin cuerpo. Health mantiene HTTP 200 con `{"status":"ok"}`.
 
 POST inyecta el contexto, registra el nuevo ticket con `Add` y lo persiste con `SaveChangesAsync` antes de responder 201. PUT consulta una entidad seguida por EF Core con `FirstOrDefaultAsync`, valida y guarda sus textos con `SaveChangesAsync` antes de responder 200. DELETE consulta por ID con `FirstOrDefaultAsync`, elimina mediante `Remove` y persiste con `SaveChangesAsync`; devuelve 404 o 204. La lista temporal ya no existe. No hay servicios, repositorios ni capas adicionales.
 
@@ -357,6 +357,18 @@ Consecuencia: CreateTicketDto acepta Category como texto opcional inicializado e
 Migración 20261020110201_AddTicketCategory: Up solo añade Category text NOT NULL DEFAULT 'Other' a Tickets, asignando Other a los registros anteriores al aplicarse. No hay eliminación/recreación de tabla ni cambios a migraciones previas. Down elimina solo la columna y pierde sus valores. Snapshot y Designer actualizados. No se aplica automáticamente en desarrollo; la API actualizada necesita el esquema migrado tras revisión.
 
 Validación: restore/build sin errores ni advertencias; 70 casos sin PostgreSQL superados (16 nuevos). Descubiertos 81 PostgreSQL (32 nuevos) con --list-tests sin ejecución, por variable de pruebas ausente. Pruebas preparadas de POST, PATCH, JSON, idempotencia, GET y preservación de propiedades con la infraestructura y limpieza existentes. SQL revisado sin ejecutar. No se accede a helpdesk_db; diff correcto, sin commit ni push.
+
+### 030 — Listado filtrado y paginado mediante IQueryable
+
+Estado: implementada el 21 de octubre de 2026; verificación PostgreSQL pendiente por configuración ausente.
+
+Decisión: mantener el endpoint en Program.cs y definir TicketPageDto como contrato de salida. Validar parámetros conocidos y duplicados antes de ejecutar SQL. Aceptar enums con nombres exactos, page positivo y pageSize entre 1 y 100; calcular offset en long y rechazar valores superiores a int.MaxValue para usar Skip de forma segura. No se cambia el esquema ni se crean migraciones.
+
+Motivo: componer consultas LINQ diferidas para que PostgreSQL filtre y limite las filas transferidas, sin materializar el conjunto completo. AsNoTracking evita seguimiento innecesario en el listado.
+
+Consecuencias: filtros combinables, búsqueda literal mediante ILIKE con escape de comodines y parámetros EF; CountAsync previo a OrderByDescending(CreatedAt), ThenByDescending(Id), Skip y Take. TotalPages usa aritmética long y vale cero sin resultados. TicketPageDto conserva tickets completos. Se rompe únicamente el contrato del listado anterior en array; los demás endpoints y reglas permanecen intactos. Conteo y página son dos consultas sin transacción de snapshot; escrituras concurrentes pueden cambiar totales o desplazar filas entre peticiones. La ordenación estable resuelve empates en datos sin cambios.
+
+Pruebas HTTP en TicketEndpointsTests.List.cs, en la misma clase parcial, fixture y limpieza por IDs/títulos propios. No se cambian las protecciones de helpdesk_test_db ni las migraciones existentes.
 
 ## Mantenimiento del registro
 

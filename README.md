@@ -20,6 +20,7 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 ## Funcionalidades
 
 - CRUD de tickets con persistencia en PostgreSQL.
+- Listado con filtros combinables, búsqueda sin distinguir mayúsculas y paginación.
 - Validación de título obligatorio, máximo de 100 caracteres, y descripción obligatoria.
 - Estados con transiciones controladas y respuesta `409 Conflict` cuando el cambio no está permitido.
 - Prioridades: `Low`, `Medium`, `High` y `Critical`.
@@ -42,7 +43,7 @@ HelpDesk.NET.slnx
 HelpDesk.Api/
   Program.cs          # Arranque, configuración y endpoints
   Models/             # Ticket, enums y reglas de negocio
-  DTOs/               # Contratos de entrada
+  DTOs/               # Contratos de entrada y respuesta
   Data/               # DbContext y mapeo de entidades
   Migrations/         # Evolución del esquema PostgreSQL
 HelpDesk.Tests/
@@ -62,7 +63,7 @@ URL del perfil HTTP local: `http://localhost:5085`.
 | Método | Ruta | Comportamiento |
 | --- | --- | --- |
 | GET | `/api/health` | `200` con `{"status":"ok"}` |
-| GET | `/api/tickets` | `200` con el listado, incluido `[]` si no hay datos |
+| GET | `/api/tickets` | `200` con `items` y metadatos de paginación |
 | GET | `/api/tickets/{id}` | `200` con el ticket, o `404` |
 | POST | `/api/tickets` | `201` con el ticket y cabecera `Location`, o `400` |
 | PUT | `/api/tickets/{id}` | Actualiza título y descripción; `200`, `400` o `404` |
@@ -99,9 +100,35 @@ Respuesta ilustrativa: `201 Created`, con `Location: /api/tickets/1`.
 }
 ```
 
-El ID y la fecha los genera el servidor. `GET /api/tickets/1` devuelve el mismo formato; el listado devuelve un array de estos objetos.
+El ID y la fecha los genera el servidor. `GET /api/tickets/1` devuelve el mismo formato; el listado devuelve estos objetos dentro de `items`, junto con los metadatos de paginación.
 
 `priority` y `category` son opcionales en POST: si se omiten, se asignan `Medium` y `Other`. Enviar `null` explícitamente no es válido. Los nombres de estados, prioridades y categorías se aceptan con la capitalización mostrada; los números y nombres desconocidos se rechazan.
+
+### Filtrar y paginar tickets
+
+```http
+GET /api/tickets?status=Open&priority=High&category=Hardware&search=portátil&page=1&pageSize=10
+```
+
+Todos los parámetros son opcionales y combinables. `status`, `priority` y `category` aceptan los nombres exactos documentados. `search` busca una subcadena literal en Title o Description sin distinguir mayúsculas/minúsculas; `%`, `_` y `\` se tratan como texto. Una cadena vacía no añade filtro; los espacios se conservan.
+
+`page` es un entero positivo (por defecto 1); `pageSize` está entre 1 y 100 (por defecto 10). Valores vacíos, incorrectos o parámetros conocidos repetidos devuelven `400` con `{"error":"mensaje explicativo"}`. También se rechaza una combinación cuyo desplazamiento `(page - 1) * pageSize` supere `2147483647`.
+
+**Cambio de contrato:** GET /api/tickets ya no devuelve un array; los clientes deben leer `items`:
+
+```json
+{
+  "items": [],
+  "totalCount": 0,
+  "page": 1,
+  "pageSize": 10,
+  "totalPages": 0
+}
+```
+
+Cada elemento conserva todas las propiedades del ticket. `totalCount` cuenta los resultados filtrados antes de paginar; `totalPages` es su división entre `pageSize` redondeada hacia arriba, o 0 sin resultados. Una página posterior a la última devuelve `items: []` conservando los totales. El orden es CreatedAt descendente y después Id descendente. El orden resuelve empates; las escrituras concurrentes pueden desplazar resultados entre peticiones de páginas.
+
+EF Core ejecuta los filtros, la búsqueda PostgreSQL `ILIKE`, el conteo y la paginación en el servidor mediante consultas parametrizadas y `AsNoTracking`. No se cargan todos los tickets en memoria. Conteo y lectura son dos consultas: pueden observar cambios concurrentes entre ambas.
 
 ### Actualizar información y clasificación
 
@@ -227,7 +254,7 @@ Respuesta esperada: `{"status":"ok"}`. Este endpoint comprueba que la API respon
 
 ## Pruebas automatizadas
 
-La suite contiene **151 casos**: 70 sin PostgreSQL y 81 de integración PostgreSQL. La última verificación documentada registra **70 superados y 81 descubiertos sin ejecutar** por falta de configuración de pruebas; no acredita una ejecución completa de los 151.
+La suite contiene **197 casos**: 70 sin PostgreSQL y 127 de integración PostgreSQL. La última verificación documentada registra **70 superados y 127 descubiertos sin ejecutar** por falta de configuración de pruebas; no acredita una ejecución completa de los 197.
 
 Las pruebas unitarias verifican transiciones, validaciones y mapeos. Una prueba HTTP de salud utiliza WebApplicationFactory y TestServer en memoria, sin arrancar Kestrel manualmente. Para ejecutar todos los casos que no necesitan base de datos:
 
@@ -259,7 +286,6 @@ Si falta la cadena o no supera la validación del destino, los casos PostgreSQL 
 
 Previsión de evolución, pendiente de implementación:
 
-- Filtros, búsqueda y paginación de tickets.
 - Usuarios, técnicos y asignación de incidencias.
 - Autenticación y autorización.
 - Interfaz web para gestionar los tickets.
