@@ -25,6 +25,7 @@ public class HelpDeskDbContext : DbContext
         user.Property(user => user.Name).IsRequired().HasMaxLength(100);
         user.Property(user => user.Email).IsRequired().HasMaxLength(254);
         user.HasIndex(user => user.Email).IsUnique();
+        user.Property(user => user.PasswordHash).HasColumnType("text").IsRequired(false);
         user.Property(user => user.Role)
             .HasConversion<string>()
             .HasDefaultValue(UserRole.User)

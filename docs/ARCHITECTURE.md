@@ -388,6 +388,8 @@ Pruebas sin base inspeccionan metadatos, roles, normalización, defaults y opera
 
 ### 032 — Endpoints de usuarios con DTOs y control de unicidad concurrente
 
+Nota de evolución: POST/PUT públicos sustituidos por 403 en la decisión 035; se conserva aquí el diseño histórico.
+
 Estado: implementada el 21 de octubre de 2026; verificación HTTP PostgreSQL pendiente en esta sesión por conexión ausente.
 
 Decisión: mantener Minimal APIs en Program.cs con HelpDeskDbContext. CreateUserDto y UpdateUserDto delimitan Name, Email y Role; UserResponseDto delimita Id, Name, Email, Role y CreatedAt. Los GET proyectan DTOs en consultas AsNoTracking; el listado ordena por Id ascendente y devuelve array sin paginación. POST genera fecha UTC y devuelve 201/Location. PUT consulta primero el ID (404 si falta), valida y asigna solo campos editables, conservando Id/CreatedAt.
@@ -422,6 +424,8 @@ Pruebas de modelo, serialización y operaciones de migración sin conexión. Int
 
 ### 034 — Exclusión entre asignación y cambio de rol en PostgreSQL
 
+Nota de evolución: PUT público deshabilitado por la decisión 035; assignment conserva su transacción y FOR SHARE. El protocolo de PUT deberá recuperarse al habilitar una gestión autorizada.
+
 Estado: solución local revisada el 21 de octubre de 2026; compilada, ejecución PostgreSQL pendiente por conexión de pruebas ausente.
 
 Decisión: transacciones explícitas ReadCommitted en asignación a un usuario y PUT de usuarios. PATCH obtiene FOR SHARE sobre la fila del destino mediante SQL parametrizado y lee su rol en esa misma consulta. PUT obtiene FOR NO KEY UPDATE al leer el usuario; consulta después las asignaciones y conserva 409 si se solicita User con tickets asignados. Ambos mantienen el bloqueo hasta commit o disposición de la transacción. Desasignar solo necesita la escritura atómica habitual de EF Core.
@@ -431,6 +435,20 @@ Motivo: los chequeos previos independientes permitían que ambas operaciones val
 Consecuencias: orden de bloqueo de filas usuario → escritura del ticket; PUT consulta tickets sin bloquear sus filas. No se serializan asignaciones a tickets distintos del mismo usuario ni operaciones de usuarios independientes. La fila del usuario se bloquea también en PUT que modifica otros campos para evitar conversiones posteriores de bloqueo. No se añaden bloqueos explícitos de tabla, reintentos, triggers, paquetes ni migraciones. Se conservan contratos y errores HTTP. SQL ajeno a estos endpoints no queda sujeto a esta regla de rol.
 
 Pruebas: doce casos concurrentes para ambos órdenes, roles válidos, asignación/reasignación, independencia de usuarios, compatibilidad de asignaciones y borrado restringido. Sincronización con interceptores y TaskCompletionSource; observación de pg_blocking_pids para demostrar espera real, sin Task.Delay. Compiladas y descubiertas, sin ejecución PostgreSQL en esta sesión. Las 120 pruebas sin PostgreSQL sí se ejecutaron y superaron.
+
+### 035 — Credenciales nullable, registro User y retirada de gestión pública
+
+Estado: implementada el 21 de octubre de 2026; migración generada/revisada sin aplicar. PostgreSQL pendiente por conexión de pruebas ausente.
+
+Decisión: User.PasswordHash string? con JsonIgnore y columna text NULL. PasswordHasher<User> V3 del framework compartido, registrado por DI mediante IPasswordHasher<User>, con 210.000 iteraciones PBKDF2-HMAC-SHA512. No hay paquetes nuevos, modelo completo de Identity ni criptografía propia. La política valida 15–128 unidades UTF-16, no whitespace exclusivo ni controles, sin transformar la contraseña. PasswordHash no forma parte de ningún DTO público.
+
+POST /api/auth/register reutiliza UserValidation con rol fijo User, normaliza email y genera hash/fecha/ID en servidor. Su DTO solo acepta Name, Email y Password; campos adicionales no alteran el modelo. Devuelve 201/Location/UserResponseDto, 400 por entrada inválida y 409 por duplicado. La consulta previa y el índice único IX_Users_Email cubren también concurrencia mediante la captura acotada de 23505.
+
+Por ausencia de autorización, POST/PUT /api/users quedan incondicionalmente deshabilitados con 403 antes de resolver el contexto o leer el cuerpo, en todos los entornos. Se retiran los handlers anteriores; no hay clave fija ni bypass de desarrollo/pruebas. GET y tickets conservan sus contratos y bloqueos. Cuando vuelva la edición autorizada de roles deberá conservarse el protocolo de concurrencia 034.
+
+AddUserPasswordHash solo añade una columna nullable sin default/backfill. No modifica Tickets, relaciones ni filas anteriores. Down perdería los hashes al eliminar la columna. Las cuentas anteriores siguen sin credencial: el futuro login debe rechazar hash null/vacío. La primera contraseña requerirá activación con titularidad verificada, token de un uso y caducidad; no se implementa ese procedimiento ahora ni se permite reclamar cuentas repitiendo registro. Detalle y revisión previa en AUTHENTICATION.md.
+
+Pruebas: 17 casos nuevos sin PostgreSQL y 39 PostgreSQL (registro, validación, roles, hash/verificación, privacidad y logs, duplicados concurrentes con barrera, bloqueo de gestión y preservación). Las pruebas de los antiguos handlers públicos se sustituyen por el contrato actual, sin skips ni activación especial en Testing. La prueba de migración aplica el DDL generado sobre tablas temporales privadas con datos anteriores y FK, sin revertir el esquema compartido. Fixture, fábrica base y validador de conexión segura permanecen intactos. Suite actual: 137 sin PostgreSQL ejecutadas/superadas y 217 PostgreSQL solo descubiertas.
 
 ## Mantenimiento del registro
 

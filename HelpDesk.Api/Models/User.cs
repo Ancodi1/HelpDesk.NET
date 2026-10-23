@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace HelpDesk.Api.Models;
 
 public class User
@@ -12,6 +14,9 @@ public class User
         // Canonizar también al actualizar; NOT NULL se exige en PostgreSQL.
         set => email = value is null ? null! : value.Trim().ToLowerInvariant();
     }
+    [JsonIgnore]
+    public string? PasswordHash { get; set; }
+
     public UserRole Role { get; set; } = UserRole.User;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -280,37 +280,6 @@ public partial class TicketEndpointsTests
         await AssertStoredAndReturnedAsync(ticket);
     }
 
-    [Theory]
-    [InlineData(UserRole.Technician)]
-    [InlineData(UserRole.Admin)]
-    public async Task PutUser_AssignedUserCannotBeDowngradedUntilUnassigned(UserRole initial)
-    {
-        var user = await SeedHttpUserAsync(initial);
-        var ticket = await CreateTicketAsync(assignedToUserId: user.Id);
-        using var client = fixture.Factory.CreateClient();
-        using var conflict = await client.PutAsJsonAsync($"/api/users/{user.Id}", new { name = "No se guarda", user.Email, role = "User" });
-        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
-        await AssertHasErrorAsync(conflict);
-        await AssertUserStoredAsync(new(user.Id, user.Name, user.Email, initial, user.CreatedAt));
-        await AssertStoredAndReturnedAsync(ticket);
-        using var unassign = await client.PatchAsJsonAsync($"/api/tickets/{ticket.Id}/assignment", new { assignedToUserId = (int?)null });
-        Assert.Equal(HttpStatusCode.OK, unassign.StatusCode);
-        using var success = await client.PutAsJsonAsync($"/api/users/{user.Id}", new { user.Name, user.Email, role = "User" });
-        Assert.Equal(HttpStatusCode.OK, success.StatusCode);
-        await AssertUserStoredAsync(new(user.Id, user.Name, user.Email, UserRole.User, user.CreatedAt));
-    }
-
-    [Fact]
-    public async Task PutUser_CreatorOnly_CanChangeRole()
-    {
-        var user = await SeedHttpUserAsync(UserRole.Admin);
-        var ticket = await CreateTicketAsync(createdByUserId: user.Id);
-        using var client = fixture.Factory.CreateClient();
-        using var response = await client.PutAsJsonAsync($"/api/users/{user.Id}", new { user.Name, user.Email, role = "User" });
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        await AssertStoredAndReturnedAsync(ticket);
-    }
-
     [Fact]
     public async Task TicketCreator_DeletedAfterValidation_ReturnsConflict()
     {

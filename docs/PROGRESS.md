@@ -87,7 +87,7 @@ Comprobaciones realizadas:
 - `AddTicketStatus` aplicada por el desarrollador; seis tickets existentes verificados con `Open` antes de esta etapa. PATCH validado contra PostgreSQL en esta tarea.
 - POST ya no depende de `Max + 1`: los anteriores problemas con lista vacía, reutilización del máximo eliminado y cálculo concurrente de IDs quedan resueltos al delegar la generación en PostgreSQL.
 - SDK comprobado: .NET 10.0.112; runtime ASP.NET Core 10.0.12.
-- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Suite actual: 120 casos sin PostgreSQL superados y 245 casos PostgreSQL descubiertos. Los de base no se ejecutaron en la etapa 8.3 por configuración ausente; guía en POSTGRESQL_TESTS.md.
+- `HelpDesk.Tests`: 16 pruebas unitarias de transiciones y una prueba de integración HTTP de health con WebApplicationFactory. Registro histórico de etapa 8.3: 120 casos sin PostgreSQL superados y 245 casos PostgreSQL descubiertos; la suite actual figura al final en etapa 9.1. Los de base no se ejecutaron en la etapa 8.3 por configuración ausente; guía en POSTGRESQL_TESTS.md.
 - Conflicto MSB3277 resuelto: referencia explícita a Microsoft.EntityFrameworkCore.Relational 10.0.12 en la API, propagada a Tests. Restore, build y 16 tests sin advertencias.
 - Las rutas sin un endpoint registrado devolverán 404.
 
@@ -381,3 +381,26 @@ La suite concurrente contiene doce casos: ocho combinaciones de ambos órdenes, 
 Validación ejecutada en esta sesión: restore correcto; build correcto, cero errores y advertencias; 120 pruebas sin PostgreSQL superadas, cero fallidas u omitidas. Restore y build fallaron inicialmente en sandbox sin diagnóstico útil y se repitieron fuera con autorización. Descubrimiento de pruebas PostgreSQL completado sin ejecutar la fixture. HELPDESK_TEST_CONNECTION_STRING ausente: no se ejecutó ninguna prueba PostgreSQL ni se abrió conexión. La ejecución real de la nueva concurrencia queda pendiente; no se declara superada. git diff --check correcto.
 
 Sin nuevas dependencias, capas, cambios de esquema o migraciones adicionales. No se aplicaron migraciones ni se accedió a desarrollo; sin commit ni push. La garantía corresponde a estas operaciones HTTP; no impone una restricción de rol a escrituras SQL externas. Asignaciones simultáneas sobre el mismo ticket siguen usando última escritura, fuera del alcance solicitado.
+
+
+## Etapa 9.1: contraseñas y registro — 21 de octubre de 2026
+
+Punto de partida: repositorio limpio. El usuario comunica 375 pruebas superadas previamente; ese resultado no se atribuye a esta sesión.
+
+Implementados PasswordHash nullable/JsonIgnore en User, mapeo text NULL y POST /api/auth/register con RegisterUserDto. Reutiliza validación/normalización de nombre y correo, crea exclusivamente User, usa PasswordHasher<User> V3 con salt aleatorio y 210.000 iteraciones, y devuelve 201 con Location y DTO público. Política: 15–128 unidades UTF-16, no solo espacios ni controles, sin recortar/truncar/normalizar. Duplicados 409 incluidos registros concurrentes por índice único. Sin nuevos paquetes, tablas de Identity ni criptografía propia.
+
+POST/PUT /api/users ahora devuelven siempre 403 en todos los entornos antes de acceder al contexto/cuerpo. Se retiran sus handlers públicos y pruebas de escritura anteriores, sustituyéndolos por comprobaciones de prohibición y conservación de datos; no hay skips ni bypass de Testing. GET y tickets permanecen, incluidos los bloqueos de assignment. Cuando vuelva la edición autorizada de roles deberá conservarse el protocolo 034.
+
+Migración 20261021123515_AddUserPasswordHash generada con EF y configuración de diseño Testing sin credenciales/conexión; Designer y snapshot actualizados. Up añade solo Users.PasswordHash text nullable, sin default ni backfill, sin cambios de tickets/relaciones/datos. SQL incremental revisado: ALTER TABLE ADD y registro de historial dentro de transacción. Down pierde hashes al retirar la columna. No se aplicó ninguna migración en esta sesión ni se consultó/modificó desarrollo. Cuentas anteriores conservan NULL; no pueden reclamarse por registro y el futuro login deberá rechazarlas hasta activación segura. Procedimiento futuro y revisión previa documentados en AUTHENTICATION.md, sin implementarlos.
+
+Añadidos 17 casos sin PostgreSQL y 39 PostgreSQL: registro válido/normalización, límites, errores de nombre/correo/contraseña/JSON, rol User pese a campos extra, hash distinto y verificable, salt, ausencia de hash/contraseña en DTOs y logs, 403 en todos los entornos, duplicados de cuentas anteriores y concurrentes, preservación de usuarios/tickets/relaciones. La prueba de migración aplica DDL real generado a tablas temporales con filas y FK anteriores, sin revertir el esquema compartido; pendiente de ejecución. Mantiene la barrera de concurrencia sin Task.Delay, fixture/fábrica base/validador y limpieza por filas propias.
+
+Verificaciones finales de esta sesión:
+
+- dotnet restore: correcto tras fallo en sandbox sin diagnóstico; repetido fuera con autorización.
+- dotnet build --no-restore: correcto, cero errores y advertencias. El primer intento restringido falló sin diagnóstico; una compilación intermedia detectó un using ausente en una prueba y se corrigió antes de la validación final.
+- dotnet test --no-build --filter 'Category!=PostgreSQL': 137 superadas, cero fallidas y omitidas.
+- Descubrimiento PostgreSQL: 217 casos (34 de registro, cuatro de gestión prohibida, uno de migración, más regresiones conservadas), sin ejecutar fixture ni conexiones. Total actual 354; la variación respecto a 375 se debe a sustituir los antiguos contratos de escritura pública, no a omitir pruebas.
+- HELPDESK_TEST_CONNECTION_STRING ausente: cero pruebas PostgreSQL ejecutadas; no se declaran superadas ni se acredita aún persistencia real del registro o la migración.
+- SQL generado/revisado y has-pending-model-changes: modelo/snapshot coinciden, sin conectar.
+- git diff --check correcto. README, ARCHITECTURE y guías actualizados. Sin commit ni push; pendiente de revisión del usuario y ejecución segura PostgreSQL antes de aplicar manualmente a desarrollo.

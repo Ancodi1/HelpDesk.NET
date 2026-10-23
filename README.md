@@ -20,7 +20,8 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 ## Funcionalidades
 
 - CRUD de tickets con persistencia en PostgreSQL.
-- Consulta, creación y actualización REST de usuarios con roles `User`, `Technician` y `Admin`.
+- Consulta de usuarios y registro público de cuentas con contraseña y rol `User`.
+- Gestión POST/PUT de usuarios temporalmente deshabilitada (403) hasta disponer de autorización.
 - Creador opcional y asignación/reasignación/desasignación de técnicos en tickets.
 - Listado con filtros combinables, búsqueda sin distinguir mayúsculas y paginación.
 - Validación de título obligatorio, máximo de 100 caracteres, y descripción obligatoria.
@@ -61,17 +62,15 @@ La solución mantiene una estructura sencilla: los endpoints utilizan directamen
 
 ## Usuarios y roles
 
-`User` tiene Id identity, Name obligatorio (máximo 100), Email obligatorio (máximo 254), Role con valor inicial `User` y CreatedAt en UTC. EF guarda Role como texto y CreatedAt como `timestamp with time zone`. Los endpoints utilizan DTOs independientes de la entidad. Los tickets pueden referenciar al usuario como creador o asignado. No hay DELETE de usuarios, autenticación ni contraseñas.
+`User` conserva Id, Name (máximo 100), Email (máximo 254), Role y CreatedAt UTC. Añade `PasswordHash` nullable: los usuarios anteriores conservan null y sus relaciones con tickets. No se generan contraseñas ficticias. Los DTOs públicos solo contienen `id`, `name`, `email`, `role`, `createdAt`; el hash lleva además `JsonIgnore` en la entidad.
 
-Email se normaliza mediante `Trim().ToLowerInvariant()`: se pierde su capitalización original. El índice único y el CHECK de PostgreSQL conservan la política canónica de la etapa 8.1. POST/PUT rechazan campos ausentes, null, vacíos, espacios y longitudes excesivas. Name conserva el texto recibido y se mide antes de recortarlo; Email se mide después de normalizarlo.
+`POST /api/auth/register` recibe `name`, `email` y `password`. Reutiliza la validación de nombre/correo, normaliza Email con `Trim().ToLowerInvariant()` y crea exclusivamente `User`; cualquier campo adicional `role`, `passwordHash`, `id` o `createdAt` se ignora. Devuelve 201 con DTO público y Location `/api/users/{id}`, 400 por entrada inválida o 409 por correo duplicado. El índice único protege también registros concurrentes. No reemplaza contraseñas de cuentas anteriores.
 
-El formato de correo se comprueba con `MailAddress.TryCreate`, sin nombres de presentación ni espacios internos. Se requiere dominio con al menos dos etiquetas ASCII de 1–63 caracteres, letras/dígitos/guiones y sin guiones en los extremos. Dominios internacionalizados deben llegar en punycode. Es una comprobación de sintaxis razonable, no de existencia ni entrega; no se normalizan alias, puntos de proveedor ni equivalencias Unicode.
+La contraseña exige 15–128 unidades UTF-16, no puede ser solo espacios ni contener caracteres de control. Permite Unicode y espacios; no se recorta, normaliza ni trunca. Se usa `PasswordHasher<User>` V3 (PBKDF2-HMAC-SHA512, 210.000 iteraciones y salt aleatorio), sin instalar Identity completo. No hay login, JWT, recuperación ni envío de correos. Ver [diseño y revisión de la etapa 9.1](docs/AUTHENTICATION.md).
 
-Role admite los nombres exactos `User`, `Technician` y `Admin`; números, null y nombres desconocidos devuelven 400. POST usa User al omitir Role. PUT requiere los tres campos editables y conserva Id/CreatedAt; los campos JSON adicionales se ignoran. Para un ID inexistente, PUT devuelve 404 antes de validar los campos del DTO, siguiendo la convención de tickets.
+Email conserva la política anterior: formato mediante `MailAddress.TryCreate`, sin nombres de presentación ni espacios internos, dominio ASCII con al menos un punto; dominios internacionalizados en punycode. PostgreSQL exige correo canónico mediante CHECK e índice único. Los GET proyectan DTOs con AsNoTracking y el listado sigue siendo un array ordenado por Id.
 
-Los GET usan AsNoTracking y proyectan UserResponseDto (`id`, `name`, `email`, `role`, `createdAt`); el listado es un array ordenado por Id ascendente, sin paginación en esta etapa. POST devuelve 201 y Location; PUT devuelve 200. Duplicados devuelven 409 con `{"error":"Ya existe un usuario con ese correo electrónico."}`. Una consulta previa excluye al propio usuario en PUT y la captura de SQLSTATE 23505 del índice IX_Users_Email cubre carreras concurrentes; otros errores PostgreSQL no se convierten en conflictos.
-
-El desarrollador confirma las migraciones hasta AddUsers aplicadas a desarrollo y las 318 pruebas anteriores superadas. La nueva AddTicketUserRelations está generada y revisada, sin aplicar en esta sesión.
+**Cambio transitorio de contrato:** POST `/api/users` y PUT `/api/users/{id}` devuelven siempre 403 con JSON `error`, incluso con cuerpos incorrectos o IDs inexistentes, antes de acceder a la base. No hay excepción para Development/Testing ni clave fija para habilitarlos. Se retiraron los handlers públicos de creación y edición de roles. Los técnicos/administradores anteriores se conservan; no se ofrece una vía HTTP de aprovisionamiento privilegiado hasta implementar autorización. Los tests preparan sus usuarios mediante EF exclusivamente en `helpdesk_test_db`.
 
 ## API
 
@@ -81,8 +80,9 @@ URL del perfil HTTP local: `http://localhost:5085`.
 | --- | --- | --- |
 | GET | `/api/users` | `200` con array de DTOs ordenado por Id, incluido `[]` |
 | GET | `/api/users/{id}` | `200` con DTO o `404` |
-| POST | `/api/users` | `201` con DTO y Location, `400` o `409` |
-| PUT | `/api/users/{id}` | `200` con DTO, `400`, `404` o `409` |
+| POST | `/api/auth/register` | `201` con DTO y Location, `400` o `409`; siempre rol User |
+| POST | `/api/users` | `403`: gestión temporalmente deshabilitada |
+| PUT | `/api/users/{id}` | `403`: gestión temporalmente deshabilitada |
 | GET | `/api/health` | `200` con `{"status":"ok"}` |
 | GET | `/api/tickets` | `200` con `items` y metadatos de paginación |
 | GET | `/api/tickets/{id}` | `200` con el ticket, o `404` |
@@ -96,16 +96,9 @@ URL del perfil HTTP local: `http://localhost:5085`.
 
 ### Comprobación manual de usuarios
 
-Con la API arrancada y sobre una base elegida para pruebas manuales, estos comandos crean y actualizan un usuario. No se han ejecutado contra desarrollo en esta etapa. Sustituir `123` por el ID devuelto por POST y utilizar un correo de ejemplo distinto en cada ejecución:
+Los GET de usuarios siguen disponibles. Para registrar, enviar `name`, `email` y una contraseña nueva elegida localmente a `/api/auth/register`. Introducirla desde un cliente que no guarde cuerpos sensibles en historial, logs ni capturas compartidas; no colocar contraseñas reales en comandos versionados. Se documenta el contrato y la validación en [AUTHENTICATION.md](docs/AUTHENTICATION.md).
 
-```bash
-curl -i http://localhost:5085/api/users
-curl -i -X POST http://localhost:5085/api/users -H 'Content-Type: application/json' -d '{"name":"Usuario de ejemplo","email":"manual-82@example.invalid"}'
-curl -i http://localhost:5085/api/users/123
-curl -i -X PUT http://localhost:5085/api/users/123 -H 'Content-Type: application/json' -d '{"name":"Usuario actualizado","email":"manual-82@example.invalid","role":"Technician"}'
-```
-
-Repetir POST con el mismo correo en mayúsculas permite comprobar 409. Enviar Name vacío, Email sin formato o Role desconocido devuelve 400 con JSON `error`. GET/PUT sobre un ID inexistente devuelve 404. No hay DELETE de usuarios para retirar este registro desde la API.
+Las llamadas anteriores a POST/PUT `/api/users` ya no crean ni modifican filas: devuelven 403. No se ejecutaron solicitudes contra desarrollo en esta etapa.
 
 ### Crear y consultar un ticket
 
@@ -172,15 +165,15 @@ Desasignar requiere null explícito:
 
 Campo omitido, tipo incorrecto, usuario inexistente o rol User: 400. Ticket inexistente con cuerpo válido: 404. Éxito: 200 con ticket completo; repetir la asignación válida o la desasignación no guarda cambios. Si un usuario desaparece entre la validación y el guardado, una violación de las nuevas FK devuelve 409. No cambia el estado ni hay restricciones adicionales por estado.
 
-PUT /api/users/{id} devuelve 409 si se solicita Role=User mientras tiene tickets asignados, sin guardar tampoco los demás campos. Primero hay que reasignarlos o desasignarlos. Ser solo creador no limita cambios de rol. Las FK son opcionales, independientes e indexadas; PostgreSQL impide borrar usuarios referenciados mediante ON DELETE RESTRICT, sin borrar tickets en cascada. No se añade DELETE de usuarios.
+En la etapa 9.1 PUT /api/users/{id} está deshabilitado con 403: no permite cambiar roles ni otros campos. Las FK siguen siendo opcionales, independientes e indexadas, con ON DELETE RESTRICT y sin borrado en cascada.
 
-**Límite de consistencia:** las comprobaciones de rol y asignaciones son consultas previas sin bloqueo común. Un cambio de rol concurrente puede superar ambas comprobaciones y dejar un usuario User con tickets asignados; una escritura SQL directa también puede hacerlo. Las FK garantizan existencia, no rol. Un test controlado documenta esta carrera; no se promete consistencia transaccional para ella. Asignaciones simultáneas al mismo ticket siguen la última escritura que se guarde.
+La asignación mantiene la transacción ReadCommitted y FOR SHARE sobre el usuario destino hasta commit. Se permiten asignaciones a tickets distintos del mismo técnico. El antiguo PUT utilizaba FOR NO KEY UPDATE antes de comprobar asignaciones; al reintroducirlo con autorización deberá conservarse ese protocolo. No hay garantía de rol frente a SQL externo que eluda la regla HTTP. Asignaciones simultáneas al mismo ticket siguen la última escritura.
 
 ### Revisar y aplicar AddTicketUserRelations manualmente
 
 Migración `20261021120235_AddTicketUserRelations`: dos columnas integer NULL en Tickets, dos índices y dos FK a Users con RESTRICT. Los tickets anteriores conservan sus campos y reciben null en las nuevas relaciones; no hay backfill, usuarios ficticios ni reconstrucción de tabla. Down elimina las dos relaciones/columnas y pierde sus valores, conservando los demás datos de tickets.
 
-La API actualizada necesita el esquema nuevo antes de utilizarse, incluido PUT de usuarios. Revisar el SQL y las migraciones pendientes; el DDL requiere bloqueos sobre Tickets durante su aplicación. Estos comandos son para revisión y ejecución manual del usuario; no se han aplicado migraciones en esta sesión:
+Las consultas y relaciones de tickets necesitan ese esquema. La etapa 9.1 requiere además AddUserPasswordHash, cuya revisión previa está en [AUTHENTICATION.md](docs/AUTHENTICATION.md). Revisar el SQL y las migraciones pendientes; el DDL requiere bloqueos sobre Tickets durante su aplicación. Estos comandos son para revisión y ejecución manual del usuario; no se han aplicado migraciones en esta sesión:
 
 ```bash
 dotnet ef migrations script AddUsers AddTicketUserRelations --project HelpDesk.Api --startup-project HelpDesk.Api --context HelpDeskDbContext --output /tmp/helpdesk-ticket-user-relations-review.sql
@@ -344,7 +337,7 @@ Respuesta esperada: `{"status":"ok"}`. Este endpoint comprueba que la API respon
 
 ## Pruebas automatizadas
 
-La suite contiene **365 casos**: 120 sin PostgreSQL y 245 de integración PostgreSQL. La última verificación de esta etapa registra **120 superados y 245 descubiertos sin ejecutar** por falta de configuración de pruebas; no acredita una ejecución completa de los 365.
+La suite actual contiene **354 casos**: **137 sin PostgreSQL superados** y **217 PostgreSQL descubiertos sin ejecutar** por falta de conexión segura en esta sesión. El total cambia respecto a la etapa anterior porque las pruebas de escritura pública de usuarios se sustituyen por el contrato 403 y las del nuevo registro; no se omiten con skip.
 
 Las pruebas unitarias verifican transiciones, validaciones y mapeos. Una prueba HTTP de salud utiliza WebApplicationFactory y TestServer en memoria, sin arrancar Kestrel manualmente. Para ejecutar todos los casos que no necesitan base de datos:
 
@@ -382,6 +375,7 @@ Previsión de evolución, pendiente de implementación:
 
 ## Documentación
 
+- [Contraseñas, registro y revisión de la migración](docs/AUTHENTICATION.md).
 - [Progreso y verificaciones](docs/PROGRESS.md).
 - [Arquitectura y decisiones](docs/ARCHITECTURE.md).
 - [Preparación local de PostgreSQL](docs/POSTGRESQL.md).

@@ -3,6 +3,7 @@ using HelpDesk.Api.DTOs;
 using HelpDesk.Api.Models;
 using HelpDesk.Api.Validation;
 using Npgsql;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
 
@@ -17,6 +18,14 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
+
+// Solo el hasher del framework compartido: no se instala el modelo completo de Identity.
+builder.Services.Configure<PasswordHasherOptions>(options =>
+{
+    options.CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3;
+    options.IterationCount = 210_000;
+});
+builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
 builder.Services.AddDbContext<HelpDeskDbContext>(options =>
 {
@@ -350,16 +359,24 @@ app.MapGet("/api/users/{id}", async (int id, HelpDeskDbContext dbContext) =>
     return Results.Ok(user);
 });
 
-app.MapPost("/api/users", async (CreateUserDto dto, HelpDeskDbContext dbContext) =>
+// Deshabilitados en todos los entornos hasta disponer de autorización real.
+// Sin DTO ni DbContext: se rechaza antes de leer cuerpos o acceder a datos.
+app.MapPost("/api/users", UserManagementDisabled);
+app.MapPut("/api/users/{id}", UserManagementDisabled);
+
+app.MapPost("/api/auth/register", async (RegisterUserDto dto, HelpDeskDbContext dbContext,
+    IPasswordHasher<User> passwordHasher) =>
 {
-    var error = UserValidation.Validate(dto.Name, dto.Email, dto.Role, out var email, out var role);
+    var error = UserValidation.Validate(dto.Name, dto.Email, nameof(UserRole.User), out var email, out _)
+        ?? PasswordValidation.Validate(dto.Password);
     if (error is not null)
         return Results.BadRequest(new { error });
 
     if (await dbContext.Users.AnyAsync(user => user.Email == email))
         return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
 
-    var user = new User { Name = dto.Name!, Email = email, Role = role, CreatedAt = DateTime.UtcNow };
+    var user = new User { Name = dto.Name!, Email = email, Role = UserRole.User, CreatedAt = DateTime.UtcNow };
+    user.PasswordHash = passwordHasher.HashPassword(user, dto.Password!);
     dbContext.Users.Add(user);
     try
     {
@@ -367,45 +384,10 @@ app.MapPost("/api/users", async (CreateUserDto dto, HelpDeskDbContext dbContext)
     }
     catch (DbUpdateException exception) when (IsDuplicateUserEmail(exception))
     {
-        // El índice sigue siendo la autoridad si dos solicitudes superan la consulta previa.
+        // El índice único resuelve también registros simultáneos con el mismo correo.
         return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
     }
     return Results.Created($"/api/users/{user.Id}", ToUserResponse(user));
-});
-
-app.MapPut("/api/users/{id}", async (int id, UpdateUserDto dto, HelpDeskDbContext dbContext) =>
-{
-    await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
-    // Bloquear y leer en la misma consulta evita validar una versión anterior a la espera.
-    var user = await dbContext.Users
-        .FromSqlInterpolated($"SELECT * FROM \"Users\" WHERE \"Id\" = {id} FOR NO KEY UPDATE")
-        .SingleOrDefaultAsync();
-    if (user is null)
-        return Results.NotFound();
-
-    var error = UserValidation.Validate(dto.Name, dto.Email, dto.Role, out var email, out var role);
-    if (error is not null)
-        return Results.BadRequest(new { error });
-
-    if (await dbContext.Users.AnyAsync(other => other.Email == email && other.Id != id))
-        return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
-
-    if (role == UserRole.User && await dbContext.Tickets.AnyAsync(ticket => ticket.AssignedToUserId == id))
-        return Results.Conflict(new { error = "No se puede cambiar a User mientras tenga tickets asignados. Reasigna o desasigna primero." });
-
-    user.Name = dto.Name!;
-    user.Email = email;
-    user.Role = role;
-    try
-    {
-        await dbContext.SaveChangesAsync();
-        await transaction.CommitAsync();
-    }
-    catch (DbUpdateException exception) when (IsDuplicateUserEmail(exception))
-    {
-        return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
-    }
-    return Results.Ok(ToUserResponse(user));
 });
 
 app.Run();
@@ -429,6 +411,10 @@ static string? ValidateTicket(string? title, string? description)
 
     return null;
 }
+
+static IResult UserManagementDisabled() => Results.Json(
+    new { error = "La gestión de usuarios está deshabilitada hasta disponer de autenticación y autorización." },
+    statusCode: StatusCodes.Status403Forbidden);
 
 static UserResponseDto ToUserResponse(User user) => new(user.Id, user.Name, user.Email, user.Role, user.CreatedAt);
 

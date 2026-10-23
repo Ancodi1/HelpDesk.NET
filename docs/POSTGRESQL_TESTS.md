@@ -39,7 +39,7 @@ El validador acepta únicamente las claves Host, Port, Database, Username, Passw
 
 ## Ejecución
 
-Pruebas sin PostgreSQL (120 casos: transiciones, prioridades, categorías, usuarios, migración, configuración segura y HTTP health):
+Pruebas sin PostgreSQL (137 casos en etapa 9.1: reglas, modelos, migraciones, configuración segura, hashing y HTTP de salud/prohibición de gestión):
 
 ```bash
 dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL'
@@ -130,3 +130,14 @@ Integración cubre creadores por rol, creación anterior/null, errores, asignaci
 Dos tests pausan el guardado después de la validación y eliminan un usuario propio todavía sin referencias para comprobar 409 de POST/assignment por FK. Otro pausa la asignación, cambia el rol por HTTP y comprueba el límite conocido: las comprobaciones previas sin bloqueo común pueden dejar User con un ticket asignado. El test documenta el comportamiento actual, no una garantía de atomicidad. Los interceptores viven en fábricas derivadas de la segura existente, con timeout de 15 segundos; no cambian conexión, preparación del esquema ni validación de destino.
 
 La limpieza se reordena obligatoriamente: primero los tickets por IDs/títulos propios y después los usuarios propios por IDs/correos exactos en finally. No se borran referencias de tickets ajenos ni se amplía ningún filtro global. Si la limpieza de tickets falla, la FK puede impedir también la de usuarios; se comunica el fallo y siguen vigentes los límites ante abortos y pérdida de conexión. No se debilitan las restricciones para limpiar.
+
+
+## Registro y contraseñas — etapa 9.1
+
+Estado actual: 137 pruebas sin PostgreSQL superadas y 217 PostgreSQL descubiertas sin ejecutar por conexión segura ausente. El usuario comunicó 375 pruebas superadas antes de esta etapa. El total actual es 354: se sustituyen los contratos de escritura pública de usuarios por 403 y las pruebas de registro, sin skips ni bypass de Testing.
+
+AddUserPasswordHash añade únicamente PasswordHash text nullable. La fixture validada la aplicará solo a helpdesk_test_db al ejecutar la suite con configuración segura; esta sesión no la aplica. Los 39 casos PostgreSQL nuevos incluyen 34 de registro (también campos extra de rol/hash, normalización, validación, privacidad/logs, duplicados y carrera real con barrera), cuatro de prohibición de gestión y uno de migración sobre tablas temporales con datos anteriores y FK. Este último genera el SQL de Up con el proveedor y compara filas/relaciones antes/después sin revertir ni modificar las tablas compartidas.
+
+POST y PUT de usuarios están deshabilitados en todos los entornos. Se conservan las preparaciones de usuarios por EF en la base exclusiva de pruebas, GET, persistencia y relaciones; los casos de escritura de las etapas anteriores y carreras dependientes de cambiar roles por HTTP se sustituyen por rechazo 403 y conservación. Assignment mantiene su transacción y los tests concurrentes de asignaciones compatibles/borrado.
+
+Las contraseñas válidas de prueba se generan durante la ejecución; ni estas ni sus hashes se imprimen. La comprobación de logs usa un proveedor de captura solo en la fábrica derivada del test. No activar logging de cuerpos ni EnableSensitiveDataLogging. Las cuentas anteriores con NULL no se reclaman por el registro. Revisar AUTHENTICATION.md y el SQL incremental antes de cualquier aplicación manual a desarrollo.
