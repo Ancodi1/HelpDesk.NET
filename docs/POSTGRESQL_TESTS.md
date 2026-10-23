@@ -39,7 +39,7 @@ El validador acepta únicamente las claves Host, Port, Database, Username, Passw
 
 ## Ejecución
 
-Pruebas sin PostgreSQL (137 casos en etapa 9.1: reglas, modelos, migraciones, configuración segura, hashing y HTTP de salud/prohibición de gestión):
+Pruebas sin PostgreSQL (el resultado vigente de etapa 9.3 figura al final: reglas, modelos, migraciones, hashing, JWT y protección HTTP sin acceder a datos):
 
 ```bash
 dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL'
@@ -141,3 +141,24 @@ AddUserPasswordHash añade únicamente PasswordHash text nullable. La fixture va
 POST y PUT de usuarios están deshabilitados en todos los entornos. Se conservan las preparaciones de usuarios por EF en la base exclusiva de pruebas, GET, persistencia y relaciones; los casos de escritura de las etapas anteriores y carreras dependientes de cambiar roles por HTTP se sustituyen por rechazo 403 y conservación. Assignment mantiene su transacción y los tests concurrentes de asignaciones compatibles/borrado.
 
 Las contraseñas válidas de prueba se generan durante la ejecución; ni estas ni sus hashes se imprimen. La comprobación de logs usa un proveedor de captura solo en la fábrica derivada del test. No activar logging de cuerpos ni EnableSensitiveDataLogging. Las cuentas anteriores con NULL no se reclaman por el registro. Revisar AUTHENTICATION.md y el SQL incremental antes de cualquier aplicación manual a desarrollo.
+
+
+## Autorización por roles y recursos — etapa 9.3
+
+Suite actual: 489 casos definidos, 216 sin PostgreSQL y 273 PostgreSQL. Los apartados fechados anteriores son históricos; POST/PUT administrativos se reactivan solo para Admin en esta etapa.
+
+Las regresiones de tickets, clasificación, filtros, usuarios, relaciones y bloqueos utilizan ahora un Admin persistido propio por caso. TicketEndpointsTests.Authentication.cs emite JWT reales con JwtTokenIssuer y usa el handler Bearer y políticas de producción, sin esquema de prueba, cabecera de bypass ni excepciones en la API. Las fábricas derivadas reciben tokens de su propio emisor/configuración. Registro/login siguen probándose sin token. Todos los usuarios y tickets propios se registran para limpieza: primero tickets, después usuarios; no hay borrados globales ni reinicio de secuencias.
+
+Se añaden 42 casos PostgreSQL: visibilidad por rol e históricos, totales/paginación sin filtraciones, creador obtenido de identidad pese a parámetros falsificados, denegación de gestión para User/Technician, estado solo para técnico asignado, perfil privado, rol modificado/cuenta eliminada/claim privilegiado sin respaldo en base, administración sin alterar hashes/ID/fecha, validación y duplicados concurrentes, ocho combinaciones de cambio de rol/asignación (ambos órdenes, Technician/Admin y asignación/reasignación), y espera/rechazo de estado al reasignar concurrentemente. Los tests de asignaciones compartidas y borrado restringido anteriores se mantienen. La sincronización usa interceptores y pg_blocking_pids; los límites temporales solo detectan fallos.
+
+Los 61 casos nuevos sin PostgreSQL prueban las 13 rutas protegidas con token ausente/inválido/caducado/manipulado, la lista exacta de rutas públicas y política fallback, e identidades firmadas inválidas/ambiguas. El lector JWT rechaza un sub duplicado con 401; otros claims inválidos que llegan a la política se rechazan con 403 antes de resolver DbContext. Las seis pruebas anteriores de gestión anónima pasan ahora a exigir 401 en todos los entornos, conservando el rechazo antes de enlazar el cuerpo o acceder a base.
+
+Resultado final: 216 sin PostgreSQL ejecutadas y superadas, cero fallidas u omitidas. 273 PostgreSQL compiladas y descubiertas sin ejecución. HELPDESK_TEST_CONNECTION_STRING ausente: no se abrió ninguna conexión, se aplicaron migraciones ni se comprobó la concurrencia real en esta sesión. Las nuevas garantías PostgreSQL quedan pendientes de ejecución segura; el descubrimiento no demuestra que pasen. Fixture y PostgreSqlTestSettings no cambian y siguen exigiendo exclusivamente helpdesk_test_db, rol limitado y conexión explícita.
+
+Para repetir de forma aislada sin imprimir secretos, seguir la carga oculta de la variable al inicio de esta guía y ejecutar:
+
+```bash
+dotnet test HelpDesk.NET.slnx --filter 'Category=PostgreSQL'
+```
+
+No usar DefaultConnection de desarrollo ni cambiar usuarios existentes para obtener Admin. Las cuentas de roles de pruebas se preparan por EF solo dentro de la base validada; esto no proporciona una vía de aprovisionamiento en la API. La comprobación manual de solo lectura para cuentas ya activadas está en AUTHENTICATION.md.

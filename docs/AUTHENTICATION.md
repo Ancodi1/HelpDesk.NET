@@ -1,6 +1,6 @@
-# Preparación de autenticación — etapa 9.1
+# Autenticación y autorización — etapas 9.1–9.3
 
-Estado: registro y almacenamiento de hashes implementados; sin login, JWT, autorización, recuperación, correos ni frontend. No se han aplicado migraciones ni modificado datos de desarrollo.
+Estado actual: registro, login JWT y autorización por roles/recursos implementados. Sin recuperación, correos, frontend ni activación administrativa. No se han aplicado migraciones ni modificado datos de desarrollo. Los apartados de transición 9.1 y los límites iniciales 9.2 son históricos; los permisos vigentes están en la sección 9.3 al final.
 
 ## Hash y salt
 
@@ -21,7 +21,7 @@ Se registra `IPasswordHasher<User>` → `PasswordHasher<User>` por DI, usando el
 
 PasswordHash tiene JsonIgnore como defensa adicional; los GET siguen proyectando DTOs públicos. No se añade logging de cuerpos, contraseñas o hashes ni se habilita EnableSensitiveDataLogging. Mantener estos controles también en el proxy/hosting; para uso fuera de local transportar credenciales solo mediante HTTPS. Los tests generan contraseñas válidas efímeras y no imprimen sus valores ni hashes.
 
-## Gestión pública de usuarios
+## Transición histórica 9.1: bloqueo de gestión pública de usuarios
 
 POST `/api/users` y PUT `/api/users/{id}` devuelven siempre 403 con JSON error antes de leer cuerpos, resolver DbContext o consultar el ID. El bloqueo es incondicional en todos los entornos, sin configuración de excepción ni secretos fijos. Se eliminan los handlers de escritura públicos anteriores. GET de usuarios y endpoints de tickets mantienen su comportamiento.
 
@@ -89,7 +89,7 @@ La API actualizada necesita la migración revisada antes de usar entidades User 
 
 ## Etapa 9.2: login y JWT
 
-Estado actual: login y JWT implementados, sin autorización por roles ni restricciones nuevas. Los apartados 9.1 anteriores conservan el registro histórico; las cuentas con hash NULL ya se rechazan al iniciar sesión. No hay migración nueva.
+Estado al cerrar 9.2 (histórico): login y JWT implementados, aún sin autorización por roles. Los apartados 9.1 anteriores conservan el registro histórico; las cuentas con hash NULL ya se rechazan al iniciar sesión. No hay migración nueva.
 
 `POST /api/auth/login` recibe `email` y `password` como strings. Normaliza únicamente el correo con `Trim().ToLowerInvariant()`, consulta PostgreSQL con `AsNoTracking` y usa `IPasswordHasher<User>.VerifyHashedPassword`. Campos ausentes, null o solo espacios producen 400. Cuenta inexistente, contraseña incorrecta y hash NULL/vacío o Base64 corrupto producen el mismo 401: `{"error":"Credenciales incorrectas."}`. No transforma la contraseña ni permite seleccionar rol. `SuccessRehashNeeded` se acepta sin actualizar el hash; una futura evolución deberá decidir su actualización segura.
 
@@ -101,7 +101,7 @@ Estado actual: login y JWT implementados, sin autorización por roles ni restric
 
 `JwtTokenIssuer` usa `TimeProvider` para obtener UTC y emitir HS256. Incluye `sub` (ID), `email` canónico, `role` leído de la cuenta, `iss`, `aud`, `iat`, `exp` y `nbf`. La duración es 1.800 segundos. JWT está firmado, no cifrado: sus claims son legibles; no contiene contraseñas ni hashes.
 
-`AddAuthentication().AddJwtBearer()` registra el handler estándar. `UseAuthentication()` prepara el principal; no se añade `RequireAuthorization`, políticas ni autorización por rol. El handler valida firma HS256, emisor, audiencia, presencia de caducidad y vigencia. La tolerancia temporal es de **30 segundos**: un token puede aceptarse hasta ese margen después de expirar; sincronizar relojes. Se desactiva el mapeo de claims, el almacenamiento del token en propiedades de autenticación y los detalles de error Bearer.
+`AddAuthentication().AddJwtBearer()` registra el handler estándar. `UseAuthentication()` prepara el principal. La etapa 9.3 añade a continuación `UseAuthorization()`, políticas y comprobación de cuenta actual descritas al final. El handler valida firma HS256, emisor, audiencia, presencia de caducidad y vigencia. La tolerancia temporal es de **30 segundos**: un token puede aceptarse hasta ese margen después de expirar; sincronizar relojes. Se desactiva el mapeo de claims, el almacenamiento del token en propiedades de autenticación y los detalles de error Bearer.
 
 ### Configuración en Linux Mint
 
@@ -175,10 +175,143 @@ PY
 4. Repetir con espacios/mayúsculas en el correo: debe devolver 200. Contraseña incorrecta o correo inexistente: 401 genérico. Contraseña vacía: 400. Detener la API con Ctrl+C. Esta comprobación solo lee datos; no verifica por sí sola la firma criptográfica.
 5. Para las comprobaciones automáticas de firma y errores, ejecutar `dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL'`. Las pruebas HTTP completas de login usan exclusivamente la fixture y conexión explícita a `helpdesk_test_db` descritas en POSTGRESQL_TESTS.md; no sustituyen esa variable por la conexión de desarrollo.
 
-### Límites y decisiones pendientes
+### Límites históricos al cerrar 9.2 (evolucionados en 9.3)
 
 - Un JWT emitido no se revoca automáticamente al cambiar el rol, contraseña o deshabilitar una cuenta. El modelo actual aún no incorpora deshabilitación. La estrategia de revocación y comprobación de estado corresponde al diseño futuro de autorización.
 - Los endpoints de tickets y los GET de usuarios conservan acceso público; un Bearer inválido no los restringe. POST/PUT de usuarios siguen devolviendo 403 incluso con JWT válido. No hay endpoint nuevo de perfil privado.
 - No hay refresh tokens, cierre de sesión con revocación, recuperación, frontend ni activación de cuentas anteriores. Etapa 9.3 pendiente de revisión y solicitud.
 - El error de credenciales es uniforme, pero no se igualan tiempos entre cuenta inexistente y verificación PBKDF2. No se añaden todavía limitación de intentos ni bloqueo: evaluar abuso y enumeración temporal antes de exponer el servicio.
 - No registrar cuerpos, contraseñas, hashes ni cabeceras Authorization en aplicación, proxy o herramientas de observabilidad. El manejador global responde 500 genérico también en Development para evitar reflejar headers sensibles en la página de excepciones; conserva el diagnóstico interno estándar, sin habilitar logging sensible de EF.
+
+## Etapa 9.3: permisos vigentes
+
+`AddAuthorization` configura políticas estándar y `UseAuthorization` se ejecuta después de `UseAuthentication`. Solo GET health y POST register/login llevan `AllowAnonymous`. Todas las otras rutas llevan `RequireAuthorization`; una política fallback protege por defecto futuras rutas sin metadatos explícitos.
+
+| Método y ruta | Permiso |
+| --- | --- |
+| GET `/api/health` | Público |
+| POST `/api/auth/register` | Público, crea exclusivamente User |
+| POST `/api/auth/login` | Público, verifica credenciales y emite JWT |
+| GET `/api/tickets` | User: propios; Technician: propios o asignados; Admin: todos |
+| GET `/api/tickets/{id}` | Misma visibilidad que el listado |
+| POST `/api/tickets` | Cualquier cuenta autorizada; siempre creador propio |
+| PUT `/api/tickets/{id}` | Solo Admin |
+| PATCH `/api/tickets/{id}/status` | Admin o Technician asignado al ticket |
+| PATCH `/api/tickets/{id}/priority` | Solo Admin |
+| PATCH `/api/tickets/{id}/category` | Solo Admin |
+| PATCH `/api/tickets/{id}/assignment` | Solo Admin |
+| DELETE `/api/tickets/{id}` | Solo Admin |
+| GET `/api/users` | Solo Admin |
+| GET `/api/users/{id}` | Admin o la propia cuenta |
+| POST `/api/users` | Solo Admin; crea sin credencial |
+| PUT `/api/users/{id}` | Solo Admin; edita nombre, correo y rol |
+
+### Identidad y rol actual
+
+`CurrentAccountHandler` exige JWT autenticado, exactamente un `sub` entero positivo y exactamente un `role` reconocido. Consulta ID/rol de la cuenta en PostgreSQL, sin cargar el hash, y exige que el rol coincida con el claim. Completa `CurrentAccount` scoped únicamente tras comprobarlo; ningún ID ni rol se obtiene del cuerpo o parámetros del cliente.
+
+La comprobación se hace en **cada petición protegida**, también en lecturas; no se mantiene una caché de roles entre peticiones. Cuenta eliminada o rol distinto: 403 genérico, sin datos ni explicación de qué condición falló. Incluso una promoción exige iniciar sesión otra vez. Una petición con token criptográficamente inválido, caducado o ausente produce 401 y challenge Bearer antes de leer el cuerpo o resolver el contexto. Un fallo de PostgreSQL produce 500 genérico: nunca se concede acceso usando solo claims como alternativa. Health/register/login permanecen públicos aunque se envíe un Bearer inválido.
+
+El rol se comprueba al autorizar la petición, no continuamente durante su ejecución. Una petición que ya superó esa comprobación puede terminar después de una modificación concurrente del rol. No se ofrece revocación instantánea de peticiones en curso. Cambios de contraseña sin cambio de rol no invalidan tokens existentes. No hay deshabilitación de cuentas en el modelo actual, jti/denylist, refresh tokens ni logout con revocación. Un rol que cambia y luego vuelve al anterior puede hacer utilizable otra vez un JWT no caducado; una revocación permanente requerirá versión de sesión u otro diseño posterior.
+
+### Acceso a recursos e históricos
+
+`TicketAccess.VisibleTo` añade el predicado de propietario/asignado al IQueryable antes de filtros, conteo y paginación, y se usa también en el detalle. Un ticket ajeno y un ID inexistente devuelven el mismo 404 sin cuerpo. No se devuelven recuentos globales a User/Technician.
+
+Los tickets históricos con creador NULL no se reasignan ni se alteran: Admin puede gestionarlos y un Technician puede leerlos/cambiar su estado únicamente si está asignado. Una asignación a User no le concede visibilidad. Un técnico puede consultar un ticket propio no asignado pero no cambiar su estado (403); si ni siquiera es visible, el PATCH de estado devuelve 404. Las operaciones vetadas por la política del rol devuelven 403 sin consultar el ticket, exista o no.
+
+POST ignora `CreatedByUserId` enviado por cualquier rol, sea propio, ajeno, inexistente o NULL, y fija el creador a la cuenta autorizada. También ignora campos extra de asignación/rol; AssignedToUserId comienza NULL. Tipos JSON incompatibles siguen siendo 400 por el enlace del DTO. Las FK y la captura acotada de conflictos de integridad permanecen. La política de contraseñas y el registro no cambian.
+
+PATCH de estado abre ReadCommitted y lee el ticket con FOR UPDATE antes de comprobar visibilidad/asignación. Conserva el bloqueo hasta guardar/commit o disponer la transacción, también en retornos tempranos. Así no se autoriza un cambio basándose en una asignación anterior a una reasignación concurrente. Se conservan transiciones, 409 e idempotencia. El resto de gestión de tickets requiere Admin y mantiene sus validaciones.
+
+### Administración y bloqueo de activación
+
+POST de usuarios reutiliza `CreateUserDto` (Name/Email/Role), validación existente e índice único; devuelve 201/Location/DTO sin hash. Crea PasswordHash NULL, sin contraseña por defecto ni token. Un campo extra password/passwordHash no crea credenciales. El registro público nunca reclama esas cuentas.
+
+PUT reutiliza `UpdateUserDto` y solo cambia Name/Email/Role. Conserva ID, fecha y hash. Requiere transacción ReadCommitted, lectura del usuario con FOR NO KEY UPDATE, comprobación posterior de asignaciones y commit. Cambiar a User con tickets asignados produce 409 sin cambios. Assignment conserva FOR SHARE sobre el destino hasta commit: un cambio de rol y una asignación se serializan; quien espere vuelve a validar. Se mantienen normalización, validación de rol y correo, captura exclusiva de duplicados 23505 del índice de correo y conflictos de FK de tickets.
+
+No hay un método para crear la **primera cuenta Admin con credencial válida** o activar una antigua sin hash. Si no existe un Admin que pueda iniciar sesión, la administración HTTP queda inaccesible deliberadamente. No editar cuentas existentes ni firmar tokens manualmente para eludirlo. Propuesta para una etapa separada: diseñar una herramienta de aprovisionamiento inicial de ejecución controlada, con verificación administrativa, auditoría y activación de un uso con caducidad. Requiere aprobación y diseño propios; no se implementa ahora. Tampoco se impide en esta etapa que el último Admin se degrade a sí mismo, lo que podría dejar la administración inaccesible.
+
+### Prueba manual de cada rol en Linux Mint sin escribir datos
+
+1. Conservar la conexión y clave JWT locales ya configuradas. No volver a generar la clave en cada arranque ni aplicar migraciones. No se necesita ningún cambio de esquema en 9.3.
+2. Arrancar desde la raíz en otra terminal:
+
+```bash
+dotnet run --project HelpDesk.Api --launch-profile http
+```
+
+3. Ejecutar el siguiente cliente de solo lectura para User, Technician y Admin. Introducir únicamente cuentas existentes con contraseña conocida; dejar vacío el email si no existe una cuenta activada para ese rol. Ni la contraseña ni el token se muestran, guardan en archivos o pasan por argumentos. No copiar el JWT a decodificadores externos.
+
+```bash
+python3 - <<'PY'
+import base64
+import getpass
+import json
+import urllib.error
+import urllib.request
+
+base = 'http://localhost:5085'
+
+def call(method, path, token=None, body=None):
+    headers = {'Content-Type': 'application/json'}
+    if token:
+        headers['Authorization'] = 'Bearer ' + token
+    request = urllib.request.Request(base + path,
+        data=None if body is None else json.dumps(body).encode('utf-8'),
+        headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request) as response:
+            data = response.read()
+            return response.status, json.loads(data) if data else None
+    except urllib.error.HTTPError as error:
+        return error.code, None
+    except urllib.error.URLError:
+        raise SystemExit('No se pudo conectar a la API local.')
+
+print('Health sin token:', call('GET', '/api/health')[0])
+print('Tickets sin token:', call('GET', '/api/tickets')[0])
+print('Tickets con token inválido:', call('GET', '/api/tickets', token='invalid-token')[0])
+for role in ('User', 'Technician', 'Admin'):
+    email = input('Email existente para ' + role + ' (vacío para saltar): ').strip()
+    if not email:
+        print('Sin cuenta activada: prueba manual de este rol pendiente.')
+        continue
+    status, login = call('POST', '/api/auth/login', body={
+        'email': email, 'password': getpass.getpass('Contraseña: ')})
+    print('Login:', status)
+    if status != 200:
+        continue
+    token = login['accessToken']
+    # Extraer el ID de la respuesta del propio login solo para elegir la URL de perfil.
+    # Esto no valida la firma: el servidor valida y autoriza cada petición siguiente.
+    payload = token.split('.')[1]
+    claims = json.loads(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))
+    if claims.get('role') != role:
+        print('La cuenta no tiene el rol elegido; usar la cuenta adecuada sin cambiar sus datos.')
+        continue
+    print('Perfil propio:', call('GET', '/api/users/' + claims['sub'], token)[0])
+    print('Directorio de usuarios:', call('GET', '/api/users', token)[0])
+    status, page = call('GET', '/api/tickets?page=1&pageSize=1', token)
+    print('Listado de tickets:', status)
+    if page is not None:
+        print('Total visible:', page['totalCount'])
+    for label in ('propio', 'ajeno', 'histórico', 'asignado'):
+        ticket_id = input('ID conocido de ticket ' + label + ' (vacío para saltar): ').strip()
+        if ticket_id.isascii() and ticket_id.isdecimal():
+            print('Detalle ' + label + ':', call('GET', '/api/tickets/' + ticket_id, token)[0])
+    # No se imprimen ni persisten token, claims completos o respuestas privadas.
+PY
+```
+
+4. Resultados: health 200; tickets sin token/inválido 401. Cada perfil propio 200. Directorio: User/Technician 403, Admin 200. Ticket propio: 200; ajeno no asignado: User/Technician 404, Admin 200. Histórico sin asignar: User/Technician 404, Admin 200. Histórico asignado al técnico: ese Technician 200. Los totales solo incluyen tickets visibles; conocer un ID no cambia permisos. Detener la API con Ctrl+C.
+5. No probar PUT/DELETE/PATCH ni crear usuarios sobre datos existentes. Para verificar también escrituras, falsificación de creador, roles cambiados, creación por cada rol y concurrencia, usar exclusivamente la base aislada ya preparada según POSTGRESQL_TESTS.md:
+
+```bash
+read -r -s -p 'Cadena exclusiva de helpdesk_test_db: ' HELPDESK_TEST_CONNECTION_STRING
+export HELPDESK_TEST_CONNECTION_STRING
+dotnet test HelpDesk.NET.slnx --filter 'Category=PostgreSQL'
+unset HELPDESK_TEST_CONNECTION_STRING
+```
+
+La fixture valida destino/permisos antes de migrar exclusivamente pruebas. Genera cuentas y tickets propios, utiliza JWT reales del emisor de la API y limpia solo sus filas. Las pruebas de login siguen verificando credenciales por HTTP; los helpers de regresión pueden emitir JWT firmados para sus usuarios persistidos sin instalar un esquema falso ni omitir políticas. Este comando no es una prueba manual contra desarrollo. Si no hay conexión segura, dejarlo pendiente: no usar la conexión de desarrollo como alternativa.

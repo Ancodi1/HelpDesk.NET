@@ -80,7 +80,7 @@ public class RegistrationSecurityTests
     [InlineData("Development", "PUT", "/api/users/-1")]
     [InlineData("Production", "POST", "/api/users")]
     [InlineData("Production", "PUT", "/api/users/1")]
-    public async Task UserManagement_IsDisabledWithoutResolvingDatabase(string environment, string method, string path)
+    public async Task UserManagement_RequiresAuthenticationBeforeReadingBodyOrResolvingDatabase(string environment, string method, string path)
     {
         using var factory = Factory(environment);
         using var client = factory.CreateClient();
@@ -91,9 +91,8 @@ public class RegistrationSecurityTests
                 Content = new StringContent(payload, Encoding.UTF8, "application/json")
             };
             using var response = await client.SendAsync(request);
-            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            Assert.True(json.RootElement.TryGetProperty("error", out _));
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.Equal("Bearer", response.Headers.WwwAuthenticate.Single().Scheme);
         }
     }
 

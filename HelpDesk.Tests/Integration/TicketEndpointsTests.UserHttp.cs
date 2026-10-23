@@ -53,7 +53,7 @@ public partial class TicketEndpointsTests
         var ticket = await CreateTicketAsync();
         var first = await SeedHttpUserAsync(UserRole.Admin);
         var second = await SeedHttpUserAsync(UserRole.Technician);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.GetAsync("/api/users");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var users = await response.Content.ReadFromJsonAsync<List<UserResponseDto>>(JsonOptions);
@@ -69,7 +69,7 @@ public partial class TicketEndpointsTests
     public async Task GetUser_UnknownId_ReturnsNotFound()
     {
         await AssertAbsentUserAsync(-1);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.GetAsync("/api/users/-1");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Empty(await response.Content.ReadAsStringAsync());

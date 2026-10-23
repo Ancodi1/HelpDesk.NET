@@ -24,7 +24,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     [Fact]
     public async Task PostTicket_ReturnsCreatedAndPersistsTicket()
     {
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PostAsJsonAsync("/api/tickets", new { title, description = Description });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -63,7 +63,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
             await db.SaveChangesAsync();
         }
 
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.GetAsync($"/api/tickets/{ticket.Id}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -89,7 +89,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
             Assert.False(await db.Tickets.AnyAsync(t => t.Id == missingId));
         }
 
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.GetAsync($"/api/tickets/{missingId}");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Empty(await response.Content.ReadAsStringAsync());
@@ -102,7 +102,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
         var updatedTitle = $"updated-{Guid.NewGuid():N}";
         ownedTitles.Add(updatedTitle);
         const string updatedDescription = "Descripción actualizada por PUT.";
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PutAsJsonAsync($"/api/tickets/{original.Id}",
             new { title = updatedTitle, description = updatedDescription });
 
@@ -125,7 +125,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     public async Task PutTicket_InvalidTitle_ReturnsBadRequestWithoutChanges(int titleLength)
     {
         var original = await CreateTicketAsync();
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PutAsJsonAsync($"/api/tickets/{original.Id}",
             new { title = new string('x', titleLength), description = "No debe guardarse." });
 
@@ -139,7 +139,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     {
         var control = await CreateTicketAsync();
         await AssertMissingIdAsync();
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PutAsJsonAsync("/api/tickets/-1",
             new { title, description = Description });
 
@@ -155,7 +155,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     public async Task PatchStatus_AllowedTransition_PersistsOnlyStatus(TicketStatus current, TicketStatus requested)
     {
         var original = await CreateTicketAsync(current);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PatchAsJsonAsync($"/api/tickets/{original.Id}/status",
             new { status = requested.ToString() });
 
@@ -171,7 +171,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     public async Task PatchStatus_OpenToClosed_ReturnsConflictWithoutChanges()
     {
         var original = await CreateTicketAsync();
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PatchAsJsonAsync($"/api/tickets/{original.Id}/status",
             new { status = "Closed" });
 
@@ -194,7 +194,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     public async Task PatchStatus_SameStatus_ReturnsOkWithoutChanges(TicketStatus status)
     {
         var original = await CreateTicketAsync(status);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         for (var attempt = 0; attempt < 2; attempt++)
         {
             using var response = await client.PatchAsJsonAsync($"/api/tickets/{original.Id}/status",
@@ -212,7 +212,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     public async Task PatchStatus_InvalidStatus_ReturnsBadRequestWithoutChanges()
     {
         var original = await CreateTicketAsync();
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PatchAsJsonAsync($"/api/tickets/{original.Id}/status",
             new { status = "Inventado" });
 
@@ -226,7 +226,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     {
         var control = await CreateTicketAsync();
         await AssertMissingIdAsync();
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PatchAsJsonAsync("/api/tickets/-1/status", new { status = "InProgress" });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -238,7 +238,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     {
         var target = await CreateTicketAsync();
         var control = await CreateTicketAsync(TicketStatus.Resolved);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.DeleteAsync($"/api/tickets/{target.Id}");
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
@@ -258,7 +258,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
     {
         var control = await CreateTicketAsync();
         await AssertMissingIdAsync();
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.DeleteAsync("/api/tickets/-1");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -287,7 +287,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
 
     private async Task AssertStoredAndReturnedAsync(Ticket expected)
     {
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.GetAsync($"/api/tickets/{expected.Id}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var returned = await response.Content.ReadFromJsonAsync<Ticket>(JsonOptions);

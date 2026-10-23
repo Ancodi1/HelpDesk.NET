@@ -21,8 +21,8 @@ public partial class TicketEndpointsTests
         var pause = new PauseRelatedSave(firstTicket.Id);
         using var factory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             services.AddDbContext<HelpDeskDbContext>(options => options.AddInterceptors(pause))));
-        using var firstClient = factory.CreateClient();
-        using var secondClient = fixture.Factory.CreateClient();
+        using var firstClient = await CreateAdminClientAsync(factory);
+        using var secondClient = await CreateAdminClientAsync();
         var first = firstClient.PatchAsJsonAsync($"/api/tickets/{firstTicket.Id}/assignment", new { assignedToUserId = user.Id });
         try
         {
@@ -51,7 +51,7 @@ public partial class TicketEndpointsTests
         var pause = new PauseRelatedSave(ticket.Id);
         using var factory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             services.AddDbContext<HelpDeskDbContext>(options => options.AddInterceptors(pause))));
-        using var client = factory.CreateClient();
+        using var client = await CreateAdminClientAsync(factory);
         var assignment = client.PatchAsJsonAsync($"/api/tickets/{ticket.Id}/assignment", new { assignedToUserId = user.Id });
         Task<int>? deletion = null;
         await using var scope = fixture.Factory.Services.CreateAsyncScope();

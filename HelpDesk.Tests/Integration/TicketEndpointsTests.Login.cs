@@ -104,7 +104,7 @@ public partial class TicketEndpointsTests
     }
 
     [Fact]
-    public async Task RegisterThenLogin_PreservesPublicEndpointsAndManagementBlock()
+    public async Task RegisterThenLogin_ProtectsTicketsAndReservesUserManagementForAdmin()
     {
         var user = NewUser();
         var password = NewTestPassword();
@@ -117,14 +117,16 @@ public partial class TicketEndpointsTests
         using var health = await client.GetAsync("/api/health");
         using var tickets = await client.GetAsync("/api/tickets");
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, tickets.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, tickets.StatusCode);
         client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        using var ownTickets = await client.GetAsync("/api/tickets");
+        Assert.Equal(HttpStatusCode.OK, ownTickets.StatusCode);
         using var forbidden = await client.PostAsJsonAsync("/api/users", new { role = "Admin" });
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
         using var forbiddenPut = await client.PutAsJsonAsync("/api/users/1", new { role = "Admin" });
         Assert.Equal(HttpStatusCode.Forbidden, forbiddenPut.StatusCode);
         client.DefaultRequestHeaders.Authorization = new("Bearer", "invalid-token");
-        using var stillPublic = await client.GetAsync("/api/tickets");
-        Assert.Equal(HttpStatusCode.OK, stillPublic.StatusCode);
+        using var protectedTickets = await client.GetAsync("/api/tickets");
+        Assert.Equal(HttpStatusCode.Unauthorized, protectedTickets.StatusCode);
     }
 }

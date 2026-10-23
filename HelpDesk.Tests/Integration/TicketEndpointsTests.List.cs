@@ -30,7 +30,7 @@ public partial class TicketEndpointsTests
 
     private async Task<TicketPageDto> GetPageAsync(string query)
     {
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.GetAsync($"/api/tickets?{query}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
@@ -186,7 +186,7 @@ public partial class TicketEndpointsTests
     [InlineData("search=a&search=b")]
     public async Task List_InvalidParameter_ReturnsExplanatoryJson(string query)
     {
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.GetAsync($"/api/tickets?{query}");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);

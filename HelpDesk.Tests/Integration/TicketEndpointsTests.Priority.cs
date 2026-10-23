@@ -19,7 +19,7 @@ public partial class TicketEndpointsTests
     [InlineData("Critical", TicketPriority.Critical)]
     public async Task PostTicket_WithPriority_PersistsRequestedValue(string priority, TicketPriority expected)
     {
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PostAsJsonAsync("/api/tickets", new { title, description = Description, priority });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -57,7 +57,7 @@ public partial class TicketEndpointsTests
     {
         var payload = $"{{\"title\":{JsonSerializer.Serialize(title)},\"description\":{JsonSerializer.Serialize(Description)},\"priority\":{priorityJson}}}";
         using var content = new StringContent(payload, Encoding.UTF8, "application/json");
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PostAsync("/api/tickets", content);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -69,7 +69,7 @@ public partial class TicketEndpointsTests
     public async Task PostTicket_MalformedPriorityJson_ReturnsBriefBadRequest()
     {
         using var content = new StringContent("{\"priority\":", Encoding.UTF8, "application/json");
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PostAsync("/api/tickets", content);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -86,7 +86,7 @@ public partial class TicketEndpointsTests
     {
         var initial = requested == TicketPriority.Low ? TicketPriority.Critical : TicketPriority.Low;
         var original = await CreateTicketAsync(TicketStatus.Resolved, initial);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PatchAsJsonAsync($"/api/tickets/{original.Id}/priority",
             new { priority = requested.ToString(), title = "ignored", status = "Closed" });
 
@@ -107,7 +107,7 @@ public partial class TicketEndpointsTests
     public async Task PatchPriority_SameValue_ReturnsUnchangedTicket(TicketPriority priority)
     {
         var original = await CreateTicketAsync(TicketStatus.InProgress, priority);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         for (var attempt = 0; attempt < 2; attempt++)
         {
             using var response = await client.PatchAsJsonAsync($"/api/tickets/{original.Id}/priority",
@@ -133,7 +133,7 @@ public partial class TicketEndpointsTests
     {
         var original = await CreateTicketAsync(TicketStatus.Resolved, TicketPriority.High);
         using var content = new StringContent(payload, Encoding.UTF8, "application/json");
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PatchAsync($"/api/tickets/{original.Id}/priority", content);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -153,7 +153,7 @@ public partial class TicketEndpointsTests
     {
         var control = await CreateTicketAsync();
         await AssertMissingIdAsync();
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PatchAsJsonAsync("/api/tickets/-1/priority", new { priority = "Critical" });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);

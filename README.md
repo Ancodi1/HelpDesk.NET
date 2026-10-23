@@ -21,7 +21,7 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 
 - CRUD de tickets con persistencia en PostgreSQL.
 - Consulta de usuarios y registro público de cuentas con contraseña y rol `User`.
-- Gestión POST/PUT de usuarios temporalmente deshabilitada (403) hasta disponer de autorización.
+- Autorización por roles y recursos: tickets propios/asignados y administración exclusiva de Admin.
 - Creador opcional y asignación/reasignación/desasignación de técnicos en tickets.
 - Listado con filtros combinables, búsqueda sin distinguir mayúsculas y paginación.
 - Validación de título obligatorio, máximo de 100 caracteres, y descripción obligatoria.
@@ -66,24 +66,24 @@ La solución mantiene una estructura sencilla: los endpoints utilizan directamen
 
 `POST /api/auth/register` recibe `name`, `email` y `password`. Reutiliza la validación de nombre/correo, normaliza Email con `Trim().ToLowerInvariant()` y crea exclusivamente `User`; cualquier campo adicional `role`, `passwordHash`, `id` o `createdAt` se ignora. Devuelve 201 con DTO público y Location `/api/users/{id}`, 400 por entrada inválida o 409 por correo duplicado. El índice único protege también registros concurrentes. No reemplaza contraseñas de cuentas anteriores.
 
-La contraseña exige 15–128 unidades UTF-16, no puede ser solo espacios ni contener caracteres de control. Permite Unicode y espacios; no se recorta, normaliza ni trunca. Se usa `PasswordHasher<User>` V3 (PBKDF2-HMAC-SHA512, 210.000 iteraciones y salt aleatorio), sin instalar Identity completo. Hay login con JWT firmado HS256 de 30 minutos; no hay autorización por roles, recuperación ni envío de correos. Ver [configuración y prueba local de autenticación](docs/AUTHENTICATION.md).
+La contraseña exige 15–128 unidades UTF-16, no puede ser solo espacios ni contener caracteres de control. Permite Unicode y espacios; no se recorta, normaliza ni trunca. Se usa `PasswordHasher<User>` V3 (PBKDF2-HMAC-SHA512, 210.000 iteraciones y salt aleatorio), sin instalar Identity completo. Hay login con JWT firmado HS256 de 30 minutos; hay autorización por roles y recursos, sin recuperación ni envío de correos. Ver [configuración y prueba local de autenticación](docs/AUTHENTICATION.md).
 
 Email conserva la política anterior: formato mediante `MailAddress.TryCreate`, sin nombres de presentación ni espacios internos, dominio ASCII con al menos un punto; dominios internacionalizados en punycode. PostgreSQL exige correo canónico mediante CHECK e índice único. Los GET proyectan DTOs con AsNoTracking y el listado sigue siendo un array ordenado por Id.
 
-**Cambio transitorio de contrato:** POST `/api/users` y PUT `/api/users/{id}` devuelven siempre 403 con JSON `error`, incluso con cuerpos incorrectos o IDs inexistentes, antes de acceder a la base. No hay excepción para Development/Testing ni clave fija para habilitarlos. Se retiraron los handlers públicos de creación y edición de roles. Los técnicos/administradores anteriores se conservan; no se ofrece una vía HTTP de aprovisionamiento privilegiado hasta implementar autorización. Los tests preparan sus usuarios mediante EF exclusivamente en `helpdesk_test_db`.
+**Etapa 9.3:** solo health, registro y login son públicos. Toda otra ruta requiere JWT válido y una cuenta existente con el mismo rol actual en PostgreSQL. POST/PUT de usuarios se habilitan solo para Admin; no permiten fijar contraseñas/hashes. Las cuentas administrativas creadas así tienen PasswordHash NULL y requieren un futuro flujo seguro de activación. No existe bootstrap de Admin ni se modifican cuentas existentes para obtenerlo. Perfil propio disponible en GET `/api/users/{id}`; directorio completo reservado a Admin.
 
 ## API
 
-URL del perfil HTTP local: `http://localhost:5085`.
+URL del perfil HTTP local: `http://localhost:5085`. Salvo health, registro y login, enviar `Authorization: Bearer <TOKEN_LOCAL>`; los ejemplos de gestión requieren Admin. No ejecutar escrituras de ejemplo sobre datos existentes.
 
 | Método | Ruta | Comportamiento |
 | --- | --- | --- |
-| GET | `/api/users` | `200` con array de DTOs ordenado por Id, incluido `[]` |
-| GET | `/api/users/{id}` | `200` con DTO o `404` |
+| GET | `/api/users` | Solo Admin; `200` con DTOs ordenados por Id |
+| GET | `/api/users/{id}` | Admin o perfil propio; `200` con DTO o `404` |
 | POST | `/api/auth/login` | `200` con accessToken, tokenType Bearer y expiresIn 1800; `400` o `401` genérico |
 | POST | `/api/auth/register` | `201` con DTO y Location, `400` o `409`; siempre rol User |
-| POST | `/api/users` | `403`: gestión temporalmente deshabilitada |
-| PUT | `/api/users/{id}` | `403`: gestión temporalmente deshabilitada |
+| POST | `/api/users` | Solo Admin; `201`, `400` o `409`; sin credencial |
+| PUT | `/api/users/{id}` | Solo Admin; `200`, `400`, `404` o `409` |
 | GET | `/api/health` | `200` con `{"status":"ok"}` |
 | GET | `/api/tickets` | `200` con `items` y metadatos de paginación |
 | GET | `/api/tickets/{id}` | `200` con el ticket, o `404` |
@@ -95,11 +95,22 @@ URL del perfil HTTP local: `http://localhost:5085`.
 | PATCH | `/api/tickets/{id}/assignment` | Asigna, reasigna o desasigna; `200`, `400`, `404` o `409` |
 | DELETE | `/api/tickets/{id}` | `204` sin cuerpo al eliminar, o `404` |
 
+### Permisos de tickets
+
+| Operación | User | Technician | Admin |
+| --- | --- | --- | --- |
+| Listado y detalle | Creados por él | Creados por él o asignados a él | Todos |
+| Crear | Propio | Propio | Propio |
+| Cambiar estado | No | Solo asignados a él | Todos |
+| PUT, prioridad, categoría, asignación y DELETE | No | No | Todos |
+
+Los recuentos y filtros incluyen solo tickets visibles. El detalle ajeno devuelve 404. Las operaciones vetadas por rol devuelven 403; ausencia de JWT válido, 401 con challenge Bearer. Un técnico puede leer un ticket propio no asignado pero no cambiar su estado (403). Tickets históricos con creador NULL: solo Admin o técnico asignado. En POST se ignora `createdByUserId` del cuerpo y se toma siempre el ID del JWT validado y contrastado con PostgreSQL, también para Admin; la creación no asigna técnico.
+
 ### Comprobación manual de usuarios
 
 Los GET de usuarios siguen disponibles. Para registrar, enviar `name`, `email` y una contraseña nueva elegida localmente a `/api/auth/register`. Introducirla desde un cliente que no guarde cuerpos sensibles en historial, logs ni capturas compartidas; no colocar contraseñas reales en comandos versionados. Se documenta el contrato y la validación en [AUTHENTICATION.md](docs/AUTHENTICATION.md).
 
-Las llamadas anteriores a POST/PUT `/api/users` ya no crean ni modifican filas: devuelven 403. No se ejecutaron solicitudes contra desarrollo en esta etapa.
+POST/PUT de usuarios requieren Admin y conservan validaciones de campos, unicidad y restricciones de asignación. La [guía de pruebas manuales por rol](docs/AUTHENTICATION.md#prueba-manual-de-cada-rol-en-linux-mint-sin-escribir-datos) usa únicamente login y GET con cuentas existentes; no se ejecutaron solicitudes contra desarrollo en esta etapa.
 
 ### Crear y consultar un ticket
 
@@ -137,7 +148,7 @@ El ID y la fecha los genera el servidor. `GET /api/tickets/1` devuelve el mismo 
 
 ### Creador y asignación — etapa 8.3
 
-POST /api/tickets admite `createdByUserId` opcional. Omitirlo o enviar null conserva las peticiones anteriores. Cualquier rol puede crear tickets; un ID inexistente devuelve 400 con JSON `error`. No se infiere ningún usuario autenticado. La creación deja el ticket sin asignar, aunque lleguen campos adicionales.
+POST /api/tickets conserva `createdByUserId` en el DTO por compatibilidad, pero ignora su valor. Siempre registra como creador al usuario autenticado y deja AssignedToUserId en NULL. No se permite atribuir tickets a otro usuario, tampoco a Admin. Un valor de tipo JSON incompatible sigue produciendo 400 durante la deserialización.
 
 ```json
 {
@@ -149,7 +160,7 @@ POST /api/tickets admite `createdByUserId` opcional. Omitirlo o enviar null cons
 
 Todas las respuestas que contienen un ticket añaden `createdByUserId` y `assignedToUserId` (número o null). Las navegaciones de EF no se serializan. El listado conserva `{items,totalCount,page,pageSize,totalPages}`. PUT de tickets sigue editando solo Title/Description; ni este ni los PATCH de clasificación cambian el creador o la asignación.
 
-Asignar o reasignar requiere Technician o Admin:
+Asignar o reasignar requiere una petición de Admin; el usuario destino debe ser Technician o Admin:
 
 ```http
 PATCH /api/tickets/123/assignment
@@ -166,9 +177,9 @@ Desasignar requiere null explícito:
 
 Campo omitido, tipo incorrecto, usuario inexistente o rol User: 400. Ticket inexistente con cuerpo válido: 404. Éxito: 200 con ticket completo; repetir la asignación válida o la desasignación no guarda cambios. Si un usuario desaparece entre la validación y el guardado, una violación de las nuevas FK devuelve 409. No cambia el estado ni hay restricciones adicionales por estado.
 
-En la etapa 9.1 PUT /api/users/{id} está deshabilitado con 403: no permite cambiar roles ni otros campos. Las FK siguen siendo opcionales, independientes e indexadas, con ON DELETE RESTRICT y sin borrado en cascada.
+PUT /api/users/{id} requiere Admin y rechaza con 409 el cambio a User mientras existan tickets asignados. Las FK siguen siendo opcionales, independientes e indexadas, con ON DELETE RESTRICT y sin borrado en cascada.
 
-La asignación mantiene la transacción ReadCommitted y FOR SHARE sobre el usuario destino hasta commit. Se permiten asignaciones a tickets distintos del mismo técnico. El antiguo PUT utilizaba FOR NO KEY UPDATE antes de comprobar asignaciones; al reintroducirlo con autorización deberá conservarse ese protocolo. No hay garantía de rol frente a SQL externo que eluda la regla HTTP. Asignaciones simultáneas al mismo ticket siguen la última escritura.
+La asignación mantiene la transacción ReadCommitted y FOR SHARE sobre el usuario destino hasta commit. Se permiten asignaciones a tickets distintos del mismo técnico. PUT utiliza FOR NO KEY UPDATE antes de comprobar asignaciones; ambos mantienen el bloqueo hasta finalizar la transacción. No hay garantía de rol frente a SQL externo que eluda la regla HTTP. Asignaciones simultáneas al mismo ticket siguen la última escritura.
 
 ### Revisar y aplicar AddTicketUserRelations manualmente
 
@@ -320,7 +331,7 @@ La cadena debe respetar la sintaxis Npgsql, especialmente si la contraseña cont
 
 ### Configuración JWT obligatoria
 
-Antes de arrancar, configurar `Jwt:Issuer`, `Jwt:Audience` y `Jwt:SigningKeyBase64` fuera del repositorio. La [guía JWT para Linux Mint](docs/AUTHENTICATION.md#configuración-en-linux-mint) genera la clave criptográfica sin mostrarla y explica cómo probar el login con una cuenta existente sin escribir datos. La API falla al arrancar si falta configuración; no hay clave predeterminada. Tickets conservan sus permisos y POST/PUT de usuarios siguen bloqueados.
+Antes de arrancar, configurar `Jwt:Issuer`, `Jwt:Audience` y `Jwt:SigningKeyBase64` fuera del repositorio. La [guía JWT para Linux Mint](docs/AUTHENTICATION.md#configuración-en-linux-mint) genera la clave criptográfica sin mostrarla y explica cómo probar el login con una cuenta existente sin escribir datos. La API falla al arrancar si falta configuración; no hay clave predeterminada. Las políticas protegen tickets y gestión de usuarios según la matriz anterior; el rol se contrasta en PostgreSQL en cada petición protegida.
 
 ### Migraciones y arranque
 
@@ -342,7 +353,7 @@ Respuesta esperada: `{"status":"ok"}`. Este endpoint comprueba que la API respon
 
 ## Pruebas automatizadas
 
-La suite actual contiene **386 casos**: **155 sin PostgreSQL superados** y **231 PostgreSQL descubiertos sin ejecutar** por falta de conexión segura en esta sesión. Incluye pruebas JWT con el handler Bearer real y pruebas HTTP de login pendientes de PostgreSQL.
+La suite actual contiene **489 casos**: **216 sin PostgreSQL superados** y **273 PostgreSQL descubiertos sin ejecutar** por falta de conexión segura en esta sesión. Incluye JWT, protección HTTP, permisos por rol/recurso, administración y concurrencia; el comportamiento PostgreSQL nuevo queda pendiente de ejecución.
 
 Las pruebas unitarias verifican transiciones, validaciones y mapeos. Una prueba HTTP de salud utiliza WebApplicationFactory y TestServer en memoria, sin arrancar Kestrel manualmente. Para ejecutar todos los casos que no necesitan base de datos:
 
@@ -375,7 +386,7 @@ Si falta la cadena o no supera la validación del destino, los casos PostgreSQL 
 Previsión de evolución, pendiente de implementación:
 
 - Comentarios, historial y evolución de la gestión de usuarios.
-- Autorización y diseño de revocación de JWT (etapa 9.3 pendiente de revisión).
+- Activación segura de cuentas privilegiadas y evolución de la revocación de JWT, pendientes de solicitud.
 - Interfaz web para gestionar los tickets.
 
 ## Documentación

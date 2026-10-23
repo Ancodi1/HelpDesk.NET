@@ -4,6 +4,8 @@
 
 ## Estado actual
 
+La etapa 9.3 protege todas las rutas excepto health/register/login mediante JWT y comprobación de cuenta/rol actual en PostgreSQL. Tickets se filtran por propietario o asignación; la gestión completa y administración de usuarios requieren Admin (decisión 037). Las decisiones anteriores registran la evolución histórica.
+
 El repositorio contiene la solución `HelpDesk.NET.slnx` y los proyectos `HelpDesk.Api` (ASP.NET Core Web API) y `HelpDesk.Tests` (pruebas unitarias xUnit e integración HTTP), ambos para `net10.0`. `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Todo el CRUD accede a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
 
 `GET /api/tickets` compone un IQueryable con AsNoTracking, filtros y búsqueda ILIKE parametrizada; cuenta antes de ordenar por CreatedAt/Id descendentes y aplicar Skip/Take. Devuelve HTTP 200 con items y metadatos de paginación (decisión 030). `GET /api/tickets/{id}` usa `FirstOrDefaultAsync` y devuelve 200 con el objeto o 404 sin cuerpo. Health mantiene HTTP 200 con `{"status":"ok"}`.
@@ -424,7 +426,7 @@ Pruebas de modelo, serialización y operaciones de migración sin conexión. Int
 
 ### 034 — Exclusión entre asignación y cambio de rol en PostgreSQL
 
-Nota de evolución: PUT público deshabilitado por la decisión 035; assignment conserva su transacción y FOR SHARE. El protocolo de PUT deberá recuperarse al habilitar una gestión autorizada.
+Nota de evolución: PUT público deshabilitado por la decisión 035; assignment conserva su transacción y FOR SHARE. El protocolo de PUT se recupera con autorización Admin en la decisión 037.
 
 Estado: solución local revisada el 21 de octubre de 2026; compilada, ejecución PostgreSQL pendiente por conexión de pruebas ausente.
 
@@ -470,3 +472,23 @@ Motivo: aprender emisión y validación de credenciales Bearer con las opciones 
 Consecuencias: configuración JWT obligatoria incluso para health; ningún cambio de esquema ni migración. Los JWT no están cifrados ni se revocan automáticamente ante cambios posteriores de rol/contraseña o futura deshabilitación. No hay refresh tokens, recuperación ni limitación de intentos; la autorización y revocación quedan pendientes. Se mantienen diferencias temporales entre cuenta ausente y hash verificable. Procedimiento Linux Mint sin imprimir secretos y límites en AUTHENTICATION.md.
 
 Las fábricas de pruebas inyectan opciones efímeras solo por ConfigureTestServices; no existe bypass en la aplicación. Las pruebas Bearer verifican el handler real por AuthenticateAsync sin añadir un endpoint público de perfil. Las pruebas HTTP de login reutilizan exclusivamente helpdesk_test_db y la limpieza propia existente. Resultados ejecutados en PROGRESS.md.
+
+### 037 — Políticas de cuenta actual y acceso a recursos (etapa 9.3)
+
+Estado: implementada el 23 de octubre de 2026; ejecución PostgreSQL pendiente por conexión segura ausente. Evoluciona 032/034/035/036: se reactiva la administración de usuarios exclusivamente para Admin con el protocolo de concurrencia existente.
+
+Decisión: AddAuthorization con DefaultPolicy/FallbackPolicy que requieren autenticación y CurrentAccountRequirement; políticas Admin y ChangeStatus añaden los roles permitidos. Todas las rutas llevan metadatos explícitos y solo health/register/login son anónimas. UseAuthorization sigue a UseAuthentication. No hay esquema alternativo ni bypass de Testing.
+
+CurrentAccountHandler scoped exige sub único entero positivo y role único reconocido. Consulta la existencia y rol actual en PostgreSQL y exige coincidencia con el token antes de completar CurrentAccount. La verificación ocurre una vez por petición protegida; no se reutilizan datos entre peticiones. JWT ausente/inválido/caducado produce 401 con challenge Bearer; cuenta ausente o rol cambiado produce 403 sin explicar cuál de esas condiciones falló. Una avería de PostgreSQL falla de forma cerrada con 500 genérico. El handler resuelve DbContext después de comprobar la autenticación para evitar consultas con peticiones anónimas.
+
+TicketAccess centraliza visibilidad por propietario/asignado mediante IQueryable: User solo creados por él, Technician creados por él o asignados a él, Admin todos. Se aplica antes de contar/paginar y en detalle (404 si es invisible). Los históricos con creador NULL quedan para Admin o Technician asignado. POST fija el creador a la cuenta autenticada e ignora el valor enviado por cualquier rol. PUT, DELETE, prioridad, categoría y asignación requieren Admin. Estado requiere Admin o Technician asignado; un ticket propio visible pero no asignado al técnico da 403, invisible da 404.
+
+Estado obtiene FOR UPDATE sobre el ticket dentro de ReadCommitted antes de comprobar el recurso y conserva el bloqueo hasta finalizar, evitando usar una asignación anterior a una reasignación concurrente. Assignment mantiene usuario FOR SHARE antes de guardar el ticket; PUT de usuarios recupera usuario FOR NO KEY UPDATE antes de consultar asignaciones, guardando al final de ReadCommitted. Se conserva el orden usuario → ticket en estas dos operaciones. Las pruebas de ambos órdenes de cambio de rol/asignación y de reasignación/estado observan bloqueos reales mediante pg_blocking_pids, sin temporizadores usados como sincronización.
+
+GET de usuarios requiere Admin; GET por ID permite también el perfil propio y oculta otros con 404. POST/PUT administrativos reutilizan DTOs, validación y captura acotada de unicidad. POST crea sin credencial; PUT conserva hash/ID/fecha y rechaza cambiar a User con asignaciones. No hay bootstrap ni activación de Admin: si no existe una cuenta privilegiada con credencial válida, la administración queda inaccesible hasta una etapa de aprovisionamiento seguro solicitada por separado. No se modifican cuentas existentes para eludir esa limitación.
+
+Motivo: separar autenticación, permisos por rol y acceso a cada recurso, evitando comprobaciones dispersas o confiar solo en roles obsoletos firmados. Se mantiene la estructura sencilla: dos archivos en Authorization, sin nuevas dependencias, capas, modelos ni migraciones.
+
+Consecuencias: las peticiones protegidas consultan PostgreSQL incluso para lecturas. El chequeo de rol no cancela operaciones ya autorizadas que estén en curso, ni es una revocación permanente del JWT: si el rol vuelve a su valor anterior antes de expirar, el token puede volver a autorizarse. No hay revocación por cambio de contraseña, deshabilitación, rate limiting ni prevención de auto degradación del último Admin. Operaciones externas SQL pueden eludir las reglas de rol; se mantienen las limitaciones de última escritura para gestión administrativa concurrente de tickets. Alcance pendiente documentado en AUTHENTICATION.md.
+
+Los tests anteriores de validación, persistencia y filtros utilizan ahora un Admin propio persistido por caso y JWT firmado real. Registro/login siguen anónimos; los tests nuevos verifican User/Technician/Admin y negaciones con las políticas reales, sin ocultar regresiones mediante skip. Fixture/validador de destino exclusivo helpdesk_test_db intactos; solo los helpers HTTP de las pruebas se adaptan. Resultados realmente ejecutados y limitaciones en PROGRESS.md.

@@ -1,3 +1,5 @@
+using HelpDesk.Api.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using HelpDesk.Api.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
@@ -44,6 +46,17 @@ builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSc
         options.TokenValidationParameters = settings.Value.CreateValidationParameters();
     });
 
+builder.Services.AddScoped<CurrentAccount>();
+builder.Services.AddScoped<IAuthorizationHandler, CurrentAccountHandler>();
+builder.Services.AddAuthorization(options =>
+{
+    options.DefaultPolicy = AccessPolicies.AccountPolicy();
+    options.FallbackPolicy = options.DefaultPolicy;
+    options.AddPolicy(AccessPolicies.Admin, AccessPolicies.AccountPolicy(nameof(UserRole.Admin)));
+    options.AddPolicy(AccessPolicies.ChangeStatus,
+        AccessPolicies.AccountPolicy(nameof(UserRole.Admin), nameof(UserRole.Technician)));
+});
+
 builder.Services.AddDbContext<HelpDeskDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -77,10 +90,11 @@ app.UseStatusCodePages(async context =>
 });
 
 app.UseAuthentication();
+app.UseAuthorization();
 
-app.MapGet("/api/health", () => new { status = "ok" });
+app.MapGet("/api/health", () => new { status = "ok" }).AllowAnonymous();
 
-app.MapGet("/api/tickets", async (HttpRequest request, HelpDeskDbContext dbContext) =>
+app.MapGet("/api/tickets", async (HttpRequest request, HelpDeskDbContext dbContext, CurrentAccount account) =>
 {
     var parameters = request.Query;
     // Validar antes de ejecutar SQL; rechazar parámetros conocidos repetidos evita ambigüedad.
@@ -92,7 +106,7 @@ app.MapGet("/api/tickets", async (HttpRequest request, HelpDeskDbContext dbConte
         }
     }
 
-    IQueryable<Ticket> query = dbContext.Tickets.AsNoTracking();
+    IQueryable<Ticket> query = dbContext.Tickets.AsNoTracking().VisibleTo(account);
     if (parameters.TryGetValue("status", out var statusText))
     {
         if (!Enum.IsDefined(typeof(TicketStatus), statusText.ToString()))
@@ -142,11 +156,11 @@ app.MapGet("/api/tickets", async (HttpRequest request, HelpDeskDbContext dbConte
     var totalPages = (int)((totalCount + (long)pageSize - 1) / pageSize);
 
     return Results.Ok(new TicketPageDto(items, totalCount, page, pageSize, totalPages));
-});
+}).RequireAuthorization();
 
-app.MapGet("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =>
+app.MapGet("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext, CurrentAccount account) =>
 {
-    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
+    var ticket = await dbContext.Tickets.AsNoTracking().VisibleTo(account).FirstOrDefaultAsync(ticket => ticket.Id == id);
 
     if (ticket is null)
     {
@@ -154,9 +168,9 @@ app.MapGet("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =>
     }
 
     return Results.Ok(ticket);
-});
+}).RequireAuthorization();
 
-app.MapPost("/api/tickets", async (CreateTicketDto createTicketDto, HelpDeskDbContext dbContext) =>
+app.MapPost("/api/tickets", async (CreateTicketDto createTicketDto, HelpDeskDbContext dbContext, CurrentAccount account) =>
 {
     var error = ValidateTicket(createTicketDto.Title, createTicketDto.Description);
 
@@ -175,13 +189,10 @@ app.MapPost("/api/tickets", async (CreateTicketDto createTicketDto, HelpDeskDbCo
         return Results.BadRequest(new { error = "La categoría debe ser Hardware, Software, Network, Access u Other." });
     }
 
-    if (createTicketDto.CreatedByUserId is int creatorId &&
-        !await dbContext.Users.AnyAsync(user => user.Id == creatorId))
-        return Results.BadRequest(new { error = "El usuario creador no existe." });
-
     var ticket = new Ticket
     {
-        CreatedByUserId = createTicketDto.CreatedByUserId,
+        // Se ignora cualquier creador enviado por el cliente, también para Admin.
+        CreatedByUserId = account.Id,
         Title = createTicketDto.Title,
         Description = createTicketDto.Description,
         CreatedAt = DateTime.UtcNow,
@@ -200,7 +211,7 @@ app.MapPost("/api/tickets", async (CreateTicketDto createTicketDto, HelpDeskDbCo
     }
 
     return Results.Created($"/api/tickets/{ticket.Id}", ticket);
-});
+}).RequireAuthorization();
 
 app.MapPut("/api/tickets/{id}", async (int id, UpdateTicketDto updateTicketDto, HelpDeskDbContext dbContext) =>
 {
@@ -224,16 +235,23 @@ app.MapPut("/api/tickets/{id}", async (int id, UpdateTicketDto updateTicketDto, 
     await dbContext.SaveChangesAsync();
 
     return Results.Ok(ticket);
-});
+}).RequireAuthorization(AccessPolicies.Admin);
 
-app.MapPatch("/api/tickets/{id}/status", async (int id, UpdateTicketStatusDto updateTicketStatusDto, HelpDeskDbContext dbContext) =>
+app.MapPatch("/api/tickets/{id}/status", async (int id, UpdateTicketStatusDto updateTicketStatusDto, HelpDeskDbContext dbContext, CurrentAccount account) =>
 {
-    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
+    // Bloquear y después comprobar el recurso evita autorizar con una asignación que cambie antes del UPDATE.
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+    var ticket = await dbContext.Tickets
+        .FromSqlInterpolated($"SELECT * FROM \"Tickets\" WHERE \"Id\" = {id} FOR UPDATE")
+        .VisibleTo(account).SingleOrDefaultAsync();
 
     if (ticket is null)
     {
         return Results.NotFound();
     }
+
+    if (!TicketAccess.CanChangeStatus(ticket, account))
+        return Results.Forbid();
 
     if (updateTicketStatusDto.Status is null || !Enum.IsDefined(typeof(TicketStatus), updateTicketStatusDto.Status))
     {
@@ -259,9 +277,10 @@ app.MapPatch("/api/tickets/{id}/status", async (int id, UpdateTicketStatusDto up
 
     ticket.Status = requestedStatus;
     await dbContext.SaveChangesAsync();
+    await transaction.CommitAsync();
 
     return Results.Ok(ticket);
-});
+}).RequireAuthorization(AccessPolicies.ChangeStatus);
 
 app.MapPatch("/api/tickets/{id}/priority", async (int id, UpdateTicketPriorityDto updateTicketPriorityDto, HelpDeskDbContext dbContext) =>
 {
@@ -286,7 +305,7 @@ app.MapPatch("/api/tickets/{id}/priority", async (int id, UpdateTicketPriorityDt
     await dbContext.SaveChangesAsync();
 
     return Results.Ok(ticket);
-});
+}).RequireAuthorization(AccessPolicies.Admin);
 
 app.MapPatch("/api/tickets/{id}/category", async (int id, UpdateTicketCategoryDto updateTicketCategoryDto, HelpDeskDbContext dbContext) =>
 {
@@ -311,7 +330,7 @@ app.MapPatch("/api/tickets/{id}/category", async (int id, UpdateTicketCategoryDt
     await dbContext.SaveChangesAsync();
 
     return Results.Ok(ticket);
-});
+}).RequireAuthorization(AccessPolicies.Admin);
 
 app.MapPatch("/api/tickets/{id}/assignment", async (int id, UpdateTicketAssignmentDto dto, HelpDeskDbContext dbContext) =>
 {
@@ -350,7 +369,7 @@ app.MapPatch("/api/tickets/{id}/assignment", async (int id, UpdateTicketAssignme
         return Results.Conflict(new { error = "El usuario relacionado ya no está disponible. Revisa el ticket y vuelve a intentarlo." });
     }
     return Results.Ok(ticket);
-});
+}).RequireAuthorization(AccessPolicies.Admin);
 
 app.MapDelete("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =>
 {
@@ -365,7 +384,7 @@ app.MapDelete("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =
     await dbContext.SaveChangesAsync();
 
     return Results.NoContent();
-});
+}).RequireAuthorization(AccessPolicies.Admin);
 
 app.MapGet("/api/users", async (HelpDeskDbContext dbContext) =>
 {
@@ -373,22 +392,65 @@ app.MapGet("/api/users", async (HelpDeskDbContext dbContext) =>
         .Select(user => new UserResponseDto(user.Id, user.Name, user.Email, user.Role, user.CreatedAt))
         .ToListAsync();
     return Results.Ok(users);
-});
+}).RequireAuthorization(AccessPolicies.Admin);
 
-app.MapGet("/api/users/{id}", async (int id, HelpDeskDbContext dbContext) =>
+app.MapGet("/api/users/{id}", async (int id, HelpDeskDbContext dbContext, CurrentAccount account) =>
 {
+    if (account.Role != UserRole.Admin && account.Id != id)
+        return Results.NotFound();
     var user = await dbContext.Users.AsNoTracking().Where(user => user.Id == id)
         .Select(user => new UserResponseDto(user.Id, user.Name, user.Email, user.Role, user.CreatedAt))
         .FirstOrDefaultAsync();
     if (user is null)
         return Results.NotFound();
     return Results.Ok(user);
-});
+}).RequireAuthorization();
 
-// Deshabilitados en todos los entornos hasta disponer de autorización real.
-// Sin DTO ni DbContext: se rechaza antes de leer cuerpos o acceder a datos.
-app.MapPost("/api/users", UserManagementDisabled);
-app.MapPut("/api/users/{id}", UserManagementDisabled);
+app.MapPost("/api/users", async (CreateUserDto dto, HelpDeskDbContext dbContext) =>
+{
+    var error = UserValidation.Validate(dto.Name, dto.Email, dto.Role, out var email, out var role);
+    if (error is not null) return Results.BadRequest(new { error });
+    if (await dbContext.Users.AnyAsync(user => user.Email == email))
+        return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
+    // Aprovisionamiento administrativo sin credencial: no habilita acceso ni reclama cuentas existentes.
+    var user = new User { Name = dto.Name!, Email = email, Role = role, CreatedAt = DateTime.UtcNow };
+    dbContext.Users.Add(user);
+    try { await dbContext.SaveChangesAsync(); }
+    catch (DbUpdateException exception) when (IsDuplicateUserEmail(exception))
+    {
+        return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
+    }
+    return Results.Created($"/api/users/{user.Id}", ToUserResponse(user));
+}).RequireAuthorization(AccessPolicies.Admin);
+
+app.MapPut("/api/users/{id}", async (int id, UpdateUserDto dto, HelpDeskDbContext dbContext) =>
+{
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+    // Mismo protocolo que assignment: usuario antes de cualquier escritura de tickets.
+    var user = await dbContext.Users
+        .FromSqlInterpolated($"SELECT * FROM \"Users\" WHERE \"Id\" = {id} FOR NO KEY UPDATE")
+        .SingleOrDefaultAsync();
+    if (user is null) return Results.NotFound();
+    var error = UserValidation.Validate(dto.Name, dto.Email, dto.Role, out var email, out var role);
+    if (error is not null) return Results.BadRequest(new { error });
+    if (await dbContext.Users.AnyAsync(other => other.Id != id && other.Email == email))
+        return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
+    if (role == UserRole.User && await dbContext.Tickets.AnyAsync(ticket => ticket.AssignedToUserId == id))
+        return Results.Conflict(new { error = "No se puede cambiar a User mientras tenga tickets asignados." });
+    user.Name = dto.Name!;
+    user.Email = email;
+    user.Role = role;
+    try
+    {
+        await dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+    }
+    catch (DbUpdateException exception) when (IsDuplicateUserEmail(exception))
+    {
+        return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
+    }
+    return Results.Ok(ToUserResponse(user));
+}).RequireAuthorization(AccessPolicies.Admin);
 
 app.MapPost("/api/auth/register", async (RegisterUserDto dto, HelpDeskDbContext dbContext,
     IPasswordHasher<User> passwordHasher) =>
@@ -414,7 +476,7 @@ app.MapPost("/api/auth/register", async (RegisterUserDto dto, HelpDeskDbContext 
         return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
     }
     return Results.Created($"/api/users/{user.Id}", ToUserResponse(user));
-});
+}).AllowAnonymous();
 
 app.MapPost("/api/auth/login", async (LoginDto dto, HelpDeskDbContext dbContext,
     IPasswordHasher<User> passwordHasher, JwtTokenIssuer tokens, HttpResponse response) =>
@@ -438,7 +500,7 @@ app.MapPost("/api/auth/login", async (LoginDto dto, HelpDeskDbContext dbContext,
 
     // SuccessRehashNeeded también acredita la contraseña; no escribimos datos en este login.
     return Results.Ok(tokens.Issue(user));
-});
+}).AllowAnonymous();
 
 app.Run();
 
@@ -461,10 +523,6 @@ static string? ValidateTicket(string? title, string? description)
 
     return null;
 }
-
-static IResult UserManagementDisabled() => Results.Json(
-    new { error = "La gestión de usuarios está deshabilitada hasta disponer de autenticación y autorización." },
-    statusCode: StatusCodes.Status403Forbidden);
 
 static UserResponseDto ToUserResponse(User user) => new(user.Id, user.Name, user.Email, user.Role, user.CreatedAt);
 

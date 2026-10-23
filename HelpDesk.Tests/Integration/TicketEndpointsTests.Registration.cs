@@ -60,10 +60,11 @@ public partial class TicketEndpointsTests
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>();
         Assert.True(hasher.VerifyHashedPassword(stored, stored.PasswordHash!, password) == PasswordVerificationResult.Success);
         Assert.True(hasher.VerifyHashedPassword(stored, stored.PasswordHash!, NewTestPassword()) == PasswordVerificationResult.Failed);
-        using var get = await client.GetAsync(response.Headers.Location);
+        using var admin = await CreateAdminClientAsync(factory);
+        using var get = await admin.GetAsync(response.Headers.Location);
         Assert.Equal(HttpStatusCode.OK, get.StatusCode);
         await ReadUserResponseAsync(get);
-        using var list = await client.GetAsync("/api/users");
+        using var list = await admin.GetAsync("/api/users");
         Assert.Equal(HttpStatusCode.OK, list.StatusCode);
         using var json = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
         Assert.All(json.RootElement.EnumerateArray(), u =>
@@ -184,19 +185,18 @@ public partial class TicketEndpointsTests
     [InlineData("POST", "Technician")]
     [InlineData("PUT", "Admin")]
     [InlineData("PUT", "User")]
-    public async Task UserManagement_Forbidden_PreservesUsersAndRelations(string method, string role)
+    public async Task UserManagement_NonAdminForbidden_PreservesUsersAndRelations(string method, string role)
     {
         var user = await SeedHttpUserAsync(UserRole.Technician);
         var target = NewUser();
         var ticket = await CreateTicketAsync(createdByUserId: user.Id, assignedToUserId: user.Id);
-        using var client = fixture.Factory.CreateClient();
+        using var client = CreateAuthenticatedClient(user);
         using var request = new HttpRequestMessage(new HttpMethod(method), method == "POST" ? "/api/users" : $"/api/users/{user.Id}")
         {
             Content = JsonContent.Create(new { target.Name, target.Email, role, password = NewTestPassword(), passwordHash = NewTestPassword() })
         };
         using var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        await AssertHasErrorAsync(response);
         await AssertUserStoredAsync(new(user.Id, user.Name, user.Email, user.Role, user.CreatedAt));
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<HelpDeskDbContext>();

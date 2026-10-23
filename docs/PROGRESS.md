@@ -2,6 +2,10 @@
 
 Última actualización: 2026-10-23.
 
+## Estado vigente al cerrar la etapa 9.3
+
+Autenticación JWT y autorización por cuenta actual/rol/recurso implementadas. Solo health/register/login son públicos; visibilidad de tickets filtrada en SQL y administración de usuarios exclusiva de Admin. 216 pruebas sin PostgreSQL superadas y 273 PostgreSQL pendientes de ejecución por conexión segura ausente. No hay migraciones nuevas ni acceso a desarrollo; bootstrap/activación de cuentas privilegiadas pendiente de una etapa separada. Los registros fechados siguientes conservan el historial del proyecto.
+
 ## Funcionalidades completadas
 
 - Contexto educativo, reglas de trabajo y decisiones iniciales documentados.
@@ -426,3 +430,38 @@ Verificaciones ejecutadas:
 - git diff --check correcto al cierre. Sin cambios en modelos, configuración versionada de secretos, migraciones ni datos de desarrollo; sin commit ni push.
 
 La guía Linux Mint genera una clave una sola vez y la guarda por stdin en User Secrets sin mostrarla; el cliente manual solicita contraseña oculta y no imprime el token. No se ejecutaron esos ejemplos ni se cambió la configuración local del usuario. JWT no cifra claims ni se revoca automáticamente por cambios posteriores de rol/estado. No hay refresh tokens ni limitación de intentos; persiste una diferencia temporal entre cuenta ausente y contraseña errónea. Autorización y revocación se diseñarán tras revisión del usuario; no se continúa con 9.3.
+
+
+## Etapa 9.3: autorización por roles y recursos — 23 de octubre de 2026
+
+Punto de partida limpio. El usuario comunica etapa 9.2 probada y subida a GitHub; ese resultado no se atribuye a esta sesión. Revisados instrucciones, endpoints, DTOs, modelos, JWT, documentación e infraestructura de pruebas antes de implementar.
+
+AddAuthorization y UseAuthorization incorporados. Solo health, registro y login son públicos. DefaultPolicy/FallbackPolicy y políticas Admin/ChangeStatus exigen cuenta actual mediante CurrentAccountRequirement; su handler scoped consulta existencia/rol en PostgreSQL por el sub del JWT autenticado y exige coincidencia con el claim. No se confía en cuerpos ni cabeceras alternativas. JWT ausente/inválido/caducado produce 401; cuenta ausente/rol cambiado, 403 genérico. No hay caché de roles entre peticiones ni fallback de privilegios si falla PostgreSQL.
+
+TicketAccess compone el filtro SQL antes de count/filtros/paginación: User propios, Technician propios o asignados, Admin todos. Detalle invisible 404. Históricos sin creador quedan solo para Admin o técnico asignado. POST siempre asigna creador autenticado e ignora cualquier CreatedByUserId del cliente. Gestión de textos, clasificación, asignación y borrado solo Admin. Estado permite además Technician asignado, leyendo con FOR UPDATE dentro de ReadCommitted antes de comprobar el recurso y conservando el bloqueo hasta finalizar.
+
+GET de usuarios reservado a Admin y perfil propio seguro en GET por ID, con 404 ajeno. POST/PUT administrativos reactivados tras revisión: validación de correo/rol, unicidad y DTO sin hash; POST crea sin credencial, PUT conserva hash/ID/fecha. PUT mantiene FOR NO KEY UPDATE antes de comprobar asignaciones y assignment FOR SHARE hasta commit; conversión a User con asignaciones devuelve 409. No se crea ni activa un Admin, ni se modifica una cuenta existente para obtenerlo. Si no existe un Admin con contraseña válida, administración inaccesible deliberadamente; aprovisionamiento inicial seguro propuesto para otra etapa, sin bypass implementado.
+
+Archivos creados:
+
+- HelpDesk.Api/Authorization/AccessPolicies.cs: políticas, requisito/handler de cuenta actual y estado scoped.
+- HelpDesk.Api/Authorization/TicketAccess.cs: filtro de visibilidad y permiso de estado centralizados.
+- HelpDesk.Tests/AuthorizationEndpointTests.cs: autenticación obligatoria, metadatos y claims inválidos sin base.
+- HelpDesk.Tests/Integration/TicketEndpointsTests.Authentication.cs: clientes con cuentas propias y JWT reales.
+- HelpDesk.Tests/Integration/TicketEndpointsTests.Authorization.cs: permisos por rol/recurso, históricos, creador, perfil, identidad obsoleta, administración y unicidad concurrente.
+- HelpDesk.Tests/Integration/TicketEndpointsTests.RoleConcurrency.cs: ocho combinaciones de cambio de rol/asignación y carrera de reasignación/estado.
+
+Archivos modificados: HelpDesk.Api/Program.cs; HelpDesk.Tests/RegistrationSecurityTests.cs; Integration/TicketEndpointsTests.cs y sus parciales AssignmentConcurrency, Category, List, Login, Priority, Registration, Relations y UserHttp; README y guías AUTHENTICATION, ARCHITECTURE, POSTGRESQL_TESTS y este registro. Sin cambios en csproj, modelos, DTOs, migraciones, fixture ni validador de conexión. No hay dependencias nuevas.
+
+Las regresiones HTTP de reglas y persistencia se autentican como Admin con una cuenta propia, sin sustituir el esquema Bearer ni omitir políticas. Se mantienen registro/login anónimos, validación, integridad, filtros, limpieza y bloqueos. Se adaptan expectativas de creador y gestión anónima al nuevo contrato. Añadidos 61 casos sin PostgreSQL y 42 PostgreSQL. Los casos nuevos de permisos recorren User/Technician/Admin y negaciones; las carreras observan pg_blocking_pids, no usan retrasos como sincronización.
+
+Verificaciones reales finales:
+
+- dotnet restore HelpDesk.NET.slnx: correcto. Primer intento restringido terminó con código 1 sin diagnóstico; completado fuera con autorización.
+- dotnet build HelpDesk.NET.slnx --no-restore: correcto, cero errores/advertencias. El intento restringido falló sin diagnóstico; compilación realizada fuera con autorización.
+- dotnet test HelpDesk.NET.slnx --no-build --filter 'Category!=PostgreSQL': 216 superadas, cero fallidas/omitidas. El intento restringido falló por SocketException/Permission denied de MSBuild; completado fuera con autorización. Una ejecución intermedia detectó que el lector JWT rechaza sub duplicado con 401 antes de la política; se corrigió la expectativa de esa prueba y se repitió la suite completa satisfactoriamente.
+- Descubrimiento con --list-tests --filter 'Category=PostgreSQL': 273 casos, sin ejecutar fixture ni abrir conexiones. Total definido: 489. Descubrir no valida permisos, persistencia ni bloqueos en PostgreSQL.
+- HELPDESK_TEST_CONNECTION_STRING ausente: cero pruebas PostgreSQL ejecutadas; no se consultó ni modificó desarrollo ni se aplicaron migraciones. La ejecución segura de los 273 casos queda pendiente.
+- Documentación revisada y snippets Python de AUTHENTICATION.md comprobados sintácticamente sin ejecutarlos. git diff --check correcto al cierre; archivos nuevos revisados para espacios finales. Sin commit ni push.
+
+Límites: el rol se comprueba al inicio de cada petición protegida; no se cancelan peticiones ya autorizadas. Cambiar el rol invalida la autorización del token mientras no coincida, pero no revoca permanentemente una sesión si el rol vuelve al anterior. No hay revocación por contraseña, deshabilitación, limitación de intentos, activación o protección ante auto degradar al último Admin. JWT no cifra sus claims. Se conserva la limitación de última escritura para gestión administrativa concurrente y las reglas de rol no protegen SQL externo. Detalle y cliente manual por cada rol de solo lectura en AUTHENTICATION.md. No se continúa con etapas adicionales sin aprobación.

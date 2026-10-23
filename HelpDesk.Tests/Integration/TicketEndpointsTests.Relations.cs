@@ -22,7 +22,7 @@ public partial class TicketEndpointsTests
     public async Task PostTicket_CreatorOfAnyRole_IsPersisted(UserRole role)
     {
         var user = await SeedHttpUserAsync(role);
-        using var client = fixture.Factory.CreateClient();
+        using var client = CreateAuthenticatedClient(user);
         using var response = await client.PostAsJsonAsync("/api/tickets", new
         {
             title, description = Description, createdByUserId = user.Id,
@@ -43,38 +43,38 @@ public partial class TicketEndpointsTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task PostTicket_LegacyOrExplicitNullCreator_RemainsCompatible(bool explicitNull)
+    public async Task PostTicket_OmittedOrNullCreator_UsesAuthenticatedIdentity(bool explicitNull)
     {
         var body = new Dictionary<string, object?> { ["title"] = title, ["description"] = Description };
         if (explicitNull) body["createdByUserId"] = null;
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PostAsJsonAsync("/api/tickets", body);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var ticket = await response.Content.ReadFromJsonAsync<Ticket>(JsonOptions);
         Assert.NotNull(ticket);
         ownedTicketIds.Add(ticket.Id);
-        Assert.Null(ticket.CreatedByUserId);
+        Assert.Equal(regressionAdmin!.Id, ticket.CreatedByUserId);
         Assert.Null(ticket.AssignedToUserId);
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<HelpDeskDbContext>();
         var stored = await db.Tickets.AsNoTracking().SingleAsync(t => t.Id == ticket.Id);
-        Assert.Null(stored.CreatedByUserId);
+        Assert.Equal(regressionAdmin!.Id, stored.CreatedByUserId);
         Assert.Null(stored.AssignedToUserId);
     }
 
     [Theory]
     [InlineData(-1)]
     [InlineData(0)]
-    public async Task PostTicket_MissingCreator_ReturnsBadRequestWithoutWriting(int creatorId)
+    public async Task PostTicket_UntrustedCreator_IsIgnored(int creatorId)
     {
         await AssertAbsentUserAsync(creatorId);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PostAsJsonAsync("/api/tickets", new { title, description = Description, createdByUserId = creatorId });
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        await AssertHasErrorAsync(response);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         await using var scope = fixture.Factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<HelpDeskDbContext>();
-        Assert.False(await db.Tickets.AnyAsync(t => t.Title == title));
+        var stored = await db.Tickets.SingleAsync(t => t.Title == title);
+        Assert.Equal(regressionAdmin!.Id, stored.CreatedByUserId);
     }
 
     [Theory]
@@ -85,7 +85,7 @@ public partial class TicketEndpointsTests
         var creator = await SeedHttpUserAsync();
         var assignee = await SeedHttpUserAsync(role);
         var original = await CreateTicketAsync(TicketStatus.Resolved, TicketPriority.High, TicketCategory.Network, creator.Id);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         for (var i = 0; i < 2; i++)
         {
             using var response = await client.PatchAsJsonAsync($"/api/tickets/{original.Id}/assignment", new
@@ -114,7 +114,7 @@ public partial class TicketEndpointsTests
     {
         var user = await SeedHttpUserAsync();
         var ticket = await CreateTicketAsync();
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PatchAsJsonAsync($"/api/tickets/{ticket.Id}/assignment", new { assignedToUserId = user.Id });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         await AssertHasErrorAsync(response);
@@ -129,7 +129,7 @@ public partial class TicketEndpointsTests
         await AssertAbsentUserAsync(userId);
         var valid = await SeedHttpUserAsync(UserRole.Technician);
         var ticket = await CreateTicketAsync(assignedToUserId: valid.Id);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PatchAsJsonAsync($"/api/tickets/{ticket.Id}/assignment", new { assignedToUserId = userId });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         await AssertHasErrorAsync(response);
@@ -142,7 +142,7 @@ public partial class TicketEndpointsTests
         var first = await SeedHttpUserAsync(UserRole.Technician);
         var second = await SeedHttpUserAsync(UserRole.Admin);
         var ticket = await CreateTicketAsync(createdByUserId: first.Id, assignedToUserId: first.Id);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         foreach (int? target in new int?[] { second.Id, null, null })
         {
             using var response = await client.PatchAsJsonAsync($"/api/tickets/{ticket.Id}/assignment", new { assignedToUserId = target });
@@ -168,7 +168,7 @@ public partial class TicketEndpointsTests
     public async Task Assignment_InvalidBody_ReturnsJsonBadRequestWithoutChanges(string payload)
     {
         var ticket = await CreateTicketAsync();
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var content = new StringContent(payload, Encoding.UTF8, "application/json");
         using var response = await client.PatchAsync($"/api/tickets/{ticket.Id}/assignment", content);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -180,7 +180,7 @@ public partial class TicketEndpointsTests
     public async Task Assignment_MissingTicket_ReturnsNotFound()
     {
         await AssertMissingIdAsync();
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         using var response = await client.PatchAsJsonAsync("/api/tickets/-1/assignment", new { assignedToUserId = (int?)null });
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Empty(await response.Content.ReadAsStringAsync());
@@ -195,7 +195,7 @@ public partial class TicketEndpointsTests
     {
         var user = await SeedHttpUserAsync(UserRole.Technician);
         var ticket = await CreateTicketAsync(createdByUserId: user.Id, assignedToUserId: user.Id);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         var body = new { title = "Texto actualizado", description = "Nueva descripción", status = "InProgress", priority = "Critical", category = "Access", createdByUserId = -1, assignedToUserId = -1 };
         using var response = endpoint == "PUT"
             ? await client.PutAsJsonAsync($"/api/tickets/{ticket.Id}", body)
@@ -217,7 +217,7 @@ public partial class TicketEndpointsTests
         var user = await SeedHttpUserAsync(UserRole.Technician);
         var legacy = await CreateTicketAsync();
         var related = await CreateTicketAsync(createdByUserId: user.Id, assignedToUserId: user.Id);
-        using var client = fixture.Factory.CreateClient();
+        using var client = await CreateAdminClientAsync();
         // Títulos exactos de los dos tickets propios: sin depender de otras filas.
         await using (var scope = fixture.Factory.Services.CreateAsyncScope())
         {
@@ -287,7 +287,7 @@ public partial class TicketEndpointsTests
         var pause = new PauseTicketSave(title);
         using var factory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             services.AddDbContext<HelpDeskDbContext>(options => options.AddInterceptors(pause))));
-        using var client = factory.CreateClient();
+        using var client = CreateAuthenticatedClient(user, factory);
         var pending = client.PostAsJsonAsync("/api/tickets", new { title, description = Description, createdByUserId = user.Id });
         try
         {
