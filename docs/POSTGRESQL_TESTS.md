@@ -1,5 +1,24 @@
 # Pruebas de persistencia con PostgreSQL aislado
 
+Revisión del 23 de octubre de 2026: el usuario comunica 277/280 PostgreSQL superadas antes de las correcciones. Se revisan dos comparaciones de CreatedAt a precisión de microsegundos y la sincronización de reasignación/estado después del UPDATE, conservando bloqueos reales y seguridad. Hay ahora 281 casos PostgreSQL descubiertos por la regresión del orden inverso, pendientes de ejecutar; 257 sin PostgreSQL ejecutados y superados. HELPDESK_TEST_CONNECTION_STRING ausente en esta revisión. Los resultados anteriores de esta guía son históricos; 9.4 sigue pendiente de cierre.
+
+Para verificar las correcciones, cargar de forma oculta la conexión según esta guía, exclusivamente a helpdesk_test_db. El validador y la fixture existentes verifican destino y rol limitado antes de preparar el esquema; nunca usar DefaultConnection. Desde la raíz:
+
+```bash
+dotnet restore HelpDesk.NET.slnx
+dotnet build HelpDesk.NET.slnx --no-restore
+dotnet test HelpDesk.NET.slnx --no-build --filter 'Category!=PostgreSQL'
+dotnet test HelpDesk.NET.slnx --no-build --filter 'Category=PostgreSQL'
+```
+
+Para repetir solo los dos órdenes de concurrencia después de la suite completa:
+
+```bash
+dotnet test HelpDesk.NET.slnx --no-build --filter 'Category=PostgreSQL&FullyQualifiedName~TechnicianStatus_WaitsForConcurrentReassignmentAndThenRejectsOldAssignee|Category=PostgreSQL&FullyQualifiedName~StatusLock_CommitsAuthorizedStatusBeforeReassignment_ThenRejectsFormerTechnician'
+```
+
+Estas ejecuciones deben demostrar espera real, finalización sin interbloqueos, estado íntegro y rechazo del técnico tras perder la asignación. Descubrir pruebas no verifica estas garantías.
+
 ## Estado
 
 Infraestructura y 245 casos PostgreSQL preparados y compilados: HTTP de tickets y usuarios, persistencia, relaciones y asignaciones. Su ejecución en esta sesión está pendiente de configuración PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
@@ -162,3 +181,37 @@ dotnet test HelpDesk.NET.slnx --filter 'Category=PostgreSQL'
 ```
 
 No usar DefaultConnection de desarrollo ni cambiar usuarios existentes para obtener Admin. Las cuentas de roles de pruebas se preparan por EF solo dentro de la base validada; esto no proporciona una vía de aprovisionamiento en la API. La comprobación manual de solo lectura para cuentas ya activadas está en AUTHENTICATION.md.
+
+## Bootstrap CLI del primer Admin — etapa 9.4
+
+Suite actual: **537 casos**, **257 sin PostgreSQL superados** y **280 PostgreSQL descubiertos sin ejecutar**. Se añaden 41 casos sin PostgreSQL y siete de integración. Los resultados de 9.3 anteriores son históricos. Esta sesión no tiene HELPDESK_TEST_CONNECTION_STRING: no se ejecutó bootstrap sobre una base ni se aplicaron migraciones.
+
+Las pruebas sin base verifican validación compartida, hash, confirmación exacta, destino, rechazo de argumentos/redirección y ausencia de secretos en errores. Una ejecuta la consola real en pseudoterminal Linux y cancela antes de conectar. Requiere `script` (util-linux), `stty` (coreutils) y `dotnet` en PATH; la solución debe compilarse previamente. La PTY registra solo en memoria y usa /dev/null como destino de script, nunca un archivo de transcripción. No hay flags ni variables para saltarse el requisito interactivo. Las credenciales de ese caso son efímeras ficticias y nunca se usan para conectar.
+
+Los siete casos PostgreSQL residen en TicketEndpointsTests.Bootstrap.cs, dentro de la misma clase parcial que las regresiones: se ejecutan secuencialmente con la fixture existente y solo aceptan la conexión previamente validada a helpdesk_test_db. No leen la variable de bootstrap del operador ni DefaultConnection. Antes de empezar exigen ausencia de Admin ajenos; **no borran, degradan ni cambian hashes** para conseguirla. Si hay un Admin persistido por otra ejecución, revisar su procedencia y usar una base de pruebas dedicada al proyecto que cumpla las precondiciones, sin modificar desarrollo ni ejecutar borrados globales.
+
+Se preparan dos usuarios y seis tickets propios, con roles, hash anterior, relaciones y clasificaciones variadas. Tras cada operación se comparan los campos y hashes sin imprimirlos. Se prueba creación con normalización, PasswordHasher, login HTTP, claim Admin, GET administrativo y creación de otra cuenta propia mediante la API. También Admin existente con/sin hash, correo User/Technician duplicado y cancelación. Limpieza heredada limitada a GUID/IDs propios, primero tickets y después usuarios; un aborto o pérdida de conexión puede impedirla.
+
+El caso concurrente inicia **dos procesos reales** de HelpDesk.AdminBootstrap bajo PTY, con la conexión de pruebas por entorno y contraseña por entrada oculta. Una transacción del test mantiene inicialmente el bloqueo de Users; pg_locks confirma que ambos procesos esperan ShareRowExclusiveLock antes de liberarlo. Se exige un código de creación 0, un rechazo 2, exactamente una fila Admin candidata, hash correcto y conservación de la línea base. Se capturan stdout/stderr en memoria y se comprueba que no contienen contraseñas, hash ni cadena; no se vuelcan esas capturas ante fallos. Los timeouts detectan errores, no coordinan el orden. Este caso está compilado/descubierto, **no ejecutado** en esta sesión.
+
+Comandos desde la raíz:
+
+```bash
+dotnet restore HelpDesk.NET.slnx
+dotnet build HelpDesk.NET.slnx --no-restore
+dotnet test HelpDesk.NET.slnx --no-build --filter 'Category!=PostgreSQL'
+```
+
+Solo con la conexión segura cargada de forma oculta según esta guía:
+
+```bash
+dotnet test HelpDesk.NET.slnx --no-build --filter 'Category=PostgreSQL'
+```
+
+Para ejecutar únicamente el nuevo bootstrap PostgreSQL sin sustituir la validación de destino:
+
+```bash
+dotnet test HelpDesk.NET.slnx --no-build --filter 'Category=PostgreSQL&FullyQualifiedName~Bootstrap'
+```
+
+Listar con --list-tests no ejecuta fixture ni valida persistencia/concurrencia. Los ejemplos manuales que sí crean el primer Admin real están en AUTHENTICATION.md y requieren la autorización pendiente del usuario; no se ejecutan como parte de esta implementación.

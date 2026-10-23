@@ -22,6 +22,7 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 - CRUD de tickets con persistencia en PostgreSQL.
 - Consulta de usuarios y registro público de cuentas con contraseña y rol `User`.
 - Autorización por roles y recursos: tickets propios/asignados y administración exclusiva de Admin.
+- CLI independiente para crear el primer Admin con confirmación del destino, contraseña oculta y bloqueo PostgreSQL; no ejecutada contra desarrollo.
 - Creador opcional y asignación/reasignación/desasignación de técnicos en tickets.
 - Listado con filtros combinables, búsqueda sin distinguir mayúsculas y paginación.
 - Validación de título obligatorio, máximo de 100 caracteres, y descripción obligatoria.
@@ -50,6 +51,7 @@ HelpDesk.Api/
   Validation/         # Validación compartida de solicitudes de usuarios
   Data/               # DbContext y mapeo de entidades
   Migrations/         # Evolución del esquema PostgreSQL
+HelpDesk.AdminBootstrap/ # CLI manual del primer Admin; no arranca con la API
 HelpDesk.Tests/
   Integration/        # Fábrica HTTP, fixture y pruebas PostgreSQL
   ...                 # Pruebas unitarias y del endpoint de salud
@@ -70,7 +72,7 @@ La contraseña exige 15–128 unidades UTF-16, no puede ser solo espacios ni con
 
 Email conserva la política anterior: formato mediante `MailAddress.TryCreate`, sin nombres de presentación ni espacios internos, dominio ASCII con al menos un punto; dominios internacionalizados en punycode. PostgreSQL exige correo canónico mediante CHECK e índice único. Los GET proyectan DTOs con AsNoTracking y el listado sigue siendo un array ordenado por Id.
 
-**Etapa 9.3:** solo health, registro y login son públicos. Toda otra ruta requiere JWT válido y una cuenta existente con el mismo rol actual en PostgreSQL. POST/PUT de usuarios se habilitan solo para Admin; no permiten fijar contraseñas/hashes. Las cuentas administrativas creadas así tienen PasswordHash NULL y requieren un futuro flujo seguro de activación. No existe bootstrap de Admin ni se modifican cuentas existentes para obtenerlo. Perfil propio disponible en GET `/api/users/{id}`; directorio completo reservado a Admin.
+**Etapa 9.3:** solo health, registro y login son públicos. Toda otra ruta requiere JWT válido y una cuenta existente con el mismo rol actual en PostgreSQL. POST/PUT de usuarios se habilitan solo para Admin; no permiten fijar contraseñas/hashes. Las cuentas administrativas creadas así tienen PasswordHash NULL y requieren un futuro flujo seguro de activación. La consola separada `HelpDesk.AdminBootstrap` permite crear el primer Admin nuevo solo si no existe ninguno, con destino y confirmación interactivos. No activa cuentas antiguas ni modifica las existentes. Su ejecución real sigue pendiente de autorización. Perfil propio disponible en GET `/api/users/{id}`; directorio completo reservado a Admin.
 
 ## API
 
@@ -282,7 +284,7 @@ Un cuerpo JSON incorrecto o incompatible con el DTO devuelve `400` con una respu
 - SDK de .NET 10.
 - PostgreSQL local; la configuración documentada utiliza PostgreSQL 16.
 - Git y acceso a NuGet para restaurar dependencias.
-- `psql` para preparar la base; Python 3 para el ejemplo de configuración segura siguiente.
+- `psql` para preparar la base; Python 3 para los clientes de verificación. Las pruebas de terminal Linux usan `script` y `stty` de util-linux/coreutils, disponibles habitualmente en Linux Mint.
 
 Los comandos se ejecutan desde la raíz del repositorio. Los ejemplos de terminal utilizan Bash.
 
@@ -351,9 +353,15 @@ curl http://localhost:5085/api/health
 
 Respuesta esperada: `{"status":"ok"}`. Este endpoint comprueba que la API responde; no verifica la conexión con PostgreSQL.
 
+## Primer administrador (CLI)
+
+La [guía de bootstrap para Linux Mint](docs/AUTHENTICATION.md#etapa-94-inicialización-del-primer-admin-mediante-cli) detalla configuración externa, confirmaciones y verificación posterior con login/GET sin alterar tickets. El comando independiente es `dotnet run --project HelpDesk.AdminBootstrap --no-build --no-launch-profile`; requiere una terminal interactiva y `HELPDESK_BOOTSTRAP_CONNECTION_STRING` cargada mediante entrada oculta. No acepta contraseñas por argumentos ni usa User Secrets como alternativa automática.
+
+No ejecutar todavía sobre desarrollo: la creación del primer Admin real queda pendiente de autorización explícita. Si existe cualquier Admin o el correo está registrado, rechaza sin cambiar cuentas. No hay recuperación de contraseñas ni activación de cuentas antiguas.
+
 ## Pruebas automatizadas
 
-La suite actual contiene **489 casos**: **216 sin PostgreSQL superados** y **273 PostgreSQL descubiertos sin ejecutar** por falta de conexión segura en esta sesión. Incluye JWT, protección HTTP, permisos por rol/recurso, administración y concurrencia; el comportamiento PostgreSQL nuevo queda pendiente de ejecución.
+La suite actual contiene **537 casos**: **257 sin PostgreSQL superados** y **280 PostgreSQL descubiertos sin ejecutar** por falta de conexión segura en esta sesión. Incluye JWT, autorización y bootstrap; una prueba real de pseudoterminal cancela antes de conectar y comprueba que la contraseña no aparece. Login del primer Admin y carrera entre dos procesos CLI quedan pendientes de PostgreSQL.
 
 Las pruebas unitarias verifican transiciones, validaciones y mapeos. Una prueba HTTP de salud utiliza WebApplicationFactory y TestServer en memoria, sin arrancar Kestrel manualmente. Para ejecutar todos los casos que no necesitan base de datos:
 
@@ -386,7 +394,7 @@ Si falta la cadena o no supera la validación del destino, los casos PostgreSQL 
 Previsión de evolución, pendiente de implementación:
 
 - Comentarios, historial y evolución de la gestión de usuarios.
-- Activación segura de cuentas privilegiadas y evolución de la revocación de JWT, pendientes de solicitud.
+- Recuperación/activación segura de cuentas existentes y evolución de la revocación de JWT, pendientes de solicitud.
 - Interfaz web para gestionar los tickets.
 
 ## Documentación

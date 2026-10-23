@@ -24,13 +24,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
 
-// Solo el hasher del framework compartido: no se instala el modelo completo de Identity.
-builder.Services.Configure<PasswordHasherOptions>(options =>
-{
-    options.CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3;
-    options.IterationCount = 210_000;
-});
-builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+builder.Services.AddHelpDeskPasswordHashing();
 
 builder.Services.AddSingleton<IValidateOptions<JwtSettings>, JwtSettingsValidator>();
 builder.Services.AddOptions<JwtSettings>().BindConfiguration("Jwt").ValidateOnStart();

@@ -2,9 +2,9 @@
 
 Última actualización: 2026-10-23.
 
-## Estado vigente al cerrar la etapa 9.3
+## Estado vigente de la etapa 9.4 — cierre pendiente
 
-Autenticación JWT y autorización por cuenta actual/rol/recurso implementadas. Solo health/register/login son públicos; visibilidad de tickets filtrada en SQL y administración de usuarios exclusiva de Admin. 216 pruebas sin PostgreSQL superadas y 273 PostgreSQL pendientes de ejecución por conexión segura ausente. No hay migraciones nuevas ni acceso a desarrollo; bootstrap/activación de cuentas privilegiadas pendiente de una etapa separada. Los registros fechados siguientes conservan el historial del proyecto.
+Autenticación/autorización de 9.3 conservadas. Añadida consola independiente para crear el primer Admin nuevo con contraseña oculta, doble confirmación del destino y bloqueo PostgreSQL. El usuario comunica 280 pruebas PostgreSQL ejecutadas: 277 superadas y tres fallidas. Correcciones revisadas para precisión de fechas y sincronización de concurrencia; 257 pruebas sin PostgreSQL superadas y 281 PostgreSQL descubiertas, pendientes de ejecución con las correcciones. La consola real solo se ejecutó con credenciales ficticias y cancelación antes de conectar; no se ha creado un Admin real ni accedido a desarrollo. Su ejecución real queda pendiente de autorización explícita. Los registros fechados siguientes conservan el historial del proyecto.
 
 ## Funcionalidades completadas
 
@@ -465,3 +465,67 @@ Verificaciones reales finales:
 - Documentación revisada y snippets Python de AUTHENTICATION.md comprobados sintácticamente sin ejecutarlos. git diff --check correcto al cierre; archivos nuevos revisados para espacios finales. Sin commit ni push.
 
 Límites: el rol se comprueba al inicio de cada petición protegida; no se cancelan peticiones ya autorizadas. Cambiar el rol invalida la autorización del token mientras no coincida, pero no revoca permanentemente una sesión si el rol vuelve al anterior. No hay revocación por contraseña, deshabilitación, limitación de intentos, activación o protección ante auto degradar al último Admin. JWT no cifra sus claims. Se conserva la limitación de última escritura para gestión administrativa concurrente y las reglas de rol no protegen SQL externo. Detalle y cliente manual por cada rol de solo lectura en AUTHENTICATION.md. No se continúa con etapas adicionales sin aprobación.
+
+
+## Etapa 9.4: inicialización segura del primer Admin — 23 de octubre de 2026
+
+Punto de partida limpio. El usuario comunica etapas anteriores probadas y subidas a GitHub, ausencia de Admin operativo y seis tickets/dos usuarios de desarrollo que se deben conservar. Esta sesión no verifica ni modifica esas filas. Revisados Program, modelos, DbContext, JWT/políticas, validadores, configuración externa/UserSecretsId, bloqueo de asignación/cambio de rol y pruebas; no se leen valores de User Secrets.
+
+Implementado HelpDesk.AdminBootstrap, consola net10.0 separada de HTTP y añadida a la solución. Reutiliza modelos/contexto/validación mediante referencia a API; esta no referencia ni inicia la consola. Configuración de PasswordHasher<User> extraída a AddHelpDeskPasswordHashing, común a API y CLI: Identity V3, 210.000 iteraciones, sin cambios de política ni endpoints.
+
+La CLI exige terminal interactiva sin redirección y no acepta argumentos con credenciales. Lee únicamente HELPDESK_BOOTSTRAP_CONNECTION_STRING externa y filtra sus opciones, fija public y oculta errores del proveedor; no carga JWT, appsettings, User Secrets ni DefaultConnection. Muestra host/puerto/base/usuario y operación; el operador debe escribir el nombre exacto de base, email nuevo, nombre, contraseña oculta dos veces y CONFIRMAR PRIMER ADMIN. Cancelaciones/validación errónea no abren conexiones. Verifica también database/user efectivos antes de escribir.
+
+BootstrapService calcula el hash fuera del bloqueo y usa ReadCommitted con LOCK TABLE public.Users IN SHARE ROW EXCLUSIVE MODE antes de consultar Admin/correo e insertar. El modo es autoconflictivo y excluye ROW EXCLUSIVE de escrituras, incluso de otros programas. Dos procesos se serializan: el segundo espera y ve el Admin confirmado por el primero en su consulta posterior. Rechaza cualquier Admin existente, incluso con hash NULL, y cualquier correo ocupado, sin promoción/activación ni cambios de contraseña. Solo INSERT de la cuenta nueva; sin cambios de Tickets, filas anteriores, roles existentes, migraciones ni indicadores persistentes. La condición es ausencia actual de Admin, no un registro de bootstrap irreversible.
+
+Archivos creados:
+
+- HelpDesk.AdminBootstrap/HelpDesk.AdminBootstrap.csproj.
+- HelpDesk.AdminBootstrap/BootstrapProgram.cs: punto de entrada sin host HTTP ni migraciones.
+- HelpDesk.AdminBootstrap/BootstrapConnection.cs: conexión dedicada validada y metadatos de destino sin exponer secretos.
+- HelpDesk.AdminBootstrap/BootstrapConsole.cs: lectura interactiva y contraseña sin eco.
+- HelpDesk.AdminBootstrap/BootstrapCommand.cs: flujo, confirmaciones, códigos de salida y errores seguros.
+- HelpDesk.AdminBootstrap/BootstrapService.cs: validación defensiva y transacción del primer Admin.
+- HelpDesk.Api/Authentication/PasswordHashing.cs: configuración compartida del hasher.
+- HelpDesk.Tests/BootstrapSecurityTests.cs: 41 casos sin PostgreSQL, incluida cancelación en CLI real.
+- HelpDesk.Tests/Integration/BootstrapTerminalProcess.cs: PTY Linux con script/stty, sin archivos de transcripción ni secretos en argumentos.
+- HelpDesk.Tests/Integration/TicketEndpointsTests.Bootstrap.cs: siete casos PostgreSQL con fixture/limpieza existentes.
+
+Archivos modificados: HelpDesk.Api/Program.cs (solo extraer registro del hasher), HelpDesk.NET.slnx, HelpDesk.Tests/HelpDesk.Tests.csproj y README, AUTHENTICATION, ARCHITECTURE, POSTGRESQL_TESTS y este registro. No hay dependencias NuGet nuevas; solo referencias de proyecto. Modelos, DTOs, políticas, migraciones, fixture y validador de destino de pruebas intactos.
+
+Pruebas nuevas de entrada/confirmación, hasher común, opciones de conexión y no exposición de secretos. Integración preparada para creación/login/JWT/Admin, Admin existente con/sin contraseña, correo User/Technician duplicado, cancelación y dos procesos CLI concurrentes bajo PTY. Se preparan dos usuarios y seis tickets propios y se comparan campos/hashes/relaciones. Un bloqueo del test y pg_locks demuestran la espera simultánea antes de liberar a los dos procesos; no se usa un retraso para decidir el orden. Esas pruebas PostgreSQL no se han ejecutado. La clase parcial serializa su ejecución con las regresiones; si hay Admin ajenos no se borran ni degradan para preparar pruebas, se falla explícitamente. Limpieza por GUID/IDs propios heredada.
+
+Verificaciones reales:
+
+- dotnet restore HelpDesk.NET.slnx: correcto fuera del sandbox con autorización; intentos restringidos terminaron con código 1 sin diagnóstico.
+- dotnet build HelpDesk.NET.slnx --no-restore: correcto, cero errores y advertencias. Intento restringido falló sin diagnóstico, repetido fuera con autorización.
+- dotnet test HelpDesk.NET.slnx --no-build --filter 'Category!=PostgreSQL': 257 superadas, cero fallidas/omitidas. El intento restringido falló por sockets internos de MSBuild (Permission denied); ejecutado fuera con autorización. Primera suite de 256 ya pasó y se repitió tras añadir la comprobación de terminal real.
+- La prueba real de PTY ejecutó el binario con conexión ficticia a helpdesk_test_db, contraseña efímera y confirmación incorrecta: salida 2 y sin mostrar secretos; cancelación antes de abrir conexión. No se creó ninguna cuenta ni se utilizó desarrollo.
+- Descubrimiento --list-tests --filter 'Category=PostgreSQL': 280 casos, sin fixture ni conexiones. Total definido 537: 257 sin base y 280 con PostgreSQL. Descubrir no valida creación, login ni concurrencia PostgreSQL.
+- HELPDESK_TEST_CONNECTION_STRING ausente: cero casos PostgreSQL ejecutados y ningún bootstrap contra una base. No se aplicaron migraciones ni se consultó/modificó desarrollo.
+- Ejemplos Python de AUTHENTICATION.md comprobados sintácticamente sin ejecutarlos. git diff --check correcto al cierre; revisados archivos nuevos y diferencia de configuración/solución.
+
+README y guías incluyen carga de conexión oculta, frase exacta, verificación Admin mediante login/GET sin alterar tickets, rechazo cuando existe Admin y limitación ante contraseña perdida. No hay recuperación ni activación de cuentas antiguas; no se propone borrar/degradar Admin ni editar hashes para reabrir el bootstrap. El rol PostgreSQL debe tener permisos legítimos; el bloqueo puede retrasar escrituras de Users, por lo que requiere ventana coordinada. Una pérdida de respuesta durante commit exige verificar el resultado antes de reintentar. No se promete borrado criptográfico de strings de memoria; entorno/terminal/equipo deben protegerse.
+
+Sin commit ni push. Creación del primer Admin real pendiente de revisión y autorización explícita del usuario; no se solicita ni se ejecuta en esta entrega. No se continúa con otras etapas.
+
+## Revisión de tres fallos PostgreSQL — 23 de octubre de 2026
+
+El usuario comunica 280 ejecutadas, 277 superadas y tres fallidas. Al iniciar esta revisión ya había correcciones locales para los tres fallos y una regresión del orden inverso; se conservan y revisan junto con endpoints, transacciones y filtros de autorización.
+
+- Fechas: AssertTicketEqual y el caso administrativo comparaban ticks completos de POST en memoria con lecturas persistidas. DateTime tiene resolución de 100 ns; timestamp with time zone conserva microsegundos y Npgsql descarta la fracción submicrosegundo al escribir. Las correcciones comparan exactamente los cocientes de ticks por TimeSpan.TicksPerMicrosecond y exigen UTC, conservando los demás campos. Sin modificar fechas, esquema ni migraciones.
+- Concurrencia: PauseRelatedSave pausaba en SavingChangesAsync, antes del UPDATE de Tickets. El SHARE de Users no bloquea el FOR UPDATE de Tickets: el técnico podía terminar sin esperar y AssertBlockedByAsync agotaba diez segundos buscando un bloqueo inexistente. PauseTicketAfterSave pausa en SavedChangesAsync, después del SQL y antes del commit explícito, y exige CurrentTransaction. Se mantiene pg_blocking_pids y se exige una petición pendiente antes de liberar la pausa. Tras commit se exige 404 sin cuerpo y ticket íntegro con nuevo asignado y estado original.
+- Regresión adicional ya presente: estado primero/reasignación después. Comprueba bloqueo real, ambas respuestas 200, estado/asignación finales y rechazo posterior del antiguo técnico. finally libera siempre las barreras. Sin aumentar timeouts ni omitir pruebas.
+
+La inspección no justifica cambiar endpoints: status usa FOR UPDATE en ReadCommitted y comprueba el recurso antes de escribir. Assignment protege Users y después escribe Tickets; status bloquea Tickets sin solicitar después un bloqueo de Users. No aparece un ciclo entre ambas operaciones. La ausencia de interbloqueos y el comportamiento real de la consulta compuesta con VisibleTo requieren todavía ejecución PostgreSQL.
+
+Archivos de correcciones: Integration/TicketEndpointsTests.cs, TicketEndpointsTests.Authorization.cs y TicketEndpointsTests.RoleConcurrency.cs. Esta revisión explicita la constante de precisión y añade cuerpo vacío al rechazo concurrente. Documentación actualizada en PROGRESS.md, ARCHITECTURE.md y POSTGRESQL_TESTS.md. Los demás cambios locales anteriores se conservan sin ampliarlos.
+
+Validación realmente ejecutada:
+
+- Restore correcto; build correcto con cero errores/advertencias, ambos fuera del sandbox. Intentos restringidos terminaron con código 1 sin diagnóstico.
+- dotnet test HelpDesk.NET.slnx --no-build --filter 'Category!=PostgreSQL': 257 superadas, cero fallidas/omitidas, fuera del sandbox. Intento restringido bloqueado por SocketException/Permission denied de MSBuild.
+- Descubrimiento --list-tests --filter 'Category=PostgreSQL': 281 casos; no ejecuta fixture ni conecta.
+- HELPDESK_TEST_CONNECTION_STRING ausente: cero pruebas PostgreSQL ejecutadas en esta revisión. Sin conexión a desarrollo, migraciones ni modificaciones de sus seis tickets o usuarios; no se ha consultado su contenido.
+- git diff --check correcto. Sin commit ni push, activación del administrador ni otras etapas.
+
+Pendiente: suite PostgreSQL corregida y repetición de concurrencia exclusivamente en helpdesk_test_db según POSTGRESQL_TESTS.md. La etapa 9.4 sigue pendiente de cierre.

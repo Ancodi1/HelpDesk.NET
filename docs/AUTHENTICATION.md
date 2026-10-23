@@ -1,6 +1,6 @@
-# Autenticación y autorización — etapas 9.1–9.3
+# Autenticación y autorización — etapas 9.1–9.4
 
-Estado actual: registro, login JWT y autorización por roles/recursos implementados. Sin recuperación, correos, frontend ni activación administrativa. No se han aplicado migraciones ni modificado datos de desarrollo. Los apartados de transición 9.1 y los límites iniciales 9.2 son históricos; los permisos vigentes están en la sección 9.3 al final.
+Estado actual: registro, login JWT, autorización por roles/recursos y CLI separada del primer Admin implementados. Bootstrap real pendiente de autorización; sin recuperación, correos, frontend ni activación de cuentas anteriores. No se han aplicado migraciones ni modificado datos de desarrollo. Los apartados de transición 9.1 y los límites iniciales 9.2 son históricos; los permisos vigentes están en la sección 9.3 al final.
 
 ## Hash y salt
 
@@ -230,7 +230,7 @@ POST de usuarios reutiliza `CreateUserDto` (Name/Email/Role), validación existe
 
 PUT reutiliza `UpdateUserDto` y solo cambia Name/Email/Role. Conserva ID, fecha y hash. Requiere transacción ReadCommitted, lectura del usuario con FOR NO KEY UPDATE, comprobación posterior de asignaciones y commit. Cambiar a User con tickets asignados produce 409 sin cambios. Assignment conserva FOR SHARE sobre el destino hasta commit: un cambio de rol y una asignación se serializan; quien espere vuelve a validar. Se mantienen normalización, validación de rol y correo, captura exclusiva de duplicados 23505 del índice de correo y conflictos de FK de tickets.
 
-No hay un método para crear la **primera cuenta Admin con credencial válida** o activar una antigua sin hash. Si no existe un Admin que pueda iniciar sesión, la administración HTTP queda inaccesible deliberadamente. No editar cuentas existentes ni firmar tokens manualmente para eludirlo. Propuesta para una etapa separada: diseñar una herramienta de aprovisionamiento inicial de ejecución controlada, con verificación administrativa, auditoría y activación de un uso con caducidad. Requiere aprobación y diseño propios; no se implementa ahora. Tampoco se impide en esta etapa que el último Admin se degrade a sí mismo, lo que podría dejar la administración inaccesible.
+Al cerrar 9.3 no había un método para crear la **primera cuenta Admin con credencial válida** o activar una antigua sin hash. La CLI de 9.4 resuelve solo la creación de una cuenta nueva; el resto de este párrafo registra la limitación y propuesta anteriores. Si no existe un Admin que pueda iniciar sesión, la administración HTTP queda inaccesible deliberadamente. No editar cuentas existentes ni firmar tokens manualmente para eludirlo. Propuesta para una etapa separada: diseñar una herramienta de aprovisionamiento inicial de ejecución controlada, con verificación administrativa, auditoría y activación de un uso con caducidad. Requiere aprobación y diseño propios; no se implementa ahora. Tampoco se impide en esta etapa que el último Admin se degrade a sí mismo, lo que podría dejar la administración inaccesible.
 
 ### Prueba manual de cada rol en Linux Mint sin escribir datos
 
@@ -315,3 +315,114 @@ unset HELPDESK_TEST_CONNECTION_STRING
 ```
 
 La fixture valida destino/permisos antes de migrar exclusivamente pruebas. Genera cuentas y tickets propios, utiliza JWT reales del emisor de la API y limpia solo sus filas. Las pruebas de login siguen verificando credenciales por HTTP; los helpers de regresión pueden emitir JWT firmados para sus usuarios persistidos sin instalar un esquema falso ni omitir políticas. Este comando no es una prueba manual contra desarrollo. Si no hay conexión segura, dejarlo pendiente: no usar la conexión de desarrollo como alternativa.
+
+## Etapa 9.4: inicialización del primer Admin mediante CLI
+
+Estado: herramienta implementada y separada de HTTP. **No se ha ejecutado contra desarrollo ni creado una cuenta real. Esa ejecución queda pendiente de autorización explícita del usuario.** Las referencias anteriores a bootstrap pendiente describen el estado de 9.3. No se activan cuentas antiguas: esta etapa solo permite crear una nueva.
+
+`HelpDesk.AdminBootstrap` es una consola net10.0 que referencia la API para reutilizar modelos, contexto y validación. Cargar ese ensamblado no ejecuta el punto de entrada HTTP. La API no referencia la consola ni llama al bootstrap al arrancar, registrar, autenticar o migrar. No hay endpoint nuevo ni cambios de permisos.
+
+API y CLI usan `AddHelpDeskPasswordHashing`: PasswordHasher<User> V3 y 210.000 iteraciones, con salt del framework. La entrada exige las mismas reglas de nombre/correo y contraseña de registro; el email se normaliza, la contraseña no se recorta ni transforma. Se pide dos veces sin eco y no se aceptan argumentos con credenciales. Escape, Ctrl+C/Ctrl+D durante la contraseña o confirmaciones incorrectas cancelan. Se rechaza stdin/stdout redirigidos; `--help` no abre conexiones.
+
+### Configuración y confirmación del destino
+
+La consola lee **únicamente** `HELPDESK_BOOTSTRAP_CONNECTION_STRING`. No usa DefaultConnection, appsettings, User Secrets, variables JWT ni la conexión de pruebas como alternativas. Que la API utilice User Secrets no autoriza a reutilizar su destino automáticamente. La consola consume y elimina su variable de su propio entorno; el operador debe eliminarla también del shell después de usarla.
+
+La cadena requiere Host, Database, Username y Password explícitos. Admite Port, SSL Mode, Timeout, Command Timeout y Pooling; Include Error Detail, Persist Security Info y Enlist solo admiten false. No se admiten destinos múltiples, Options, Search Path u otras opciones ajenas a esta lista. Se fija el esquema public del modelo actual y no se crea ni migra el esquema. La cadena debe respetar el quoting de Npgsql para valores con punto y coma/comillas. No se imprime la cadena ni ninguna excepción del proveedor.
+
+La CLI muestra host/puerto, base, usuario PostgreSQL y que creará un Admin nuevo sin modificar cuentas anteriores. Solicita que se escriba el nombre exacto de la base, comparado de forma sensible a mayúsculas. Antes de conectar/escribir exige `CONFIRMAR PRIMER ADMIN` sin espacios adicionales. Dentro de la transacción vuelve a comprobar `current_database()` y `current_user` frente al destino confirmado. No se acepta un nombre de base por convenio ni se presupone que helpdesk_db sea el destino correcto.
+
+Usar una cuenta PostgreSQL legítima que pueda leer todos los usuarios, insertar el nuevo, utilizar la secuencia de ID y bloquear Users: ser propietario o disponer además de UPDATE, DELETE o TRUNCATE para este modo de bloqueo, según PostgreSQL 16. No hace falta un superusuario ni privilegios para crear bases. No usar políticas RLS/vistas que oculten administradores a esa cuenta. El operador que posee esas credenciales ya puede escribir en la base; esta CLI no constituye una barrera frente a un administrador PostgreSQL malicioso. Para destinos remotos proteger la conexión y verificar el certificado; no enviar credenciales por redes sin protección.
+
+### Transacción y carrera entre inicializadores
+
+El hash se calcula antes de tomar el bloqueo. A continuación, en ReadCommitted, la consola bloquea `public."Users"` con SHARE ROW EXCLUSIVE, comprueba si existe **cualquier** rol Admin, comprueba el correo y solo entonces inserta un usuario nuevo con su hash. Confirma una única transacción; retornos tempranos y errores liberan el bloqueo por rollback/disposición.
+
+Ese modo es autoconflictivo y bloquea el ROW EXCLUSIVE de INSERT/UPDATE/DELETE, incluso de otro programa. Así el segundo inicializador espera y su consulta posterior, en ReadCommitted, ve el Admin confirmado por el primero y rechaza crear otro. Las lecturas normales pueden continuar. También se impide que una escritura concurrente cambie la condición mientras se realiza la inserción. Se toma el bloqueo más fuerte necesario antes de consultar/escribir y no se espera entrada humana dentro de él. [Bloqueos explícitos PostgreSQL 16](https://www.postgresql.org/docs/16/explicit-locking.html), [LOCK](https://www.postgresql.org/docs/16/sql-lock.html).
+
+El bloqueo es de toda Users, deliberadamente breve y para una operación excepcional; coordinar una ventana tranquila porque puede esperar o retrasar escrituras. No bloquea intencionadamente Tickets ni modifica sus filas. No añade un indicador persistente ni una migración. La condición es ausencia actual de Admin: si en el futuro desaparecen/degradan todos, el operador con acceso legítimo a PostgreSQL podría volver a crear uno. No usar esto como procedimiento de recuperación.
+
+Si existe Admin, incluso con hash NULL o contraseña perdida, el bootstrap se rechaza y no restablece nada. Si existe el correo, aunque pertenezca a User/Technician sin contraseña, se rechaza sin promoverlo ni activarlo. No hay contraseña por defecto, token maestro, emisión directa de JWT ni excepción por entorno.
+
+### Ejecución manual en Linux Mint (pendiente de autorización)
+
+Estos pasos escriben **una cuenta nueva** en el destino que confirme el operador. No ejecutarlos aún sobre helpdesk_db; la implementación deja la creación real pendiente de revisión/autorización. No necesitan cambiar los dos usuarios o seis tickets existentes, ni ejecutar migraciones.
+
+1. Desde la raíz, restaurar y compilar. La base elegida debe existir y tener el esquema vigente, incluida PasswordHash; la herramienta falla si falta, sin repararlo automáticamente.
+
+```bash
+dotnet restore HelpDesk.NET.slnx
+dotnet build HelpDesk.NET.slnx --no-restore
+```
+
+2. Revisar fuera de la CLI el destino y permisos con el responsable de PostgreSQL. Preparar respaldo y una ventana sin escrituras administrativas. No cambiar cuentas existentes para permitir el bootstrap. Cargar la cadena mediante entrada oculta, sin incluir su valor en el comando, historial o argumentos:
+
+```bash
+read -r -s -p 'Cadena PostgreSQL del destino revisado: ' HELPDESK_BOOTSTRAP_CONNECTION_STRING
+printf '\n'
+export HELPDESK_BOOTSTRAP_CONNECTION_STRING
+dotnet run --project HelpDesk.AdminBootstrap --no-build --no-launch-profile
+bootstrap_exit_code=$?
+unset HELPDESK_BOOTSTRAP_CONNECTION_STRING
+printf 'Código de salida: %s\n' "$bootstrap_exit_code"
+```
+
+No usar `echo` de la variable, `set -x`, grabación de terminal, `tee`, scripts con secretos ni servicios externos. El entorno del proceso no es un almacén cifrado y puede ser inspeccionado por procesos del mismo usuario o administradores del sistema. Cerrar la sesión o ejecutar `unset` también si se interrumpe la herramienta antes de terminar la secuencia.
+
+3. Comprobar visualmente host, puerto, base y usuario PostgreSQL. Escribir el nombre exacto de la base. Introducir email **nuevo**, nombre y una contraseña elegida de 15–128 unidades UTF-16; repetir la misma contraseña sin eco. No se suministran ejemplos de contraseñas ni valores predeterminados.
+4. Solo si el destino y la operación son correctos y están autorizados, escribir exactamente `CONFIRMAR PRIMER ADMIN`. Cualquier otra respuesta cancela. No hay cuenta creada hasta completar el commit. La CLI devuelve código 0 al crear; 2 por rechazo/cancelación/entrada inválida; 1 por fallo operativo. Los mensajes no incluyen hashes ni contraseñas.
+5. Si aparece que ya existe Admin, detenerse y usar el login normal de ese Admin. La CLI no cambia su contraseña, no permite un segundo bootstrap y no acepta un correo existente como prueba de titularidad.
+
+### Verificar login y acceso Admin sin modificar tickets
+
+Una vez autorizado y ejecutado manualmente el bootstrap, iniciar la API con **su configuración JWT y conexión habituales**, apuntando al mismo destino revisado:
+
+```bash
+dotnet run --project HelpDesk.Api --launch-profile http
+```
+
+En otra terminal, este cliente pide la contraseña oculta, conserva el JWT solo en memoria y utiliza exclusivamente login y GET. Verifica que la API concede acceso al directorio reservado a Admin y devuelve el total de tickets visible sin mostrar datos privados ni el token:
+
+```bash
+python3 - <<'PY'
+import getpass
+import json
+import urllib.error
+import urllib.request
+
+base = 'http://localhost:5085'
+email = input('Email del Admin creado: ')
+password = getpass.getpass('Contraseña: ')
+request = urllib.request.Request(base + '/api/auth/login',
+    data=json.dumps({'email': email, 'password': password}).encode('utf-8'),
+    headers={'Content-Type': 'application/json'}, method='POST')
+try:
+    with urllib.request.urlopen(request) as response:
+        login = json.load(response)
+        if response.status != 200 or login.get('tokenType') != 'Bearer':
+            raise SystemExit('El login no devolvió el contrato esperado.')
+    token = login['accessToken']
+    headers = {'Authorization': 'Bearer ' + token}
+    with urllib.request.urlopen(urllib.request.Request(base + '/api/users', headers=headers)) as response:
+        if response.status != 200:
+            raise SystemExit('El directorio no está autorizado.')
+        print('Login y acceso al directorio Admin: HTTP 200, sin mostrar token ni usuarios.')
+    with urllib.request.urlopen(urllib.request.Request(base + '/api/tickets?pageSize=1', headers=headers)) as response:
+        page = json.load(response)
+        print('Listado Admin: HTTP', response.status, '; total visible:', page['totalCount'])
+except urllib.error.HTTPError as error:
+    print('HTTP', error.code, '; comprobar credenciales, rol actual y destino sin compartir secretos.')
+except (urllib.error.URLError, ValueError, KeyError):
+    raise SystemExit('No se pudo completar la comprobación local; no compartir salidas sensibles.')
+PY
+```
+
+En la base descrita por el usuario se esperan seis tickets si no hubo otras escrituras y tres usuarios tras añadir el Admin a los dos anteriores. Esta sesión no comprueba esas cantidades en desarrollo. Un recuento por sí solo no acredita la conservación de cada campo; las pruebas aisladas comparan también roles, hashes, relaciones, estados, prioridades, categorías y demás campos anteriores. No ejecutar POST/PUT/PATCH/DELETE para verificar permisos sobre tickets reales.
+
+### Fallos y límites operativos
+
+- No hay recuperación de contraseña ni activación de cuentas anteriores. Si se pierde la contraseña, no borrar ni degradar al Admin para reabrir el bootstrap, ni editar hashes manualmente. Si hay otro Admin operativo, puede seguir administrando mediante las rutas existentes, pero tampoco hay un endpoint de recuperación. Diseñar y autorizar un flujo separado de recuperación con verificación de titularidad; preservar respaldos y datos mientras tanto.
+- Ante fallo de conexión/permisos/esquema, corregir la configuración fuera del repositorio y volver a revisar el destino. No aumentar privilegios sin revisión ni usar otra base como alternativa. No se ejecutan migraciones automáticamente.
+- Si se pierde la respuesta durante el commit, no se puede asegurar desde el cliente si se confirmó. Verificar mediante el login normal y revisión administrativa de solo lectura antes de reintentar; la condición de Admin evita duplicar el bootstrap tras un commit exitoso.
+- Los strings de contraseña/conexión viven temporalmente en memoria administrada; no se promete borrado criptográfico de esa memoria. Proteger el equipo, volcados, entorno y terminal. La CLI no registra proveedores de logs ni imprime excepciones; su diagnóstico operativo es deliberadamente genérico.
+- Las limitaciones de JWT, revocación y auto degradación del último Admin descritas en 9.3 no cambian. Este comando no crea un canal de administración HTTP sin autenticación.

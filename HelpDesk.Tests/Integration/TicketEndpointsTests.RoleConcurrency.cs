@@ -72,7 +72,8 @@ public partial class TicketEndpointsTests
         var technician = await SeedHttpUserAsync(UserRole.Technician);
         var other = await SeedHttpUserAsync(UserRole.Technician);
         var ticket = await CreateTicketAsync(assignedToUserId: technician.Id);
-        var pause = new PauseRelatedSave(ticket.Id);
+        // Esperar después del UPDATE: antes de SaveChanges todavía no se bloquea el ticket.
+        var pause = new PauseTicketAfterSave(ticket.Id);
         var probe = new LockCommandProbe("FOR UPDATE");
         using var adminFactory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             services.AddDbContext<HelpDeskDbContext>(options => options.AddInterceptors(pause))));
@@ -88,11 +89,13 @@ public partial class TicketEndpointsTests
             status = tech.PatchAsJsonAsync($"/api/tickets/{ticket.Id}/status", new { status = "InProgress" });
             var waiter = await probe.Reached.Task.WaitAsync(TimeSpan.FromSeconds(15));
             await AssertBlockedByAsync(waiter, holder);
+            Assert.False(status.IsCompleted);
             pause.Resume.TrySetResult();
             using var assignmentResponse = await assignment;
             using var statusResponse = await status;
             Assert.Equal(HttpStatusCode.OK, assignmentResponse.StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, statusResponse.StatusCode);
+            Assert.Empty(await statusResponse.Content.ReadAsStringAsync());
             ticket.AssignedToUserId = other.Id;
             await AssertStoredAndReturnedAsync(ticket);
         }
@@ -101,6 +104,72 @@ public partial class TicketEndpointsTests
             pause.Resume.TrySetResult();
             (await assignment).Dispose();
             if (status is not null) (await status).Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task StatusLock_CommitsAuthorizedStatusBeforeReassignment_ThenRejectsFormerTechnician()
+    {
+        var technician = await SeedHttpUserAsync(UserRole.Technician);
+        var other = await SeedHttpUserAsync(UserRole.Technician);
+        var ticket = await CreateTicketAsync(assignedToUserId: technician.Id);
+        var pause = new PauseTicketAfterSave(ticket.Id);
+        var probe = new LockCommandProbe("UPDATE \"Tickets\"");
+        using var techFactory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddDbContext<HelpDeskDbContext>(options => options.AddInterceptors(pause))));
+        using var adminFactory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddDbContext<HelpDeskDbContext>(options => options.AddInterceptors(probe))));
+        using var tech = CreateAuthenticatedClient(technician, techFactory);
+        using var admin = await CreateAdminClientAsync(adminFactory);
+        var status = tech.PatchAsJsonAsync($"/api/tickets/{ticket.Id}/status", new { status = "InProgress" });
+        Task<HttpResponseMessage>? assignment = null;
+        try
+        {
+            var holder = await pause.Reached.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            assignment = admin.PatchAsJsonAsync($"/api/tickets/{ticket.Id}/assignment", new { assignedToUserId = other.Id });
+            var waiter = await probe.Reached.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            await AssertBlockedByAsync(waiter, holder);
+            Assert.False(assignment.IsCompleted);
+            pause.Resume.TrySetResult();
+            using var statusResponse = await status;
+            using var assignmentResponse = await assignment;
+            Assert.Equal(HttpStatusCode.OK, statusResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, assignmentResponse.StatusCode);
+            ticket.Status = TicketStatus.InProgress;
+            ticket.AssignedToUserId = other.Id;
+            await AssertStoredAndReturnedAsync(ticket);
+
+            // Una nueva petición tras perder la asignación no puede modificar el estado.
+            using var denied = await tech.PatchAsJsonAsync($"/api/tickets/{ticket.Id}/status", new { status = "Resolved" });
+            Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
+            Assert.Empty(await denied.Content.ReadAsStringAsync());
+            await AssertStoredAndReturnedAsync(ticket);
+        }
+        finally
+        {
+            pause.Resume.TrySetResult();
+            (await status).Dispose();
+            if (assignment is not null) (await assignment).Dispose();
+        }
+    }
+
+    private sealed class PauseTicketAfterSave(int ticketId) : SaveChangesInterceptor
+    {
+        public TaskCompletionSource<int> Reached { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Resume { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData,
+            int result, CancellationToken cancellationToken = default)
+        {
+            var db = eventData.Context!;
+            if (db.ChangeTracker.Entries<Ticket>().Any(entry => entry.Entity.Id == ticketId))
+            {
+                // El SQL ya se ejecutó, pero el endpoint aún no ha confirmado la transacción.
+                Assert.NotNull(db.Database.CurrentTransaction);
+                Reached.TrySetResult(((NpgsqlConnection)db.Database.GetDbConnection()).ProcessID);
+                await Resume.Task.WaitAsync(TimeSpan.FromSeconds(20), cancellationToken);
+            }
+            return result;
         }
     }
 

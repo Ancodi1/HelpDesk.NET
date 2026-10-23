@@ -312,7 +312,11 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
         Assert.Equal(expected.Id, actual.Id);
         Assert.Equal(expected.Title, actual.Title);
         Assert.Equal(expected.Description, actual.Description);
-        Assert.Equal(expected.CreatedAt, actual.CreatedAt);
+        // Npgsql persiste microsegundos; un POST puede conservar ticks de 100 ns en memoria.
+        Assert.Equal(DateTimeKind.Utc, expected.CreatedAt.Kind);
+        Assert.Equal(DateTimeKind.Utc, actual.CreatedAt.Kind);
+        Assert.Equal(expected.CreatedAt.Ticks / TimeSpan.TicksPerMicrosecond,
+            actual.CreatedAt.Ticks / TimeSpan.TicksPerMicrosecond);
         Assert.Equal(expected.Status, actual.Status);
         Assert.Equal(expected.Priority, actual.Priority);
         Assert.Equal(expected.Category, actual.Category);

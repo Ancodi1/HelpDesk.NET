@@ -218,7 +218,11 @@ public partial class TicketEndpointsTests
         Assert.Equal(HttpStatusCode.OK, promoted.StatusCode);
         var after = await ReadUserResponseAsync(promoted);
         Assert.Equal(UserRole.Admin, after.Role);
-        Assert.Equal(dto.CreatedAt, after.CreatedAt);
+        // POST devuelve el instante en memoria; PUT vuelve a leer su precisión persistida.
+        Assert.Equal(DateTimeKind.Utc, dto.CreatedAt.Kind);
+        Assert.Equal(DateTimeKind.Utc, after.CreatedAt.Kind);
+        Assert.Equal(dto.CreatedAt.Ticks / TimeSpan.TicksPerMicrosecond,
+            after.CreatedAt.Ticks / TimeSpan.TicksPerMicrosecond);
         await AssertUserStoredAsync(after);
         foreach (var bad in new[] { "0", "admin", "Invalid" })
         {
