@@ -1,6 +1,6 @@
 # Progreso — HelpDesk.NET
 
-Última actualización: 2026-10-21.
+Última actualización: 2026-10-23.
 
 ## Funcionalidades completadas
 
@@ -404,3 +404,25 @@ Verificaciones finales de esta sesión:
 - HELPDESK_TEST_CONNECTION_STRING ausente: cero pruebas PostgreSQL ejecutadas; no se declaran superadas ni se acredita aún persistencia real del registro o la migración.
 - SQL generado/revisado y has-pending-model-changes: modelo/snapshot coinciden, sin conectar.
 - git diff --check correcto. README, ARCHITECTURE y guías actualizados. Sin commit ni push; pendiente de revisión del usuario y ejecución segura PostgreSQL antes de aplicar manualmente a desarrollo.
+
+
+## Etapa 9.2: login y JWT — 23 de octubre de 2026
+
+Al iniciar ya existían cambios locales de login, configuración JWT y pruebas. Se conservaron y revisaron; se corrigieron comprobaciones de fechas con una propiedad obsoleta y tipos incompatibles, y se aisló el rechazo de algoritmo usando la misma clave de confianza.
+
+Implementado POST /api/auth/login: campos obligatorios, correo normalizado como en registro, consulta PostgreSQL AsNoTracking, verificación por PasswordHasher<User> y 401 genérico para cuenta ausente, contraseña incorrecta o hash NULL/vacío/corrupto. No escribe datos. Responde únicamente accessToken, tokenType Bearer y expiresIn 1800 con no-store. Emite HS256 y claims sub/email/role/iss/aud/iat/exp/nbf; rol tomado del usuario almacenado.
+
+JwtSettings valida configuración al inicio; clave Base64 externa de al menos 32 bytes generados criptográficamente, sin defaults ni regeneración automática. JwtTokenIssuer usa TimeProvider. Dependencia nueva: Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12. Handler estándar con validación de firma HS256, issuer, audience, caducidad y margen de 30 segundos; middleware de autenticación sin autorización nueva. Manejador de excepciones con respuesta genérica también en Development. Registro, política de contraseñas, gestión de usuarios bloqueada y permisos de tickets conservados.
+
+Archivos nuevos: Authentication/JwtSettings.cs, Authentication/JwtTokenIssuer.cs, DTOs/LoginDto.cs y DTOs/LoginResponseDto.cs en HelpDesk.Api; JwtTestSettings.cs, JwtSecurityTests.cs e Integration/TicketEndpointsTests.Login.cs en HelpDesk.Tests. Modificados Program.cs y csproj de API; HealthEndpointTests, RegistrationSecurityTests y TicketApiFactory para opciones efímeras de tests. Actualizados README, AUTHENTICATION, ARCHITECTURE y este registro.
+
+Verificaciones ejecutadas:
+
+- dotnet restore HelpDesk.NET.slnx: correcto. Primer intento restringido terminó con código 1 sin diagnóstico; repetido fuera del sandbox con autorización.
+- dotnet build HelpDesk.NET.slnx --no-restore: correcto, cero errores y advertencias. El intento restringido falló sin diagnóstico; primera compilación fuera detectó dos errores de tipos y dos avisos de Iat obsoleto en pruebas; corregidos antes del resultado final.
+- dotnet test HelpDesk.NET.slnx --no-build --filter 'Category!=PostgreSQL': 155 superadas, cero fallidas u omitidas. El intento restringido falló por SocketException/Permission denied de MSBuild; repetido fuera con autorización.
+- Descubrimiento mediante --list-tests --filter 'Category=PostgreSQL': 231 casos, sin ejecución de fixture ni conexiones. Total 386 (18 casos nuevos sin base y 14 con PostgreSQL).
+- HELPDESK_TEST_CONNECTION_STRING ausente: ninguna prueba PostgreSQL ejecutada ni conexión a desarrollo. La integración HTTP de login y sus regresiones de persistencia/privacidad quedan pendientes; no se declaran superadas.
+- git diff --check correcto al cierre. Sin cambios en modelos, configuración versionada de secretos, migraciones ni datos de desarrollo; sin commit ni push.
+
+La guía Linux Mint genera una clave una sola vez y la guarda por stdin en User Secrets sin mostrarla; el cliente manual solicita contraseña oculta y no imprime el token. No se ejecutaron esos ejemplos ni se cambió la configuración local del usuario. JWT no cifra claims ni se revoca automáticamente por cambios posteriores de rol/estado. No hay refresh tokens ni limitación de intentos; persiste una diferencia temporal entre cuenta ausente y contraseña errónea. Autorización y revocación se diseñarán tras revisión del usuario; no se continúa con 9.3.

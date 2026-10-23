@@ -66,7 +66,7 @@ La solución mantiene una estructura sencilla: los endpoints utilizan directamen
 
 `POST /api/auth/register` recibe `name`, `email` y `password`. Reutiliza la validación de nombre/correo, normaliza Email con `Trim().ToLowerInvariant()` y crea exclusivamente `User`; cualquier campo adicional `role`, `passwordHash`, `id` o `createdAt` se ignora. Devuelve 201 con DTO público y Location `/api/users/{id}`, 400 por entrada inválida o 409 por correo duplicado. El índice único protege también registros concurrentes. No reemplaza contraseñas de cuentas anteriores.
 
-La contraseña exige 15–128 unidades UTF-16, no puede ser solo espacios ni contener caracteres de control. Permite Unicode y espacios; no se recorta, normaliza ni trunca. Se usa `PasswordHasher<User>` V3 (PBKDF2-HMAC-SHA512, 210.000 iteraciones y salt aleatorio), sin instalar Identity completo. No hay login, JWT, recuperación ni envío de correos. Ver [diseño y revisión de la etapa 9.1](docs/AUTHENTICATION.md).
+La contraseña exige 15–128 unidades UTF-16, no puede ser solo espacios ni contener caracteres de control. Permite Unicode y espacios; no se recorta, normaliza ni trunca. Se usa `PasswordHasher<User>` V3 (PBKDF2-HMAC-SHA512, 210.000 iteraciones y salt aleatorio), sin instalar Identity completo. Hay login con JWT firmado HS256 de 30 minutos; no hay autorización por roles, recuperación ni envío de correos. Ver [configuración y prueba local de autenticación](docs/AUTHENTICATION.md).
 
 Email conserva la política anterior: formato mediante `MailAddress.TryCreate`, sin nombres de presentación ni espacios internos, dominio ASCII con al menos un punto; dominios internacionalizados en punycode. PostgreSQL exige correo canónico mediante CHECK e índice único. Los GET proyectan DTOs con AsNoTracking y el listado sigue siendo un array ordenado por Id.
 
@@ -80,6 +80,7 @@ URL del perfil HTTP local: `http://localhost:5085`.
 | --- | --- | --- |
 | GET | `/api/users` | `200` con array de DTOs ordenado por Id, incluido `[]` |
 | GET | `/api/users/{id}` | `200` con DTO o `404` |
+| POST | `/api/auth/login` | `200` con accessToken, tokenType Bearer y expiresIn 1800; `400` o `401` genérico |
 | POST | `/api/auth/register` | `201` con DTO y Location, `400` o `409`; siempre rol User |
 | POST | `/api/users` | `403`: gestión temporalmente deshabilitada |
 | PUT | `/api/users/{id}` | `403`: gestión temporalmente deshabilitada |
@@ -317,6 +318,10 @@ PY
 
 La cadena debe respetar la sintaxis Npgsql, especialmente si la contraseña contiene punto y coma o comillas. No guardar credenciales en `appsettings*.json` ni compartir la salida de `dotnet user-secrets list`.
 
+### Configuración JWT obligatoria
+
+Antes de arrancar, configurar `Jwt:Issuer`, `Jwt:Audience` y `Jwt:SigningKeyBase64` fuera del repositorio. La [guía JWT para Linux Mint](docs/AUTHENTICATION.md#configuración-en-linux-mint) genera la clave criptográfica sin mostrarla y explica cómo probar el login con una cuenta existente sin escribir datos. La API falla al arrancar si falta configuración; no hay clave predeterminada. Tickets conservan sus permisos y POST/PUT de usuarios siguen bloqueados.
+
 ### Migraciones y arranque
 
 Con la base creada y la conexión configurada, revisar las migraciones antes de aplicarlas a una base con datos. Status, Priority y Category se añaden con valores predeterminados para los tickets anteriores: `Open`, `Medium` y `Other`.
@@ -337,7 +342,7 @@ Respuesta esperada: `{"status":"ok"}`. Este endpoint comprueba que la API respon
 
 ## Pruebas automatizadas
 
-La suite actual contiene **354 casos**: **137 sin PostgreSQL superados** y **217 PostgreSQL descubiertos sin ejecutar** por falta de conexión segura en esta sesión. El total cambia respecto a la etapa anterior porque las pruebas de escritura pública de usuarios se sustituyen por el contrato 403 y las del nuevo registro; no se omiten con skip.
+La suite actual contiene **386 casos**: **155 sin PostgreSQL superados** y **231 PostgreSQL descubiertos sin ejecutar** por falta de conexión segura en esta sesión. Incluye pruebas JWT con el handler Bearer real y pruebas HTTP de login pendientes de PostgreSQL.
 
 Las pruebas unitarias verifican transiciones, validaciones y mapeos. Una prueba HTTP de salud utiliza WebApplicationFactory y TestServer en memoria, sin arrancar Kestrel manualmente. Para ejecutar todos los casos que no necesitan base de datos:
 
@@ -370,7 +375,7 @@ Si falta la cadena o no supera la validación del destino, los casos PostgreSQL 
 Previsión de evolución, pendiente de implementación:
 
 - Comentarios, historial y evolución de la gestión de usuarios.
-- Autenticación y autorización.
+- Autorización y diseño de revocación de JWT (etapa 9.3 pendiente de revisión).
 - Interfaz web para gestionar los tickets.
 
 ## Documentación

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.TestHost;
 using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
@@ -11,7 +12,7 @@ public class HealthEndpointTests
     public async Task GetHealth_ReturnsOkWithExpectedJson()
     {
         using var factory = new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder => builder.UseEnvironment("Testing"));
+            .WithWebHostBuilder(builder => { builder.UseEnvironment("Testing"); builder.ConfigureTestServices(services => services.AddJwtTestSettings()); });
         using var client = factory.CreateClient();
 
         using var response = await client.GetAsync("/api/health");

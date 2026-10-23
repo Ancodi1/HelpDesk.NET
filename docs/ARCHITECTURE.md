@@ -1,6 +1,6 @@
 # Arquitectura — HelpDesk.NET
 
-Última actualización: 2026-10-21.
+Última actualización: 2026-10-23.
 
 ## Estado actual
 
@@ -8,7 +8,7 @@ El repositorio contiene la solución `HelpDesk.NET.slnx` y los proyectos `HelpDe
 
 `GET /api/tickets` compone un IQueryable con AsNoTracking, filtros y búsqueda ILIKE parametrizada; cuenta antes de ordenar por CreatedAt/Id descendentes y aplicar Skip/Take. Devuelve HTTP 200 con items y metadatos de paginación (decisión 030). `GET /api/tickets/{id}` usa `FirstOrDefaultAsync` y devuelve 200 con el objeto o 404 sin cuerpo. Health mantiene HTTP 200 con `{"status":"ok"}`.
 
-POST inyecta el contexto, registra el nuevo ticket con `Add` y lo persiste con `SaveChangesAsync` antes de responder 201. PUT consulta una entidad seguida por EF Core con `FirstOrDefaultAsync`, valida y guarda sus textos con `SaveChangesAsync` antes de responder 200. DELETE consulta por ID con `FirstOrDefaultAsync`, elimina mediante `Remove` y persiste con `SaveChangesAsync`; devuelve 404 o 204. La lista temporal ya no existe. No hay servicios, repositorios ni capas adicionales.
+POST inyecta el contexto, registra el nuevo ticket con `Add` y lo persiste con `SaveChangesAsync` antes de responder 201. PUT consulta una entidad seguida por EF Core con `FirstOrDefaultAsync`, valida y guarda sus textos con `SaveChangesAsync` antes de responder 200. DELETE consulta por ID con `FirstOrDefaultAsync`, elimina mediante `Remove` y persiste con `SaveChangesAsync`; devuelve 404 o 204. La lista temporal ya no existe. Los handlers de datos usan directamente EF Core; la emisión JWT se encapsula en un servicio pequeño, sin repositorios ni capas adicionales.
 
 La serialización JSON de las Minimal APIs se configura centralmente con `ConfigureHttpJsonOptions` y `JsonStringEnumConverter`: los estados se devuelven como texto (decisión 019). Las referencias a JSON numérico en decisiones anteriores son históricas.
 
@@ -453,3 +453,20 @@ Pruebas: 17 casos nuevos sin PostgreSQL y 39 PostgreSQL (registro, validación, 
 ## Mantenimiento del registro
 
 Ante un cambio arquitectónico importante, registra la decisión, su estado, motivos y consecuencias. Si reemplaza una decisión previa, conserva el motivo de la evolución y actualiza el estado anterior. Refleja también el avance en `PROGRESS.md`.
+
+
+### 036 — Login y autenticación JWT sin autorización (etapa 9.2)
+
+Estado: implementada el 23 de octubre de 2026; validación HTTP PostgreSQL pendiente por conexión segura ausente.
+
+Decisión: POST /api/auth/login verifica la contraseña mediante el hasher existente y consulta por correo canónico con AsNoTracking. Devuelve un 401 genérico para cuenta inexistente, hash ausente o contraseña incorrecta. No escribe ni actualiza hashes. LoginDto limita la entrada a email/password y LoginResponseDto limita la salida al token, tipo y duración.
+
+JwtTokenIssuer, registrado mediante DI, emite HS256 con ID, email, rol almacenado, issuer, audience, iat, nbf y exp. TimeProvider permite comprobar fechas sin esperas. JwtSettings y su IValidateOptions validan al arrancar issuer/audience y clave externa Base64 de al menos 32 bytes; se rechazan patrones triviales, sin confundir esa heurística con garantía de entropía. No hay defaults, claves efímeras de arranque ni secretos versionados.
+
+Se añade Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12. El handler estándar valida firma, algoritmo HS256, emisor, audiencia y caducidad con 30 segundos de tolerancia. UseAuthentication prepara el principal sin restringir los endpoints; no se añade autorización por roles ni rutas privadas. POST/PUT de usuarios siguen bloqueados. Un manejador global evita respuestas de excepción con detalles sensibles también en Development; los errores 400 mantienen su contrato.
+
+Motivo: aprender emisión y validación de credenciales Bearer con las opciones y servicios de ASP.NET Core, separando autenticación de autorización y conservando una estructura pequeña.
+
+Consecuencias: configuración JWT obligatoria incluso para health; ningún cambio de esquema ni migración. Los JWT no están cifrados ni se revocan automáticamente ante cambios posteriores de rol/contraseña o futura deshabilitación. No hay refresh tokens, recuperación ni limitación de intentos; la autorización y revocación quedan pendientes. Se mantienen diferencias temporales entre cuenta ausente y hash verificable. Procedimiento Linux Mint sin imprimir secretos y límites en AUTHENTICATION.md.
+
+Las fábricas de pruebas inyectan opciones efímeras solo por ConfigureTestServices; no existe bypass en la aplicación. Las pruebas Bearer verifican el handler real por AuthenticateAsync sin añadir un endpoint público de perfil. Las pruebas HTTP de login reutilizan exclusivamente helpdesk_test_db y la limpieza propia existente. Resultados ejecutados en PROGRESS.md.

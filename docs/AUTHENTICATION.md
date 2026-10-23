@@ -86,3 +86,99 @@ La API actualizada necesita la migración revisada antes de usar entidades User 
 | Modificado | `docs/ARCHITECTURE.md` | Decisión 035 y evolución del protocolo anterior |
 | Modificado | `docs/PROGRESS.md` | Estado real y verificaciones ejecutadas |
 | Modificado | `docs/POSTGRESQL_TESTS.md` | Suite actual, aislamiento y validación pendiente |
+
+## Etapa 9.2: login y JWT
+
+Estado actual: login y JWT implementados, sin autorización por roles ni restricciones nuevas. Los apartados 9.1 anteriores conservan el registro histórico; las cuentas con hash NULL ya se rechazan al iniciar sesión. No hay migración nueva.
+
+`POST /api/auth/login` recibe `email` y `password` como strings. Normaliza únicamente el correo con `Trim().ToLowerInvariant()`, consulta PostgreSQL con `AsNoTracking` y usa `IPasswordHasher<User>.VerifyHashedPassword`. Campos ausentes, null o solo espacios producen 400. Cuenta inexistente, contraseña incorrecta y hash NULL/vacío o Base64 corrupto producen el mismo 401: `{"error":"Credenciales incorrectas."}`. No transforma la contraseña ni permite seleccionar rol. `SuccessRehashNeeded` se acepta sin actualizar el hash; una futura evolución deberá decidir su actualización segura.
+
+Éxito: 200, `Cache-Control: no-store`, `Pragma: no-cache` y únicamente:
+
+```json
+{"accessToken":"<JWT_NO_REAL>","tokenType":"Bearer","expiresIn":1800}
+```
+
+`JwtTokenIssuer` usa `TimeProvider` para obtener UTC y emitir HS256. Incluye `sub` (ID), `email` canónico, `role` leído de la cuenta, `iss`, `aud`, `iat`, `exp` y `nbf`. La duración es 1.800 segundos. JWT está firmado, no cifrado: sus claims son legibles; no contiene contraseñas ni hashes.
+
+`AddAuthentication().AddJwtBearer()` registra el handler estándar. `UseAuthentication()` prepara el principal; no se añade `RequireAuthorization`, políticas ni autorización por rol. El handler valida firma HS256, emisor, audiencia, presencia de caducidad y vigencia. La tolerancia temporal es de **30 segundos**: un token puede aceptarse hasta ese margen después de expirar; sincronizar relojes. Se desactiva el mapeo de claims, el almacenamiento del token en propiedades de autenticación y los detalles de error Bearer.
+
+### Configuración en Linux Mint
+
+Desde la raíz del repositorio, conservar la conexión local existente fuera de Git. Configurar obligatoriamente `Jwt:Issuer`, `Jwt:Audience` y `Jwt:SigningKeyBase64`. También se admiten variables `Jwt__Issuer`, `Jwt__Audience` y `Jwt__SigningKeyBase64` suministradas mediante un gestor de secretos. No hay valores predeterminados ni claves automáticas de arranque. `ValidateOnStart` impide arrancar incluso health si falta configuración o es inválida, con mensajes que no incorporan valores.
+
+Issuer y audience deben ser strings no vacíos sin espacios extremos; no necesitan ser URLs. La clave debe ser Base64 de al menos 32 bytes aleatorios criptográficos (256 bits). Se rechazan patrones con menos de 16 bytes distintos como defensa contra errores triviales; ninguna comprobación de longitud o diversidad demuestra entropía. Generarla con un CSPRNG es obligatorio.
+
+Este comando genera **una sola vez** 64 bytes aleatorios y los guarda por stdin en User Secrets, sin imprimir la clave ni pasarla por argumentos/historial y sin crear archivos en el repositorio. Ejecutarlo de nuevo cambia la clave e invalida tokens anteriores; no ejecutarlo en cada arranque. Los identificadores de emisor y audiencia son públicos.
+
+```bash
+python3 - <<'PY'
+import base64
+import json
+import secrets
+import subprocess
+
+settings = {
+    'Jwt:Issuer': 'HelpDesk.Local',
+    'Jwt:Audience': 'HelpDesk.Local.Client',
+    'Jwt:SigningKeyBase64': base64.b64encode(secrets.token_bytes(64)).decode('ascii'),
+}
+result = subprocess.run(
+    ['dotnet', 'user-secrets', 'set', '--project', 'HelpDesk.Api/HelpDesk.Api.csproj'],
+    input=json.dumps(settings), text=True, capture_output=True,
+)
+if result.returncode:
+    raise SystemExit('No se pudo guardar la configuración JWT.')
+print('Configuración JWT guardada fuera del repositorio.')
+PY
+```
+
+User Secrets es almacenamiento local sin cifrar: proteger la cuenta y sus archivos; no compartir `dotnet user-secrets list`. Para despliegue usar un gestor de secretos y HTTPS; la clave HS256 debe ser compartida solo por componentes de confianza que puedan emitir tokens. No guardarla en appsettings, logs ni capturas.
+
+### Probar el login sin escribir datos de desarrollo
+
+1. Configurar JWT como arriba y conservar la conexión de desarrollo ya preparada. El esquema debe incluir AddUserPasswordHash; esta etapa no requiere aplicar migraciones. Usar una cuenta registrada anteriormente con contraseña conocida. Una cuenta antigua sin hash devolverá 401; no crear ni modificar cuentas de desarrollo para esta comprobación.
+2. Arrancar en otra terminal:
+
+```bash
+dotnet run --project HelpDesk.Api --launch-profile http
+```
+
+3. Ejecutar desde Linux Mint el siguiente cliente. Solicita contraseña oculta, envía JSON por HTTP local y comprueba el contrato sin imprimir ni guardar el token. No añade cabeceras Bearer a endpoints públicos ni usa servicios externos para decodificarlo.
+
+```bash
+python3 - <<'PY'
+import getpass
+import json
+import urllib.error
+import urllib.request
+
+email = input('Email de una cuenta registrada: ')
+password = getpass.getpass('Contraseña: ')
+request = urllib.request.Request(
+    'http://localhost:5085/api/auth/login',
+    data=json.dumps({'email': email, 'password': password}).encode('utf-8'),
+    headers={'Content-Type': 'application/json'}, method='POST',
+)
+try:
+    with urllib.request.urlopen(request) as response:
+        body = json.load(response)
+        assert set(body) == {'accessToken', 'tokenType', 'expiresIn'}
+        assert body['tokenType'] == 'Bearer' and body['expiresIn'] == 1800
+        assert isinstance(body['accessToken'], str) and len(body['accessToken'].split('.')) == 3
+        print('HTTP 200; token recibido sin mostrarlo; duración: 1800 segundos.')
+except urllib.error.HTTPError as error:
+    print('HTTP', error.code, '; revisar credenciales o configuración sin compartir secretos.')
+PY
+```
+
+4. Repetir con espacios/mayúsculas en el correo: debe devolver 200. Contraseña incorrecta o correo inexistente: 401 genérico. Contraseña vacía: 400. Detener la API con Ctrl+C. Esta comprobación solo lee datos; no verifica por sí sola la firma criptográfica.
+5. Para las comprobaciones automáticas de firma y errores, ejecutar `dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL'`. Las pruebas HTTP completas de login usan exclusivamente la fixture y conexión explícita a `helpdesk_test_db` descritas en POSTGRESQL_TESTS.md; no sustituyen esa variable por la conexión de desarrollo.
+
+### Límites y decisiones pendientes
+
+- Un JWT emitido no se revoca automáticamente al cambiar el rol, contraseña o deshabilitar una cuenta. El modelo actual aún no incorpora deshabilitación. La estrategia de revocación y comprobación de estado corresponde al diseño futuro de autorización.
+- Los endpoints de tickets y los GET de usuarios conservan acceso público; un Bearer inválido no los restringe. POST/PUT de usuarios siguen devolviendo 403 incluso con JWT válido. No hay endpoint nuevo de perfil privado.
+- No hay refresh tokens, cierre de sesión con revocación, recuperación, frontend ni activación de cuentas anteriores. Etapa 9.3 pendiente de revisión y solicitud.
+- El error de credenciales es uniforme, pero no se igualan tiempos entre cuenta inexistente y verificación PBKDF2. No se añaden todavía limitación de intentos ni bloqueo: evaluar abuso y enumeración temporal antes de exponer el servicio.
+- No registrar cuerpos, contraseñas, hashes ni cabeceras Authorization en aplicación, proxy o herramientas de observabilidad. El manejador global responde 500 genérico también en Development para evitar reflejar headers sensibles en la página de excepciones; conserva el diagnóstico interno estándar, sin habilitar logging sensible de EF.

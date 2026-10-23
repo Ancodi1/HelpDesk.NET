@@ -26,6 +26,7 @@ public sealed class TicketApiFactory : WebApplicationFactory<Program>
         builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureTestServices(services =>
         {
+            services.AddJwtTestSettings();
             services.RemoveAll<HelpDeskDbContext>();
             services.RemoveAll<DbContextOptions<HelpDeskDbContext>>();
             services.RemoveAll<IDbContextOptionsConfiguration<HelpDeskDbContext>>();

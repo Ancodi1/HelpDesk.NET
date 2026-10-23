@@ -1,3 +1,6 @@
+using HelpDesk.Api.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.Options;
 using HelpDesk.Api.Data;
 using HelpDesk.Api.DTOs;
 using HelpDesk.Api.Models;
@@ -27,6 +30,20 @@ builder.Services.Configure<PasswordHasherOptions>(options =>
 });
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
+builder.Services.AddSingleton<IValidateOptions<JwtSettings>, JwtSettingsValidator>();
+builder.Services.AddOptions<JwtSettings>().BindConfiguration("Jwt").ValidateOnStart();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<JwtTokenIssuer>();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
+builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<JwtSettings>>((options, settings) =>
+    {
+        options.MapInboundClaims = false;
+        options.IncludeErrorDetails = false;
+        options.SaveToken = false;
+        options.TokenValidationParameters = settings.Value.CreateValidationParameters();
+    });
+
 builder.Services.AddDbContext<HelpDeskDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -41,6 +58,13 @@ builder.Services.AddDbContext<HelpDeskDbContext>(options =>
 
 var app = builder.Build();
 
+// Evita que la página de excepciones de Development refleje cabeceras o cuerpos sensibles.
+app.UseExceptionHandler(handler => handler.Run(async context =>
+{
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    await context.Response.WriteAsJsonAsync(new { error = "No se pudo completar la petición." });
+}));
+
 app.UseStatusCodePages(async context =>
 {
     if (context.HttpContext.Response.StatusCode == StatusCodes.Status400BadRequest)
@@ -51,6 +75,8 @@ app.UseStatusCodePages(async context =>
         });
     }
 });
+
+app.UseAuthentication();
 
 app.MapGet("/api/health", () => new { status = "ok" });
 
@@ -388,6 +414,30 @@ app.MapPost("/api/auth/register", async (RegisterUserDto dto, HelpDeskDbContext 
         return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
     }
     return Results.Created($"/api/users/{user.Id}", ToUserResponse(user));
+});
+
+app.MapPost("/api/auth/login", async (LoginDto dto, HelpDeskDbContext dbContext,
+    IPasswordHasher<User> passwordHasher, JwtTokenIssuer tokens, HttpResponse response) =>
+{
+    response.Headers.CacheControl = "no-store";
+    response.Headers.Pragma = "no-cache";
+    if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
+        return Results.BadRequest(new { error = "El email y la contraseña son obligatorios." });
+
+    var email = dto.Email.Trim().ToLowerInvariant();
+    var user = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(user => user.Email == email);
+    var verified = PasswordVerificationResult.Failed;
+    if (!string.IsNullOrEmpty(user?.PasswordHash))
+    {
+        // Un hash anterior corrupto se trata como credencial inválida, sin revelar su contenido.
+        try { verified = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, dto.Password); }
+        catch (FormatException) { }
+    }
+    if (user is null || verified == PasswordVerificationResult.Failed)
+        return Results.Json(new { error = "Credenciales incorrectas." }, statusCode: StatusCodes.Status401Unauthorized);
+
+    // SuccessRehashNeeded también acredita la contraseña; no escribimos datos en este login.
+    return Results.Ok(tokens.Issue(user));
 });
 
 app.Run();

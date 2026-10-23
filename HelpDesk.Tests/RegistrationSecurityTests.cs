@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.TestHost;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -97,5 +98,5 @@ public class RegistrationSecurityTests
     }
 
     private static WebApplicationFactory<Program> Factory(string environment = "Testing") =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.UseEnvironment(environment));
+        new WebApplicationFactory<Program>().WithWebHostBuilder(builder => { builder.UseEnvironment(environment); builder.ConfigureTestServices(services => services.AddJwtTestSettings()); });
 }
