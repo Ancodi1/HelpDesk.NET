@@ -1,6 +1,6 @@
 # Autenticación y autorización — etapas 9.1–9.4
 
-Estado actual: registro, login JWT, autorización por roles/recursos y CLI separada del primer Admin implementados. Bootstrap real pendiente de autorización; sin recuperación, correos, frontend ni activación de cuentas anteriores. No se han aplicado migraciones ni modificado datos de desarrollo. Los apartados de transición 9.1 y los límites iniciales 9.2 son históricos; los permisos vigentes están en la sección 9.3 al final.
+Estado actual: etapa 9.4 completada funcionalmente según la verificación manual confirmada por el usuario el 27 de octubre de 2026. Primer Admin creado mediante la CLI, login y acceso al directorio administrativo verificados, con tres usuarios y seis tickets conservados. No existe recuperación permanente, envío de correos, frontend ni activación de cuentas anteriores. Los apartados de transición 9.1 y 9.2 son históricos; los permisos vigentes están en 9.3 y el procedimiento del primer Admin en 9.4. Suite completa confirmada por el usuario: 538 pruebas superadas, 0 fallidas (257 sin PostgreSQL y 281 con PostgreSQL). Resultados en PROGRESS.md.
 
 ## Hash y salt
 
@@ -318,11 +318,11 @@ La fixture valida destino/permisos antes de migrar exclusivamente pruebas. Gener
 
 ## Etapa 9.4: inicialización del primer Admin mediante CLI
 
-Estado: herramienta implementada y separada de HTTP. **No se ha ejecutado contra desarrollo ni creado una cuenta real. Esa ejecución queda pendiente de autorización explícita del usuario.** Las referencias anteriores a bootstrap pendiente describen el estado de 9.3. No se activan cuentas antiguas: esta etapa solo permite crear una nueva.
+Estado: etapa completada funcionalmente el 27 de octubre de 2026. El usuario confirma la creación real del primer Admin, login HTTP 200 y acceso administrativo HTTP 200; sin token, el directorio devuelve HTTP 401. Se conservan tres usuarios y seis tickets. Las referencias históricas a bootstrap pendiente describen etapas anteriores. La CLI sigue destinada exclusivamente a crear una cuenta nueva cuando no exista ningún Admin; no debe repetirse sobre el administrador ya creado.
 
 `HelpDesk.AdminBootstrap` es una consola net10.0 que referencia la API para reutilizar modelos, contexto y validación. Cargar ese ensamblado no ejecuta el punto de entrada HTTP. La API no referencia la consola ni llama al bootstrap al arrancar, registrar, autenticar o migrar. No hay endpoint nuevo ni cambios de permisos.
 
-API y CLI usan `AddHelpDeskPasswordHashing`: PasswordHasher<User> V3 y 210.000 iteraciones, con salt del framework. La entrada exige las mismas reglas de nombre/correo y contraseña de registro; el email se normaliza, la contraseña no se recorta ni transforma. Se pide dos veces sin eco y no se aceptan argumentos con credenciales. Escape, Ctrl+C/Ctrl+D durante la contraseña o confirmaciones incorrectas cancelan. Se rechaza stdin/stdout redirigidos; `--help` no abre conexiones.
+API y CLI usan `AddHelpDeskPasswordHashing`: PasswordHasher<User> V3 y 210.000 iteraciones, con salt del framework. La entrada exige las mismas reglas de nombre/correo y contraseña de registro; el email se normaliza, la contraseña no se recorta ni transforma. La contraseña debe tener entre **15 y 128 unidades UTF-16** (`string.Length`), no ser solo espacios ni contener caracteres de control. Un carácter visible puede ocupar más de una unidad UTF-16. Se pide dos veces sin eco y no se aceptan argumentos con credenciales. Escape, Ctrl+C/Ctrl+D durante la contraseña o confirmaciones incorrectas cancelan. Se rechaza stdin/stdout redirigidos; `--help` no abre conexiones.
 
 ### Configuración y confirmación del destino
 
@@ -344,9 +344,9 @@ El bloqueo es de toda Users, deliberadamente breve y para una operación excepci
 
 Si existe Admin, incluso con hash NULL o contraseña perdida, el bootstrap se rechaza y no restablece nada. Si existe el correo, aunque pertenezca a User/Technician sin contraseña, se rechaza sin promoverlo ni activarlo. No hay contraseña por defecto, token maestro, emisión directa de JWT ni excepción por entorno.
 
-### Ejecución manual en Linux Mint (pendiente de autorización)
+### Ejecución manual en Linux Mint (procedimiento para el primer Admin)
 
-Estos pasos escriben **una cuenta nueva** en el destino que confirme el operador. No ejecutarlos aún sobre helpdesk_db; la implementación deja la creación real pendiente de revisión/autorización. No necesitan cambiar los dos usuarios o seis tickets existentes, ni ejecutar migraciones.
+Estos pasos escriben **una cuenta nueva** en el destino que confirme el operador y requieren autorización para ese destino. El primer Admin de desarrollo ya fue creado y verificado: no repetir el bootstrap sobre esa cuenta. El procedimiento no modifica usuarios o tickets existentes ni ejecuta migraciones.
 
 1. Desde la raíz, restaurar y compilar. La base elegida debe existir y tener el esquema vigente, incluida PasswordHash; la herramienta falla si falta, sin repararlo automáticamente.
 

@@ -1,10 +1,14 @@
 # Progreso — HelpDesk.NET
 
-Última actualización: 2026-10-23.
+Última actualización: 2026-10-27.
 
-## Estado vigente de la etapa 9.4 — cierre pendiente
+## Estado vigente de la etapa 9.4 — completada
 
-Autenticación/autorización de 9.3 conservadas. Añadida consola independiente para crear el primer Admin nuevo con contraseña oculta, doble confirmación del destino y bloqueo PostgreSQL. El usuario comunica 280 pruebas PostgreSQL ejecutadas: 277 superadas y tres fallidas. Correcciones revisadas para precisión de fechas y sincronización de concurrencia; 257 pruebas sin PostgreSQL superadas y 281 PostgreSQL descubiertas, pendientes de ejecución con las correcciones. La consola real solo se ejecutó con credenciales ficticias y cancelación antes de conectar; no se ha creado un Admin real ni accedido a desarrollo. Su ejecución real queda pendiente de autorización explícita. Los registros fechados siguientes conservan el historial del proyecto.
+Cierre funcional confirmado por el usuario el 27 de octubre de 2026: primer administrador creado con `HelpDesk.AdminBootstrap`, ID 3 y rol Admin. Acceso recuperado mediante una herramienta temporal externa al repositorio; esa intervención no incorpora una funcionalidad permanente de recuperación. Se conservan tres usuarios y seis tickets. API arrancada en Development, login HTTP 200, directorio administrativo sin token HTTP 401 y con JWT del administrador HTTP 200; cuenta ID 3 identificada correctamente en la respuesta.
+
+La consola y la API comparten `PasswordHasher<User>` V3 y 210.000 iteraciones. La contraseña debe tener entre 15 y 128 unidades UTF-16; se introduce dos veces sin eco. Procedimiento operativo en [AUTHENTICATION.md](AUTHENTICATION.md#etapa-94-inicialización-del-primer-admin-mediante-cli).
+
+El usuario confirma la suite completa superada: **257 pruebas sin PostgreSQL y 281 con PostgreSQL; total 538 superadas y 0 fallidas**. Build anterior: 0 errores y 0 advertencias. Auditoría de aislamiento PostgreSQL superada. Las referencias a pruebas pendientes en los apartados históricos siguientes describen el estado de aquellas sesiones y quedan resueltas por esta confirmación final.
 
 ## Funcionalidades completadas
 
@@ -101,7 +105,7 @@ Estos pasos son orientativos y requieren una tarea solicitada:
 
 1. Ampliar las funcionalidades del dominio únicamente mediante tareas solicitadas; las transiciones de estado ya están implementadas.
 2. Incorporar comentarios e historial por tareas concretas. Relaciones y asignación de técnicos, endpoints GET/POST/PUT de usuarios, categorías, prioridades y transiciones ya están implementados.
-3. Añadir autenticación y autorización, ampliar los tests automatizados, incorporar frontend con Angular y TypeScript y Docker en etapas posteriores.
+3. Ampliar las pruebas automatizadas y, cuando se solicite, incorporar frontend con Angular y TypeScript y Docker. Autenticación, autorización y primer administrador ya están implementados.
 
 Cada cambio importante debe actualizar este documento y, si afecta al diseño, `ARCHITECTURE.md`.
 
@@ -529,3 +533,46 @@ Validación realmente ejecutada:
 - git diff --check correcto. Sin commit ni push, activación del administrador ni otras etapas.
 
 Pendiente: suite PostgreSQL corregida y repetición de concurrencia exclusivamente en helpdesk_test_db según POSTGRESQL_TESTS.md. La etapa 9.4 sigue pendiente de cierre.
+
+## Cierre funcional de la etapa 9.4 — 27 de octubre de 2026
+
+Resultados manuales confirmados por el usuario, sin repetir escrituras durante este cierre documental:
+
+- Primer administrador creado mediante la consola independiente; cuenta ID 3 con correo local esperado y rol Admin.
+- Contraseña recuperada correctamente mediante una herramienta temporal fuera del repositorio. No se añade un comando, endpoint ni proceso permanente de recuperación al proyecto.
+- Tres usuarios y seis tickets conservados.
+- API iniciada en Development; login del administrador HTTP 200.
+- `GET /api/users` sin token HTTP 401; con JWT del administrador HTTP 200, incluyendo la cuenta ID 3 con el rol esperado.
+- Verificación administrativa superada; etapa 9.4 completada funcionalmente.
+
+La revisión del código confirma las validaciones, el hasher compartido y la protección Admin del directorio. La CLI de bootstrap no restablece contraseñas ni modifica cuentas existentes: rechaza cualquier Admin previo, incluso sin credencial. La intervención temporal de recuperación no cambia esa decisión.
+
+Este cierre solo modifica documentación; no ejecuta bootstrap, recuperación, migraciones ni escrituras de datos. La ejecución posterior de la suite PostgreSQL corregida está confirmada por el usuario: 281 superadas, 0 fallidas.
+
+
+Comprobaciones ejecutadas para este cierre documental:
+
+- `dotnet build HelpDesk.NET.slnx -p:NuGetAudit=false --nologo`: correcto, cero errores y advertencias. La consulta de vulnerabilidades NuGet se desactivó para esta compilación; no se declara realizada.
+- `dotnet test HelpDesk.NET.slnx --no-build --no-restore --filter 'Category!=PostgreSQL' --nologo`: 257 superadas, cero fallidas y cero omitidas.
+- Los intentos restringidos fallaron por las limitaciones del sandbox (build sin diagnóstico; tests con permiso denegado al crear sockets de MSBuild). Ambas comprobaciones se completaron fuera del sandbox con autorización.
+- Revisión de documentación frente a BootstrapProgram, BootstrapCommand, BootstrapService, PasswordValidation y las políticas/endpoints existentes. Procedimiento de primer Admin y política de 15–128 unidades UTF-16 coherentes con el código.
+- `git diff --check` correcto; solo cambios en PROGRESS.md, ARCHITECTURE.md y AUTHENTICATION.md. Sin ejecución de tests PostgreSQL, migraciones, escrituras de datos, commit ni push.
+
+
+## Confirmación final de pruebas — etapa 9.4
+
+Resultados comunicados y confirmados por el usuario tras ejecutar ambas suites:
+
+| Comprobación | Resultado |
+|---|---|
+| Pruebas sin PostgreSQL | 257 superadas, 0 fallidas |
+| Pruebas PostgreSQL | 281 superadas, 0 fallidas |
+| Total | **538 superadas, 0 fallidas** |
+| Build anterior | 0 errores, 0 advertencias |
+| Login del administrador | HTTP 200 |
+| Acceso administrativo autenticado | HTTP 200 |
+| Auditoría de aislamiento PostgreSQL | Superada |
+
+La etapa 9.4 queda completada con ambas suites superadas. Las menciones históricas a ejecución PostgreSQL pendiente ya no representan el estado vigente. Se mantiene el procedimiento de creación del primer Admin en AUTHENTICATION.md, incluida la política de 15–128 unidades UTF-16.
+
+Esta actualización solo registra los resultados confirmados; no vuelve a ejecutar pruebas, migraciones ni operaciones de base de datos. Verificación documental mediante `git diff --check` y revisión de archivos modificados; sin commit ni push.

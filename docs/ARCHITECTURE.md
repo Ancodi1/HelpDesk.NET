@@ -1,12 +1,12 @@
 # Arquitectura — HelpDesk.NET
 
-Última actualización: 2026-10-23.
+Última actualización: 2026-10-27.
 
 ## Estado actual
 
-Revisión del 23 de octubre de 2026: los tres fallos PostgreSQL comunicados en 9.4 se abordan en las pruebas, sin cambios del protocolo de bloqueo, endpoints, esquema ni dependencias. Las comparaciones POST/persistencia usan microsegundos y la barrera de reasignación se sitúa después del UPDATE, antes del commit explícito. Se cubren ambos órdenes con pg_blocking_pids y rechazo del antiguo técnico. Ejecución PostgreSQL de las correcciones pendiente por conexión ausente; resultados en PROGRESS.md. No constituye una nueva decisión de arquitectura.
+Revisión del 23 de octubre de 2026: los tres fallos PostgreSQL comunicados en 9.4 se abordan en las pruebas, sin cambios del protocolo de bloqueo, endpoints, esquema ni dependencias. Las comparaciones POST/persistencia usan microsegundos y la barrera de reasignación se sitúa después del UPDATE, antes del commit explícito. Se cubren ambos órdenes con pg_blocking_pids y rechazo del antiguo técnico. Las correcciones quedaron validadas por las 281 pruebas PostgreSQL superadas que confirma el usuario al cierre; junto con las 257 sin PostgreSQL suman 538 superadas y 0 fallidas. Resultados en PROGRESS.md. No constituye una nueva decisión de arquitectura.
 
-La etapa 9.3 protege todas las rutas excepto health/register/login mediante JWT y comprobación de cuenta/rol actual en PostgreSQL. Tickets se filtran por propietario o asignación; la gestión completa y administración de usuarios requieren Admin (decisión 037). La etapa 9.4 incorpora una consola manual del primer Admin, sin cambiar rutas ni permisos; ejecución real pendiente de autorización (decisión 038). Las decisiones anteriores registran la evolución histórica.
+La etapa 9.3 protege todas las rutas excepto health/register/login mediante JWT y comprobación de cuenta/rol actual en PostgreSQL. Tickets se filtran por propietario o asignación; la gestión completa y administración de usuarios requieren Admin (decisión 037). La etapa 9.4 incorpora una consola manual del primer Admin, sin cambiar rutas ni permisos; creación real y acceso administrativo confirmados por el usuario al cerrar 9.4 el 27 de octubre de 2026 (decisión 038). Las decisiones anteriores registran la evolución histórica.
 
 El repositorio contiene la solución `HelpDesk.NET.slnx` y los proyectos `HelpDesk.Api` (ASP.NET Core Web API), `HelpDesk.AdminBootstrap` (consola independiente) y `HelpDesk.Tests` (xUnit e integración HTTP), todos para `net10.0`. `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Todo el CRUD accede a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
 
@@ -498,7 +498,7 @@ Los tests anteriores de validación, persistencia y filtros utilizan ahora un Ad
 
 ### 038 — Primer Admin mediante consola interactiva y bloqueo de Users (etapa 9.4)
 
-Estado: implementada el 23 de octubre de 2026. Compilada y probada sin PostgreSQL; integración y creación real pendientes. No se ha accedido a desarrollo ni ejecutado el bootstrap contra ninguna base en esta sesión.
+Estado: implementada el 23 de octubre de 2026; cierre funcional confirmado por el usuario el 27 de octubre de 2026 con creación real del primer Admin, login y acceso administrativo. La suite completa está confirmada por el usuario: 538 pruebas superadas, 0 fallidas; véase PROGRESS.md. La recuperación puntual mediante una herramienta temporal externa no añade una capacidad permanente ni cambia esta decisión.
 
 Decisión: añadir HelpDesk.AdminBootstrap (net10.0) como consola separada, con referencia a HelpDesk.Api para reutilizar User/UserRole, DbContext y validadores. La API no referencia ni ejecuta la consola; su punto de entrada explícito BootstrapProgram no arranca un host, no carga JWT/User Secrets/appsettings ni llama a Migrate/EnsureCreated. No hay endpoints de bootstrap ni cambios a la autorización existente.
 
