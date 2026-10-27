@@ -1,3 +1,5 @@
+@use './ticket-badges' as badges;
+@include badges.styles;
 table {
   width: 100%;
   border-collapse: collapse;
@@ -46,6 +48,17 @@ tr:last-child td {
   display: block;
   font-size: 13px;
   font-weight: 650;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+.ticket-title:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .description {
   margin: 6px 0 0;
@@ -56,45 +69,6 @@ tr:last-child td {
   -webkit-line-clamp: 2;
   overflow: hidden;
   white-space: pre-line;
-}
-.badge {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 650;
-  padding: 3px 8px;
-  border-radius: 5px;
-}
-.status[data-value='Open'] {
-  color: #3e4fa5;
-  background: #edf1ff;
-}
-.status[data-value='InProgress'] {
-  color: #86570c;
-  background: #fff3d5;
-}
-.status[data-value='Resolved'] {
-  color: #247456;
-  background: #eaf6ef;
-}
-.status[data-value='Closed'] {
-  color: #575e72;
-  background: #eef0f5;
-}
-.priority[data-value='Low'] {
-  color: #476075;
-  background: #eff4f8;
-}
-.priority[data-value='Medium'] {
-  color: #5b4bcc;
-  background: #eeecfc;
-}
-.priority[data-value='High'] {
-  color: #9a521a;
-  background: #fff0df;
-}
-.priority[data-value='Critical'] {
-  color: #a13628;
-  background: #fff0eb;
 }
 .mobile-label {
   display: none;

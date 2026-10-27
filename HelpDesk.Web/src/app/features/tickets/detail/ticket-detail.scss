@@ -1,0 +1,60 @@
+@use '../ticket-badges' as badges;
+@include badges.styles;
+.metadata {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin: 0 0 32px;
+}
+dt {
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+h2 {
+  font-size: 16px;
+  margin-bottom: 16px;
+  font-weight: 650;
+}
+.description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.9;
+  margin-bottom: 32px;
+}
+.secondary-data {
+  border-top: 1px solid var(--border);
+  padding-top: 28px;
+  margin-bottom: 12px;
+}
+.time-note {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 0;
+}
+.state-panel {
+  text-align: center;
+  padding-block: 44px;
+}
+.state-panel h1 {
+  font-size: 24px;
+}
+.state-panel > p:not(.eyebrow) {
+  color: var(--muted);
+  line-height: 1.8;
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+@media (max-width: 600px) {
+  .metadata {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+}

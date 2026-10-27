@@ -4,7 +4,7 @@
 
 ## Estado actual
 
-Fases 10.1, 10.2 y 10.3.1: cliente Angular independiente en `HelpDesk.Web`, con inicio/health, autenticación en memoria y listado privado de incidencias. El listado consume los datos autorizados por la API, sin cambiar autenticación, backend ni base de datos. Decisiones 039–041 al final.
+Fases 10.1 a 10.3.2: cliente Angular independiente en `HelpDesk.Web`, con inicio/health, autenticación en memoria, listado, creación y detalle de incidencias. Consume exclusivamente los contratos autorizados de la API, sin cambiar autenticación, backend ni base de datos. Decisiones 039–042 al final.
 
 
 Revisión del 23 de octubre de 2026: los tres fallos PostgreSQL comunicados en 9.4 se abordan en las pruebas, sin cambios del protocolo de bloqueo, endpoints, esquema ni dependencias. Las comparaciones POST/persistencia usan microsegundos y la barrera de reasignación se sitúa después del UPDATE, antes del commit explícito. Se cubren ambos órdenes con pg_blocking_pids y rechazo del antiguo técnico. Las correcciones quedaron validadas por las 281 pruebas PostgreSQL superadas que confirma el usuario al cierre; junto con las 257 sin PostgreSQL suman 538 superadas y 0 fallidas. Resultados en PROGRESS.md. No constituye una nueva decisión de arquitectura.
@@ -565,3 +565,18 @@ Un flujo de eventos de ruta, formulario y acciones usa switchMap para sustituir 
 TicketAccess del servidor decide visibilidad y conteos: User creados por él, Technician creados o asignados y Admin todos. La UI no solicita otros usuarios ni filtra permisos localmente. Los guards solo orientan navegación. Estados de error seguros y reintento; el interceptor conserva la responsabilidad del 401. Tabla semántica en escritorio y presentación en tarjetas en móvil, con texto además del color para estado/prioridad.
 
 Consecuencias: se reutiliza la sesión en memoria; una recarga exige nuevo login antes de volver a la URL del listado. Puede haber páginas vacías si el total cambia o la URL pide una fuera de rango: se ofrece volver a la primera, sin crear ni modificar registros. Creación, detalle, edición y eliminación quedan fuera del alcance. Validación automatizada aislada de PostgreSQL y verificación manual solo con cuentas existentes.
+
+
+### 042 — Creación y detalle con contratos existentes (fase 10.3.2)
+
+Estado: implementada el 27 de octubre de 2026. Sin cambios de backend, autenticación, esquema, dependencias ni pruebas anteriores.
+
+Decisión: ampliar TicketService con POST /api/tickets y GET /api/tickets/{id}, reutilizando el contrato y la validación de Ticket del listado. El DTO de entrada Angular contiene solo title/description/priority/category. CreatedByUserId se omite porque el backend lo ignora y deriva el creador de la sesión; estado, fecha, ID y asignación nunca son campos del formulario. User, Technician y Admin pueden crear. Validación reactiva acorde a .NET: título no blanco de hasta 100 unidades UTF-16, descripción no blanca sin máximo añadido, enums reales y textos sin transformación.
+
+Componentes standalone bajo features/tickets/create y detail. Las rutas reutilizan authGuard y el interceptor existentes; la estática /tickets/new precede a /tickets/:id. La tabla sigue siendo de presentación y emite la selección del ID; el listado controla navegación a detalle/nuevo y transporta su contexto mediante los query parameters ya existentes. Así se conservan filtros y página sin almacenar tokens o resultados. Los estilos comunes de página y badges se comparten con SCSS; no se añade una biblioteca visual.
+
+POST pendiente desactiva el formulario. Tras 201 se valida el Ticket y se navega solo a su ID, nunca a una URL de Location recibida del proveedor. La confirmación y el enlace manual quedan visibles si falla la navegación, y un éxito confirmado bloquea otro envío. El ID confirmado se pasa al detalle como estado de navegación efímero para el aviso, sin sustituir el GET autorizado del detalle.
+
+El GET muestra únicamente el Ticket devuelto por la API, con descripción completa escapada, fecha de creación local e IDs nullable de usuarios, sin consultas adicionales para nombres ni fechas inventadas. IDs inválidos se tratan como no disponibles sin petición; las peticiones obsoletas se cancelan al cambiar de ID o abandonar la vista. Inexistente y no visible comparten mensaje 404. El servidor conserva la autorización; los errores nunca reflejan cuerpos del proveedor.
+
+Consecuencias: no hay idempotencia del POST en el backend. Un timeout, desconexión o cancelación del cliente no permite garantizar que la escritura no ocurrió. El cliente no reintenta automáticamente y pide revisar el listado antes de reenviar en esos casos. Cancelar una suscripción HTTP no equivale a rollback del servidor. Las pruebas automatizadas aíslan todo HTTP y no crean filas; el procedimiento manual válido exige un destino autorizado para escritura, preferiblemente aislado. Edición, eliminación y asignación siguen fuera del alcance.

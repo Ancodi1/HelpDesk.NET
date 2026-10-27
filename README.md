@@ -2,7 +2,7 @@
 
 Aplicación de gestión de incidencias técnicas: permite registrar tickets, actualizar su información y clasificarlos por estado, prioridad y categoría.
 
-Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfolio. Su objetivo es practicar el diseño de APIs, la persistencia relacional y las pruebas automatizadas mediante una evolución incremental. Actualmente ofrece una API HTTP con autenticación JWT y autorización por roles, y una primera interfaz Angular responsive con comprobación de disponibilidad de la API. El frontend incorpora login, registro y sesión solo en memoria. La fase 10.3.1 incorpora consulta de incidencias con búsqueda, filtros y paginación. La creación, edición y eliminación desde la interfaz se incorporarán en fases posteriores.
+Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfolio. Su objetivo es practicar el diseño de APIs, la persistencia relacional y las pruebas automatizadas mediante una evolución incremental. Actualmente ofrece una API HTTP con autenticación JWT y autorización por roles, y una primera interfaz Angular responsive con comprobación de disponibilidad de la API. El frontend incorpora login, registro y sesión solo en memoria. El frontend incorpora listado, creación y detalle de incidencias. La edición, eliminación y asignación desde la interfaz se incorporarán en fases posteriores.
 
 [Repositorio en GitHub](https://github.com/Ancodi1/HelpDeskt.NET)
 
@@ -19,9 +19,9 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 | xUnit | Pruebas unitarias y de integración |
 | WebApplicationFactory / TestServer | Pruebas HTTP en memoria |
 
-## Frontend — fases 10.1, 10.2 y 10.3.1
+## Frontend — fases 10.1 a 10.3.2
 
-`HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. La fase 10.2 añade formularios reactivos de login/registro y una sesión JWT solo en memoria; La fase 10.3.1 añade el listado de tickets de solo lectura; no incluye creación, edición, eliminación ni panel administrativo.
+`HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. Incluye formularios reactivos de login/registro y una sesión JWT solo en memoria, listado con filtros y paginación, creación y detalle de tickets. No incluye edición, eliminación, asignación ni panel administrativo.
 
 Requisitos: Node.js compatible con Angular 22 (desarrollo validado con Node 24.15.0 y npm 11.12.1). No hace falta instalar Angular CLI globalmente: los scripts utilizan la versión local. `package-lock.json` está versionado; en una copia nueva, ejecutar:
 
@@ -110,7 +110,7 @@ La ruta protegida **`/tickets`** consulta exclusivamente `GET /api/tickets` a tr
 
 El orden es fijo: `CreatedAt` descendente e ID descendente para desempatar. **No existe un parámetro de ordenación configurable.** La respuesta real es `{ items, totalCount, page, pageSize, totalPages }`. Los tickets incluyen id, título, descripción, fecha UTC, estado/prioridad/categoría como strings y IDs de creador/técnico que pueden ser null. Las relaciones completas de usuarios no se serializan. Por eso la tabla muestra «Sin asignar» o el ID del técnico, sin inventar nombres ni hacer consultas adicionales a usuarios.
 
-La vista usa tabla en escritorio y tarjetas en móvil, con etiquetas de estado/prioridad. Las fechas se presentan en hora local. Incluye carga, error seguro, reintento, ausencia de incidencias, ausencia de coincidencias y recuperación a primera página si la página solicitada queda fuera del rango. No hay acciones de escritura ni enlaces a detalles todavía.
+La vista usa tabla en escritorio y tarjetas en móvil, con etiquetas de estado/prioridad. Las fechas se presentan en hora local. Incluye carga, error seguro, reintento, ausencia de incidencias, ausencia de coincidencias y recuperación a primera página si la página solicitada queda fuera del rango. El listado conserva sus filtros al abrir el detalle desde el título o el formulario desde «Nuevo ticket». No incluye edición, eliminación o asignación.
 
 Filtros, búsqueda, tamaño y página se conservan en query parameters. Cambiar filtros o tamaño vuelve a página 1; buscar reemplaza la entrada del historial para no crear una por cada escritura. Volver atrás restaura controles y consulta. Parámetros repetidos, filtros desconocidos, números inválidos y parámetros no soportados se normalizan en la URL antes de consultar. Cualquier cambio cancela la petición anterior y también una búsqueda pendiente; abandonar la página cancela ambas. Las respuestas no se guardan en almacenamiento local ni se mezclan con datos simulados.
 
@@ -125,6 +125,35 @@ Para probar manualmente, con API y frontend arrancados según los comandos anter
 7. Si se dispone de cuentas existentes activas para otros roles, repetir y comparar únicamente con la visibilidad que concede la API. No cambiar roles ni contraseñas. El 401 continúa limpiando la sesión mediante el interceptor; 403 se presenta como falta de permiso.
 
 La sesión sigue siendo solo en memoria: recargar pierde el acceso. Tras volver a iniciar sesión se puede abrir nuevamente la URL del listado con sus filtros. Las pruebas unitarias usan respuestas HTTP aisladas; no se ejecuta una autenticación real ni se consulta PostgreSQL durante su ejecución.
+
+### Creación y detalle de tickets — fase 10.3.2
+
+Rutas privadas `/tickets/new` y `/tickets/:id`, con el guard y el interceptor JWT existentes. `/tickets/new` se declara antes de la ruta de ID para evitar interpretar «new» como identificador. User, Technician y Admin pueden crear; el servidor valida los permisos y fija el creador usando la cuenta autenticada.
+
+El formulario envía exclusivamente `title`, `description`, `priority` y `category` a `POST /api/tickets`. Título obligatorio, no solo espacios y máximo 100 unidades UTF-16; descripción obligatoria y no solo espacios, sin añadir un límite que no exista en la API. Prioridad inicial Medium y categoría Other, con los enums reales. No se recorta ni transforma el texto. El DTO del servidor contiene también CreatedByUserId, pero lo ignora: por eso no se muestra ni se envía. Tampoco se envían estado, fecha, ID o asignación.
+
+Mientras el POST está pendiente se desactivan los campos y el envío. HTTP 201 con un Ticket válido confirma la creación y redirige a su detalle usando el ID del cuerpo; nunca se navega a una URL recibida en Location. La confirmación incluye un enlace al detalle si falla la navegación y el formulario no permite repetir un envío ya confirmado. El aviso de creación se transmite al detalle como estado de navegación efímero, sin almacenar tokens ni el contenido del ticket.
+
+El detalle consulta únicamente GET /api/tickets/{id}. Muestra título, descripción completa con saltos de línea, estado, prioridad, categoría, fecha de creación e IDs de creador/técnico, admitiendo null. No inventa nombres ni fechas de modificación. Usa las mismas etiquetas y colores que el listado. El enlace de vuelta conserva los filtros y la página; abrir el formulario también conserva ese contexto, sin convertir los filtros en valores iniciales del nuevo ticket.
+
+La API sigue decidiendo la visibilidad: User ve sus incidencias; Technician, propias o asignadas; Admin, todas. HTTP 404 significa inexistente **o no visible**, y se muestra el mismo mensaje. El cliente no intenta distinguirlos ni pide información adicional de usuarios. Hay carga, error, reintento de lectura y cancelación de peticiones obsoletas o al salir. Los mensajes 400/401/403/404/409/red son propios y no reflejan cuerpos del proveedor. El 401 sigue siendo responsabilidad del interceptor actual.
+
+**Límite del backend:** no hay idempotencia de creación. Una desconexión, timeout o cancelación del cliente no demuestra que el servidor haya revertido el POST. No hay reintentos automáticos; ante un resultado incierto se indica revisar el listado antes de enviar otra vez. No se ha cambiado el backend para resolver este límite.
+
+#### Prueba manual de creación y detalle
+
+Los tests automatizados de esta fase usan HTTP simulado y no crean filas reales. **Una prueba manual válida de creación sí escribe un ticket**: si se desea conservar `helpdesk_db` intacta, utilizar una API conectada a una base aislada ya preparada y una cuenta existente con credenciales válidas. La configuración externa y el arranque aislado se explican en la sección de autenticación anterior. No ejecutar migraciones ni crear usuarios para preparar esta comprobación.
+
+1. Desde la raíz, arrancar la API con la configuración del destino autorizado: `dotnet run --project HelpDesk.Api --launch-profile http`.
+2. En otra terminal, desde `HelpDesk.Web`, ejecutar `npm start` y abrir http://localhost:4200/login.
+3. Iniciar sesión con una cuenta existente y abrir Tickets. Pulsar **Nuevo ticket**: debe abrir `/tickets/new` para cualquiera de los tres roles autenticados.
+4. Comprobar primero los errores locales dejando título/descripción vacíos o escribiendo un título de más de 100 unidades UTF-16: no debe enviarse el POST.
+5. Solo en el destino donde se haya autorizado escribir, introducir título y descripción no sensibles, elegir prioridad/categoría y pulsar **Crear ticket**. El formulario se bloquea durante el envío. Tras 201 debe abrirse `/tickets/<id>` y mostrarse la confirmación junto a los datos reales.
+6. Volver al listado y pulsar el título del ticket para abrir su detalle. Comprobar que los filtros y la página se conservan al volver; el nuevo ticket puede no aparecer si no cumple los filtros activos.
+7. Para errores de lectura, consultar un ID comprobado como inexistente, sin crear datos para preparar el caso. Debe mostrarse el mensaje de incidencia no disponible. Sin sesión, tanto creación como detalle deben llevar al login sin consultar tickets.
+8. No reenviar una creación que haya terminado en timeout o desconexión sin revisar primero si ya existe. No usar edición, eliminación ni asignación para preparar o limpiar esta prueba: siguen fuera del alcance del frontend.
+
+Las comprobaciones con una cuenta real quedan para la ejecución manual del usuario. La recarga sigue perdiendo la sesión en memoria y exige volver a iniciar sesión antes de abrir el detalle.
 
 ## Funcionalidades
 

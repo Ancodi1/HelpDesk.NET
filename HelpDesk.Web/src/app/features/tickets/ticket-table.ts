@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, input } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 import { categoryLabels, priorityLabels, statusLabels, Ticket } from './ticket.models';
 
 @Component({
@@ -10,6 +10,7 @@ import { categoryLabels, priorityLabels, statusLabels, Ticket } from './ticket.m
   styleUrl: './ticket-table.scss',
 })
 export class TicketTable {
+  readonly selectTicket = output<number>();
   readonly tickets = input.required<readonly Ticket[]>();
   readonly statusNames = statusLabels;
   readonly priorityNames = priorityLabels;

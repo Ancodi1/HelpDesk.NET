@@ -1,6 +1,6 @@
 # HelpDesk.Web
 
-Frontend de HelpDesk.NET, fases 10.1, 10.2 y 10.3.1. Angular 22, TypeScript estricto, componentes standalone, Angular Router y SCSS. Sin bibliotecas visuales adicionales ni SSR.
+Frontend de HelpDesk.NET, fases 10.1 a 10.3.2. Angular 22, TypeScript estricto, componentes standalone, Angular Router y SCSS. Sin bibliotecas visuales adicionales ni SSR.
 
 ## Desarrollo
 
@@ -20,7 +20,7 @@ El proxy de `src/proxy.conf.json`, registrado en `angular.json`, dirige `/api/**
 - `src/app/layout`: estructura compartida, navegación y pie de página.
 - `src/app/features/home`: página de inicio y presentación del proyecto, cargadas bajo demanda.
 - `src/app/features/auth`: formularios y sesión; `core/auth` conserva servicio, interceptor y guards.
-- `src/app/features/tickets`: contrato, servicio GET, consulta URL, listado y tabla responsive.
+- `src/app/features/tickets`: contrato, servicio HTTP, consulta URL, listado y tabla responsive; `create` y `detail` para creación y detalle.
 - `src/app/core/api`: consulta health tipada y validación de respuesta.
 - `src/styles.scss`: tokens visuales y reglas globales; estilos de componentes en su propia carpeta.
 
@@ -35,4 +35,4 @@ npm test -- --watch=false
 
 Las pruebas Vitest usan HTTP simulado: navegación, estados del panel, respuesta inválida, timeout, reintento y cancelación. No necesitan la API ni PostgreSQL.
 
-La fase 10.2 incluye `/login`, `/register` y `/session` con JWT solo en memoria, formularios reactivos, guard y cierre local de sesión. La recarga pierde el acceso; el backend conserva la autoridad de autorización. La fase 10.3.1 incorpora `/tickets`, de solo lectura, con búsqueda, filtros y paginación; sin creación, edición, eliminación ni panel administrativo. El registro válido escribe una cuenta: comprobarlo solo con una API apuntando a una base aislada, según el procedimiento del README raíz. Las pruebas de autenticación y tickets usan HTTP simulado, nunca credenciales reales ni datos de desarrollo. El listado respeta los resultados autorizados por la API, sin filtrar permisos en el cliente. Consultar el [README del repositorio](../README.md) y la [arquitectura](../docs/ARCHITECTURE.md) para el contexto completo.
+La fase 10.2 incluye `/login`, `/register` y `/session` con JWT solo en memoria, formularios reactivos, guard y cierre local de sesión. La recarga pierde el acceso; el backend conserva la autoridad de autorización. Las fases 10.3.1 y 10.3.2 incorporan `/tickets`, `/tickets/new` y `/tickets/:id`: listado, creación y detalle, sin edición, eliminación, asignación ni panel administrativo. El registro válido escribe una cuenta y el POST de creación escribe un ticket: comprobarlos solo contra una base aislada o un destino autorizado, según el README raíz. No se reintenta automáticamente una creación incierta. Las pruebas de autenticación y tickets usan HTTP simulado, nunca credenciales reales ni datos de desarrollo. El listado respeta los resultados autorizados por la API, sin filtrar permisos en el cliente. Consultar el [README del repositorio](../README.md) y la [arquitectura](../docs/ARCHITECTURE.md) para el contexto completo.

@@ -3,6 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { map, Observable, timeout } from 'rxjs';
 import {
   Ticket,
+  CreateTicketRequest,
   TicketPage,
   TicketQuery,
   ticketStatuses,
@@ -13,6 +14,37 @@ import {
 @Injectable({ providedIn: 'root' })
 export class TicketService {
   private readonly http = inject(HttpClient);
+  get(id: number): Observable<Ticket> {
+    return this.http.get<unknown>(`/api/tickets/${id}`, { cache: 'no-store' }).pipe(
+      timeout(15_000),
+      map((response) => {
+        if (!isTicket(response) || response.id !== id)
+          throw new Error('Unexpected ticket response');
+        return response;
+      }),
+    );
+  }
+
+  create(input: CreateTicketRequest): Observable<Ticket> {
+    // Do not forward incidental fields such as creator, status or assignment.
+    const body = {
+      title: input.title,
+      description: input.description,
+      priority: input.priority,
+      category: input.category,
+    };
+    return this.http
+      .post<unknown>('/api/tickets', body, { observe: 'response', cache: 'no-store' })
+      .pipe(
+        timeout(15_000),
+        map((response) => {
+          if (response.status !== 201 || !isTicket(response.body))
+            throw new TicketCreationResponseError();
+          return response.body;
+        }),
+      );
+  }
+
   list(query: TicketQuery): Observable<TicketPage> {
     let params = new HttpParams().set('page', query.page).set('pageSize', query.pageSize);
     for (const key of ['search', 'status', 'priority', 'category'] as const) {
@@ -65,4 +97,11 @@ function isPage(value: unknown): value is TicketPage {
     value['items'].length <= value['pageSize'] &&
     value['items'].every(isTicket)
   );
+}
+
+// A successful transport response can mean the write happened even if its body is unreadable.
+export class TicketCreationResponseError extends Error {
+  constructor() {
+    super('Unexpected creation response');
+  }
 }

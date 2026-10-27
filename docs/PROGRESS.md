@@ -2,13 +2,13 @@
 
 Última actualización: 2026-10-27.
 
-## Estado vigente — fase 10.3.1 implementada
+## Estado vigente — fase 10.3.2 implementada
 
-Listado Angular de solo lectura en `/tickets`, con búsqueda, filtros, paginación y query parameters sobre el contrato real de GET /api/tickets. Tipos, servicio y componentes nuevos en features/tickets. La autenticación, el interceptor y los guards de 10.2 se reutilizan sin modificarlos; la API decide la visibilidad por rol/asignación.
+Frontend con listado, creación y detalle de tickets en `/tickets`, `/tickets/new` y `/tickets/:id`. Se reutilizan el servicio, los contratos y los colores de estado/prioridad. El formulario usa los cuatro campos efectivos del POST (title, description, priority, category), bloquea envíos duplicados y redirige al ID validado de la respuesta 201 con confirmación. El detalle muestra exclusivamente los datos autorizados por la API y conserva los filtros al volver al listado.
 
-Enlace «Tickets» en la barra lateral para usuarios autenticados de los tres roles. Reutiliza los estilos responsive y active existentes, con aria-current para la página activa, también con filtros en la URL. Con autorización explícita del usuario se actualizó únicamente la aserción obsoleta de session-menu.spec.ts que exigía la ausencia del enlace; el resto de pruebas anteriores se conserva.
+Los tres roles autenticados pueden crear. La API fija creador, estado inicial y fecha, y limita el detalle como el listado. Un 404 se trata igual para inexistente y no visible. Sin cambios de autenticación, backend, base de datos, dependencias o pruebas anteriores; sin edición, eliminación o asignación.
 
-Se mantienen login, registro y sesión solo en memoria de 10.2 y la página de inicio/health de 10.1. Sin creación, edición, eliminación de tickets ni panel administrativo. Sin cambios de backend o base de datos. Los resultados de 9.4 (538 pruebas) siguen como antecedente; la suite PostgreSQL no se repite en esta fase.
+Se mantienen login, registro y sesión solo en memoria y la página de inicio/health. Las pruebas de frontend usan HTTP simulado, sin crear tickets reales. No se ejecutan migraciones ni pruebas PostgreSQL. El límite de idempotencia del POST y los pasos manuales para un destino aislado/autorizado se documentan en README. Los resultados históricos de 9.4 (538 pruebas) siguen como antecedente.
 
 ## Etapa 9.4 — completada (base del backend)
 
@@ -656,3 +656,27 @@ Validaciones realizadas:
 Cierre de navegación: enlace autenticado añadido con los mismos estilos e iconografía de la barra lateral. Pruebas con Router real verifican el clic, la clase active y aria-current con y sin filtros, su desactivación al salir y la ausencia del enlace sin sesión. El guard redirige al login antes de consultar tickets. Build Angular y suite completa repetidos: sin advertencias y 162 pruebas superadas.
 
 Limitaciones: No se verificó visualmente un listado autenticado con datos reales ni se manejaron credenciales: el procedimiento manual queda para una cuenta existente, sin crear datos para preparar la prueba. Ordenación fija y técnico por ID porque así lo ofrece la API. Sin migraciones, escrituras de datos, commit ni push.
+
+
+## Fase 10.3.2 — creación y detalle (27 de octubre de 2026)
+
+Revisión previa de AGENTS.md, documentación, repositorio limpio, DTOs y endpoints. POST /api/tickets permite cualquier cuenta autenticada, valida título obligatorio/máximo 100 unidades UTF-16, descripción obligatoria y enums; ignora creador enviado y responde 201 con Ticket y Location. GET /api/tickets/{id} devuelve solo una incidencia visible o 404; no distingue inexistencia de falta de visibilidad. No hay fecha de modificación ni nombres de usuarios en la respuesta.
+
+- Formulario reactivo en features/tickets/create, con defaults Medium/Other y sin campos de creador, estado, fecha o asignación. Valida espacios de .NET y longitud UTF-16 sin transformar los textos ni añadir límite a descripción.
+- Métodos create/get en TicketService, compartiendo la validación del contrato con el listado. El POST envía exactamente cuatro campos y exige respuesta 201 con Ticket válido. No usa Location como destino de navegación.
+- Botón Nuevo ticket para cuentas autenticadas y título del listado como botón de acceso al detalle. La tabla emite selección y el listado navega, manteniendo el componente de presentación independiente del Router. No es necesario modificar las pruebas anteriores por nuevas dependencias de navegación.
+- Página features/tickets/detail, con descripción completa y texto escapado, fecha local y relaciones nullable representadas por ID o ausencia. Comparte estilos de badges mediante un mixin SCSS, y los estilos base de página con creación.
+- Guards e interceptor existentes reutilizados sin cambios. Ruta estática new antes del ID; contexto de filtros/página conservado al volver al listado. Confirmación de creación transmitida como estado efímero de navegación, no en el JWT ni en almacenamiento persistente.
+- Carga, errores seguros 400/401/403/404/409/red, ticket no disponible, reintento de lectura y cancelación al cambiar ID o salir. Envios bloqueados mientras hay petición pendiente y tras éxito confirmado, incluso si falla la navegación.
+- Sin reintentos automáticos del POST. Se explica que timeout, desconexión o cancelar el cliente no garantizan rollback en el servidor. Revisar el listado antes de reenviar una creación incierta; no se propone ni aplica una modificación del backend.
+
+Validaciones realizadas:
+
+- `npm run build`: correcto, sin advertencias. Se conservan los presupuestos SCSS y no se añaden dependencias.
+- `npm test -- --watch=false`: **226 superadas, 0 fallidas**, en 19 archivos. Las 162 anteriores permanecen intactas; cuatro nuevos archivos prueban servicio, formulario, detalle y rutas con HTTP simulado. Incluyen UTF-16/espacios, enums, envío duplicado, respuesta 201, Location externo ignorado, confirmación, retorno con filtros, los tres roles, protección anónima, 400/401/403/404/409, red, timeout, respuesta incorrecta, XSS escapado y cancelación.
+- `dotnet build HelpDesk.NET.slnx --no-restore --nologo`: correcto, 0 errores y 0 advertencias. El intento restringido falló sin diagnóstico; completado fuera del sandbox con autorización.
+- `dotnet test HelpDesk.NET.slnx --no-build --no-restore --filter 'Category!=PostgreSQL' --nologo`: 257 superadas, 0 fallidas/omitidas. Sin ejecutar pruebas PostgreSQL ni migraciones.
+- `git diff --check` y revisión de whitespace de los 14 archivos nuevos correctos. Backend, solución, autenticación, proxy, dependencias y los 15 archivos de pruebas Angular anteriores sin cambios. No ha sido necesaria ninguna excepción para modificar pruebas previas.
+- Verificado que las fixtures no aparecen en el build de producción. No se utilizan datos simulados en la aplicación.
+
+Limitaciones: la comprobación visual/manual autenticada con datos reales queda para el usuario; no se solicitan credenciales ni se crean tickets reales durante la implementación. La creación manual debe realizarse solo en un destino autorizado para escritura, preferiblemente aislado y ya preparado, siguiendo README. El backend solo ofrece fecha de creación e IDs de usuarios, y no garantiza idempotencia del POST; no se modifica para ampliar ese contrato. Sin commit ni push.

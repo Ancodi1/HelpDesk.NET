@@ -1,0 +1,100 @@
+<section class="ticket-page" aria-labelledby="detail-title">
+  <a class="back-link" routerLink="/tickets" [queryParams]="backQuery()">← Volver al listado</a>
+  @if (created()) {
+    <p class="feedback success" role="status">Ticket #{{ id() }} creado correctamente.</p>
+  }
+  @let result = state();
+  <div [attr.aria-busy]="result.kind === 'loading'">
+    @switch (result.kind) {
+      @case ('loading') {
+        <div class="card state-panel" role="status">
+          <h1 id="detail-title">Cargando incidencia…</h1>
+          <p>Estamos consultando la información disponible para tu cuenta.</p>
+        </div>
+      }
+      @case ('not-found') {
+        <div class="card state-panel" role="status">
+          <p class="eyebrow">INCIDENCIA NO DISPONIBLE</p>
+          <h1 id="detail-title">No encontramos este ticket.</h1>
+          <p>La incidencia no existe o no está disponible para tu cuenta.</p>
+          <a class="secondary" routerLink="/tickets" [queryParams]="backQuery()"
+            >Volver al listado</a
+          >
+        </div>
+      }
+      @case ('error') {
+        <div class="card state-panel" role="alert">
+          <h1 id="detail-title">No se pudo cargar la incidencia</h1>
+          <p>{{ result.message }}</p>
+          <button class="primary" type="button" (click)="retry()">Reintentar</button>
+        </div>
+      }
+      @case ('ready') {
+        <header>
+          <p class="eyebrow">INCIDENCIA #{{ result.ticket.id }}</p>
+          <h1 id="detail-title">{{ result.ticket.title }}</h1>
+          <p class="intro">Información de la incidencia disponible para tu cuenta.</p>
+        </header>
+        <article class="card" aria-label="Información del ticket">
+          <dl class="metadata">
+            <div>
+              <dt>Estado</dt>
+              <dd>
+                <span class="badge status" [attr.data-value]="result.ticket.status">{{
+                  statusNames[result.ticket.status]
+                }}</span>
+              </dd>
+            </div>
+            <div>
+              <dt>Prioridad</dt>
+              <dd>
+                <span class="badge priority" [attr.data-value]="result.ticket.priority">{{
+                  priorityNames[result.ticket.priority]
+                }}</span>
+              </dd>
+            </div>
+            <div>
+              <dt>Categoría</dt>
+              <dd>{{ categoryNames[result.ticket.category] }}</dd>
+            </div>
+          </dl>
+          <section aria-labelledby="description-title">
+            <h2 id="description-title">Descripción</h2>
+            <p class="description">{{ result.ticket.description }}</p>
+          </section>
+          <dl class="metadata secondary-data">
+            <div>
+              <dt>Creada el</dt>
+              <dd>
+                <time [attr.datetime]="result.ticket.createdAt">{{
+                  result.ticket.createdAt | date: 'dd/MM/yyyy, HH:mm'
+                }}</time>
+              </dd>
+            </div>
+            <div>
+              <dt>Creada por</dt>
+              <dd>
+                {{
+                  result.ticket.createdByUserId === null
+                    ? 'Sin creador registrado'
+                    : 'ID ' + result.ticket.createdByUserId
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>Técnico asignado</dt>
+              <dd>
+                {{
+                  result.ticket.assignedToUserId === null
+                    ? 'Sin asignar'
+                    : 'ID ' + result.ticket.assignedToUserId
+                }}
+              </dd>
+            </div>
+          </dl>
+          <p class="time-note">Fecha mostrada en tu hora local.</p>
+        </article>
+      }
+    }
+  </div>
+</section>

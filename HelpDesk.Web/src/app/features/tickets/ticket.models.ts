@@ -50,3 +50,11 @@ export const categoryLabels: Record<TicketCategory, string> = {
   Access: 'Acceso',
   Other: 'Otra',
 };
+
+// Writable fields: creator, status, ID and date are always decided by the API.
+export interface CreateTicketRequest {
+  title: string;
+  description: string;
+  priority: TicketPriority;
+  category: TicketCategory;
+}

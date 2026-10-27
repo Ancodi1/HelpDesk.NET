@@ -5,7 +5,9 @@
       <h1 id="tickets-title">Incidencias</h1>
       <p class="intro">{{ visibility() }}</p>
     </div>
-    <span class="read-only">Solo consulta</span>
+    @if (canCreate()) {
+      <button class="primary" type="button" (click)="newTicket()">Nuevo ticket</button>
+    }
   </header>
   <form
     class="filters"
@@ -92,7 +94,7 @@
           {{ result.data.totalCount === 1 ? 'incidencia encontrada' : 'incidencias encontradas' }}
         </p>
         @if (result.data.items.length) {
-          <app-ticket-table [tickets]="result.data.items" />
+          <app-ticket-table [tickets]="result.data.items" (selectTicket)="openTicket($event)" />
         } @else {
           <div class="state-panel">
             <span class="state-icon" aria-hidden="true">—</span>

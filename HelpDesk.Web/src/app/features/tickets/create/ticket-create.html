@@ -1,0 +1,102 @@
+<section class="ticket-page" aria-labelledby="create-title">
+  <a class="back-link" routerLink="/tickets" [queryParams]="backQuery()">← Volver al listado</a>
+  <p class="eyebrow">UNA NUEVA INCIDENCIA</p>
+  <h1 id="create-title">Cuéntanos qué ocurre.</h1>
+  <p class="intro">Describe el problema para que tu incidencia tenga el contexto que necesita.</p>
+  @if (created(); as ticket) {
+    <div class="feedback success" role="status">
+      Ticket #{{ ticket.id }} creado correctamente.
+      <a [routerLink]="['/tickets', ticket.id]" [queryParams]="backQuery()">Ver ticket</a>
+    </div>
+  }
+  <form class="card" [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="pending()">
+    @if (error()) {
+      <p class="feedback" role="alert">{{ error() }}</p>
+    }
+    <fieldset [disabled]="pending() || created() !== null">
+      <legend class="sr-only">Datos de la incidencia</legend>
+      <div class="field">
+        <label for="ticket-title">Título</label>
+        <input
+          id="ticket-title"
+          type="text"
+          formControlName="title"
+          required
+          aria-describedby="title-hint title-error"
+          [attr.aria-invalid]="form.controls.title.touched && form.controls.title.invalid"
+        />
+        <p class="hint" id="title-hint">Un resumen claro, de hasta 100 unidades UTF-16.</p>
+        @if (form.controls.title.touched && form.controls.title.invalid) {
+          <p class="field-error" id="title-error">
+            El título es obligatorio y no puede superar las 100 unidades UTF-16 ni ser solo
+            espacios.
+          </p>
+        }
+      </div>
+      <div class="field">
+        <label for="ticket-description">Descripción</label>
+        <textarea
+          id="ticket-description"
+          formControlName="description"
+          rows="7"
+          required
+          aria-describedby="description-hint description-error"
+          [attr.aria-invalid]="
+            form.controls.description.touched && form.controls.description.invalid
+          "
+        ></textarea>
+        <p class="hint" id="description-hint">
+          Explica qué ha pasado y cómo afecta a tu trabajo. No incluyas contraseñas ni otros
+          secretos.
+        </p>
+        @if (form.controls.description.touched && form.controls.description.invalid) {
+          <p class="field-error" id="description-error">
+            La descripción es obligatoria y no puede contener solamente espacios.
+          </p>
+        }
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="create-priority">Prioridad</label
+          ><select
+            id="create-priority"
+            formControlName="priority"
+            aria-describedby="priority-error"
+            [attr.aria-invalid]="form.controls.priority.touched && form.controls.priority.invalid"
+          >
+            @for (priority of priorities; track priority) {
+              <option [value]="priority">{{ priorityNames[priority] }}</option>
+            }
+          </select>
+          @if (form.controls.priority.touched && form.controls.priority.invalid) {
+            <p class="field-error" id="priority-error">Selecciona una prioridad válida.</p>
+          }
+        </div>
+        <div class="field">
+          <label for="create-category">Categoría</label
+          ><select
+            id="create-category"
+            formControlName="category"
+            aria-describedby="category-error"
+            [attr.aria-invalid]="form.controls.category.touched && form.controls.category.invalid"
+          >
+            @for (category of categories; track category) {
+              <option [value]="category">{{ categoryNames[category] }}</option>
+            }
+          </select>
+          @if (form.controls.category.touched && form.controls.category.invalid) {
+            <p class="field-error" id="category-error">Selecciona una categoría válida.</p>
+          }
+        </div>
+      </div>
+      <p class="hint">
+        El ticket se crea a tu nombre. El servidor determina su estado inicial y su fecha.
+      </p>
+      <div class="form-actions">
+        <button class="primary" type="submit" [disabled]="pending() || created() !== null">
+          {{ pending() ? 'Creando ticket…' : created() ? 'Ticket creado' : 'Crear ticket' }}
+        </button>
+      </div>
+    </fieldset>
+  </form>
+</section>

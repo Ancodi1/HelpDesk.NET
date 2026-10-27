@@ -27,6 +27,22 @@ export const routes: Routes = [
         loadComponent: () => import('./features/auth/register/register').then((m) => m.Register),
       },
       {
+        path: 'tickets/new',
+        title: 'Nuevo ticket | HelpDesk.NET',
+        data: { label: 'Nuevo ticket' },
+        canActivate: [authGuard],
+        loadComponent: () =>
+          import('./features/tickets/create/ticket-create').then((m) => m.TicketCreate),
+      },
+      {
+        path: 'tickets/:id',
+        title: 'Detalle | HelpDesk.NET',
+        data: { label: 'Detalle del ticket' },
+        canActivate: [authGuard],
+        loadComponent: () =>
+          import('./features/tickets/detail/ticket-detail').then((m) => m.TicketDetail),
+      },
+      {
         path: 'tickets',
         title: 'Incidencias | HelpDesk.NET',
         data: { label: 'Incidencias' },

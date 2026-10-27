@@ -62,6 +62,7 @@ export class Tickets implements OnInit {
   private readonly builder = inject(NonNullableFormBuilder);
   private readonly actions = new Subject<Action>();
   readonly auth = inject(AuthService);
+  readonly canCreate = computed(() => this.auth.user() !== null);
   readonly query = signal<TicketQuery>({ ...defaultTicketQuery });
   readonly state = signal<ListState>({ kind: 'loading' });
   readonly statuses = ticketStatuses;
@@ -115,6 +116,13 @@ export class Tickets implements OnInit {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((state) => this.state.set(state));
+  }
+
+  newTicket(): void {
+    void this.router.navigate(['/tickets/new'], { queryParams: ticketQueryParams(this.query()) });
+  }
+  openTicket(id: number): void {
+    void this.router.navigate(['/tickets', id], { queryParams: ticketQueryParams(this.query()) });
   }
 
   retry(): void {

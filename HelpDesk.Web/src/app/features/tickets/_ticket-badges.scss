@@ -1,0 +1,41 @@
+@mixin styles {
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 650;
+    padding: 3px 8px;
+    border-radius: 5px;
+  }
+  .status[data-value='Open'] {
+    color: #3e4fa5;
+    background: #edf1ff;
+  }
+  .status[data-value='InProgress'] {
+    color: #86570c;
+    background: #fff3d5;
+  }
+  .status[data-value='Resolved'] {
+    color: #247456;
+    background: #eaf6ef;
+  }
+  .status[data-value='Closed'] {
+    color: #575e72;
+    background: #eef0f5;
+  }
+  .priority[data-value='Low'] {
+    color: #476075;
+    background: #eff4f8;
+  }
+  .priority[data-value='Medium'] {
+    color: #5b4bcc;
+    background: #eeecfc;
+  }
+  .priority[data-value='High'] {
+    color: #9a521a;
+    background: #fff0df;
+  }
+  .priority[data-value='Critical'] {
+    color: #a13628;
+    background: #fff0eb;
+  }
+}

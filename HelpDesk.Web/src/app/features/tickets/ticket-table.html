@@ -17,7 +17,9 @@
       <tr role="row">
         <td role="cell" class="ticket-summary">
           <span class="ticket-id">#{{ ticket.id }}</span
-          ><span class="ticket-title">{{ ticket.title }}</span>
+          ><button type="button" class="ticket-title" (click)="selectTicket.emit(ticket.id)">
+            {{ ticket.title }}
+          </button>
           <p class="description">{{ ticket.description }}</p>
         </td>
         <td role="cell">
