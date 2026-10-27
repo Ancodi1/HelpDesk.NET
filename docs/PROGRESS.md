@@ -2,13 +2,13 @@
 
 Última actualización: 2026-10-27.
 
-## Estado vigente — fase 10.1 implementada
+## Estado vigente — fase 10.2 implementada
 
-Primera base del frontend en `HelpDesk.Web`: Angular 22.2, TypeScript 6 con modo estricto, SCSS, componentes standalone y Router. Layout responsive con navegación a inicio/conexión/proyecto y página de presentación. Panel de disponibilidad con `HttpClient`, estados de carga/éxito/error, reintento manual, timeout de ocho segundos y cancelación al salir. Solo llama a `GET /api/health`; no comprueba PostgreSQL ni escribe datos.
+Frontend Angular con login, registro y gestión de sesión JWT exclusivamente en memoria. Formularios reactivos sobre los contratos reales; registro crea User y vuelve al login, sin token automático. Layout conservado, navegación según rol y página privada `/session`, sin gestión de tickets ni panel administrativo. Se mantienen las funciones de inicio y health de 10.1.
 
-Proxy de desarrollo `/api/**` a `http://localhost:5085`, activado por `npm start` en localhost:4200. Backend, autenticación, endpoints, proyectos .NET y sus pruebas intactos. Sin login, registro ni gestión de incidencias en la interfaz. Siguientes funcionalidades pendientes de solicitud; no se crean carpetas vacías para ellas.
+Servicio central, interceptor funcional limitado a las rutas API protegidas, guards, caducidad por exp/expiresIn y cierre local. Sin almacenamiento persistente, cookies JWT, refresh tokens ni modificación del backend. El 401 autenticado invalida la sesión; 403/409/red se diferencian sin mostrar mensajes del proveedor. Respuestas tardías no pueden restaurar o cerrar una sesión posterior.
 
-La etapa 9.4 y sus 538 pruebas superadas permanecen como base previa. La suite PostgreSQL no se repite durante 10.1.
+Los resultados del backend de 9.4 (538 pruebas) se conservan como antecedente. En esta fase solo se ejecuta su suite sin PostgreSQL. No se crean cuentas ni se prueba el registro contra desarrollo. El procedimiento manual de registro válido exige una base aislada ya configurada; documentación en README.
 
 ## Etapa 9.4 — completada (base del backend)
 
@@ -606,3 +606,28 @@ Validaciones realizadas:
 `git diff --check` correcto, incluida revisión de whitespace de los 34 archivos nuevos. Comprobado que node_modules, dist, caché y cobertura están excluidos y que package-lock.json no está ignorado. `git diff --exit-code` sobre los tres proyectos .NET y la solución confirma que no han cambiado.
 
 La fase 10.1 añade únicamente el cliente, documentación y exclusiones de archivos generados; no modifica datos, endpoints ni autenticación. Sin commit ni push.
+
+
+## Fase 10.2 — autenticación y sesiones Angular (27 de octubre de 2026)
+
+Revisión previa de AGENTS.md, documentación, contratos y proxy, con repositorio limpio. Login usa email/password y respuesta accessToken/tokenType/expiresIn. Registro usa name/email/password, responde usuario público con 201 y fija User en servidor. Ningún endpoint nuevo.
+
+- Nuevos archivos en `core/auth` para contratos, servicio de sesión, interceptor y guards; páginas en `features/auth` y menú de sesión en `layout`.
+- Contraseñas ocultas en inputs, autocomplete apropiado, etiquetas y errores accesibles; política de registro 15–128 unidades UTF-16 sin recortar, normalizar ni truncar. Login no fuerza esa longitud.
+- Token solo en memoria, sin logs o secretos en configuración. Los claims se leen para UX, no se verifican criptográficamente en el navegador. La expiración utiliza el límite menor de exp y expiresIn; al leer la sesión vuelve a comprobarse el reloj para cubrir pestañas suspendidas. Se admite para nbf la misma tolerancia inicial de 30 segundos del backend, sin prolongar exp.
+- Interceptor limitado a URLs relativas protegidas, con normalización de ruta y exclusión de separadores codificados; no envía tokens a servicios externos ni a endpoints públicos. Redirecciones desactivadas para credenciales y peticiones Bearer.
+- Logout local, 401 autenticado y caducidad limpian estado. Versionado de sesión evita carreras entre login/logout y respuestas HTTP tardías.
+- Registro no selecciona rol ni inicia sesión automáticamente. `/session` muestra identidad, rol y vencimiento; los guards por rol quedan preparados para futuras rutas, sin paneles simulados.
+- Pruebas nuevas con HttpTestingController, fixtures exclusivas de tests y relojes controlados. Ninguna respuesta o cuenta ficticia se incorpora al funcionamiento de producción. Los archivos de pruebas existentes se conservan intactos.
+
+Validaciones realizadas:
+
+- `npm run build`: correcto, sin advertencias. No se añaden dependencias ni se modifica package-lock.json.
+- `npm test -- --watch=false`: **105 pruebas superadas, 0 fallidas**, en 10 archivos; las 14 anteriores siguen intactas. Las nuevas cubren contratos reales, formularios, mensajes seguros, roles, interceptor, sesión en memoria, caducidad, cancelación, condiciones de carrera, navegación privada y logout desde el menú real. Fixtures excluidas del código de aplicación; sin cuentas o respuestas simuladas en producción.
+- `dotnet build HelpDesk.NET.slnx --no-restore --nologo`: correcto, 0 errores y 0 advertencias.
+- `dotnet test HelpDesk.NET.slnx --no-build --no-restore --filter 'Category!=PostgreSQL' --nologo`: 257 superadas, 0 fallidas/omitidas. Sin pruebas PostgreSQL ni migraciones.
+- Revisión visual con Firefox headless: login en 1440 × 1100 y registro en 390 × 1250, sin introducir credenciales ni enviar formularios.
+- El sandbox bloqueó el build .NET sin diagnóstico y el puerto Angular con EPERM; se completaron las comprobaciones necesarias fuera del sandbox con autorización. El puerto 4200 ya estaba ocupado, así que la revisión visual utilizó temporalmente 4201 sin cambiar la configuración ni detener el servidor existente.
+- `git diff --check` y revisión de whitespace de archivos nuevos correctos. `git diff --exit-code` confirma que los proyectos .NET, su solución, sus pruebas y los archivos de tests Angular anteriores no cambian. Revisión de TypeScript sin uso de localStorage, sessionStorage, document.cookie o logs de aplicación.
+
+La verificación manual de login con credenciales reales y el registro válido no se ejecutan para respetar la base de datos; pasos en README. El registro válido debe comprobarse únicamente con una API configurada para una base aislada. No se modifican datos durante la implementación. Sin commit ni push.

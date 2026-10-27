@@ -4,7 +4,7 @@
 
 ## Estado actual
 
-Fase 10.1: cliente Angular independiente en `HelpDesk.Web`, con componentes standalone, Router, TypeScript estricto y SCSS. Solo consume `GET /api/health` mediante el proxy de desarrollo; no cambia la API ni incorpora autenticación frontend. Decisión 039 al final.
+Fases 10.1 y 10.2: cliente Angular independiente en `HelpDesk.Web`. A la conexión health y layout inicial se añaden login/registro, sesión solo en memoria, interceptor y guards, sin cambios de API ni base de datos. Decisiones 039 y 040 al final.
 
 
 Revisión del 23 de octubre de 2026: los tres fallos PostgreSQL comunicados en 9.4 se abordan en las pruebas, sin cambios del protocolo de bloqueo, endpoints, esquema ni dependencias. Las comparaciones POST/persistencia usan microsegundos y la barrera de reasignación se sitúa después del UPDATE, antes del commit explícito. Se cubren ambos órdenes con pg_blocking_pids y rechazo del antiguo técnico. Las correcciones quedaron validadas por las 281 pruebas PostgreSQL superadas que confirma el usuario al cierre; junto con las 257 sin PostgreSQL suman 538 superadas y 0 fallidas. Resultados en PROGRESS.md. No constituye una nueva decisión de arquitectura.
@@ -529,3 +529,22 @@ Proxy registrado en `angular.json`: `/api/**` hacia `http://localhost:5085`, mie
 Motivo: conectar incrementalmente la interfaz a la API probada, manteniendo responsabilidades simples y el backend intacto. El layout usa SCSS local y tokens globales, diseño responsive y elementos semánticos con accesibilidad básica.
 
 Consecuencias: frontend y backend se arrancan por separado en desarrollo; `package-lock.json` permite instalaciones reproducibles. Vitest y HttpTestingController validan el cliente sin acceder a la base de datos. Login, guards por rol, interceptores JWT y gestión de tickets quedan para futuras tareas. Estrategia prevista de autenticación: token solo en memoria y autorización efectiva siempre en el servidor; aún no implementada. Resultados de validación en PROGRESS.md.
+
+
+### 040 — Sesión JWT en memoria y autenticación Angular (fase 10.2)
+
+Estado: implementada el 27 de octubre de 2026. Sin cambios de backend, política JWT, contratos, proxy ni dependencias.
+
+Decisión: `AuthService` centraliza login, registro y sesión en signals. Solo conserva token, identidad y vencimiento en memoria; no usa almacenamiento del navegador ni cookies. La destrucción de la pestaña o la recarga elimina la sesión. El servicio resuelve HttpClient al necesitar una petición; observar el estado de sesión no crea peticiones ni requiere inicializar el cliente HTTP.
+
+Login envía email/password a `/api/auth/login`. Antes de establecer sesión comprueba el contrato Bearer y la estructura de los claims sub/email/role/exp/nbf. Decodificarlos no verifica firma: sirven exclusivamente para presentación y navegación. La API valida firma, emisor, audiencia, vigencia y rol actual en cada acceso protegido. La caducidad del cliente usa el menor de exp y el plazo expiresIn, sin aprovechar la tolerancia posterior del servidor; nbf admite los 30 segundos de tolerancia del backend para pequeños desfases de reloj. Un temporizador y la comprobación antes de usar el token evitan conservar sesiones vencidas tras suspensión de la pestaña.
+
+Registro envía únicamente name/email/password a `/api/auth/register`; la API decide User y devuelve un usuario público, no JWT. La UI vuelve al login sin iniciar sesión automáticamente. Los formularios usan validación reactiva; la longitud de contraseña se mide en unidades UTF-16 como .NET. Solo el correo se normaliza. El servidor mantiene la validación definitiva.
+
+El interceptor funcional añade Bearer exclusivamente a URLs relativas `/api/users` y `/api/tickets`, tras normalizar segmentos y rechazar separadores codificados. Excluye URLs absolutas/externas y health/login/registro. Peticiones autenticadas y credenciales usan redirect:error para evitar reenvíos HTTP de secretos. No hay refresh tokens. HTTP 401 autenticado limpia y redirige; 403 y 409 se comunican de forma distinta sin borrar una sesión válida. Errores visibles son mensajes propios, nunca cuerpos o detalles del proveedor.
+
+Cada sesión tiene una versión en memoria: un 401 de una petición antigua no invalida un login posterior; una respuesta de login anterior a logout o a otro login no restaura acceso. Las páginas cancelan peticiones al destruirse y limpian los controles de contraseña al finalizar. No se promete borrado inmediato de strings de memoria.
+
+Rutas públicas login/registro y ruta privada session con guard funcional. La navegación cambia su etiqueta según User/Technician/Admin y conduce a la misma página de sesión; no hay rutas vacías de tickets o administración. Guard por roles preparado y probado para futuras páginas. Ocultar enlaces y bloquear rutas cliente no es una autorización de seguridad.
+
+Consecuencias: recargar exige login y cada pestaña tiene su propia sesión. Logout es local; no revoca un JWT ya emitido porque el backend no ofrece esa función. Mantener el token en memoria reduce persistencia, pero no protege frente a scripts maliciosos/XSS: se conserva el escape de Angular y no se inserta HTML arbitrario. Fuera del desarrollo local, se requiere HTTPS. Registro manual válido solo contra una base aislada autorizada; los tests automatizados del cliente simulan HTTP y no escriben en PostgreSQL.

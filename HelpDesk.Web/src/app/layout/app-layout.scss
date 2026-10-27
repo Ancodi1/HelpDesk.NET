@@ -134,12 +134,13 @@ small {
   flex-direction: column;
 }
 .topbar {
-  height: 82px;
+  min-height: 82px;
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 48px;
+  padding: 16px 48px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
@@ -154,23 +155,6 @@ small {
 .breadcrumb strong {
   color: var(--ink);
   font-weight: 550;
-}
-.environment {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 10px;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 7px 10px;
-  white-space: nowrap;
-}
-.environment span {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--muted);
 }
 main {
   flex: 1;
@@ -249,7 +233,7 @@ main {
     display: none;
   }
   .topbar {
-    height: 58px;
+    min-height: 58px;
     padding-inline: 20px;
   }
   main {

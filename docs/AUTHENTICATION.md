@@ -1,6 +1,6 @@
-# Autenticación y autorización — etapas 9.1–9.4
+# Autenticación y autorización — backend y frontend
 
-Estado actual: etapa 9.4 completada funcionalmente según la verificación manual confirmada por el usuario el 27 de octubre de 2026. Primer Admin creado mediante la CLI, login y acceso al directorio administrativo verificados, con tres usuarios y seis tickets conservados. No existe recuperación permanente, envío de correos, frontend ni activación de cuentas anteriores. Los apartados de transición 9.1 y 9.2 son históricos; los permisos vigentes están en 9.3 y el procedimiento del primer Admin en 9.4. Suite completa confirmada por el usuario: 538 pruebas superadas, 0 fallidas (257 sin PostgreSQL y 281 con PostgreSQL). Resultados en PROGRESS.md.
+Estado actual: etapa 9.4 completada funcionalmente según la verificación manual confirmada por el usuario el 27 de octubre de 2026. Primer Admin creado mediante la CLI, login y acceso al directorio administrativo verificados, con tres usuarios y seis tickets conservados. El frontend de 10.2 añade login, registro y sesión en memoria, descritos al final. No existe recuperación permanente, envío de correos ni activación de cuentas anteriores. Los apartados de transición 9.1 y 9.2 son históricos; los permisos vigentes están en 9.3 y el procedimiento del primer Admin en 9.4. Suite completa confirmada por el usuario: 538 pruebas superadas, 0 fallidas (257 sin PostgreSQL y 281 con PostgreSQL). Resultados en PROGRESS.md.
 
 ## Hash y salt
 
@@ -426,3 +426,14 @@ En la base descrita por el usuario se esperan seis tickets si no hubo otras escr
 - Si se pierde la respuesta durante el commit, no se puede asegurar desde el cliente si se confirmó. Verificar mediante el login normal y revisión administrativa de solo lectura antes de reintentar; la condición de Admin evita duplicar el bootstrap tras un commit exitoso.
 - Los strings de contraseña/conexión viven temporalmente en memoria administrada; no se promete borrado criptográfico de esa memoria. Proteger el equipo, volcados, entorno y terminal. La CLI no registra proveedores de logs ni imprime excepciones; su diagnóstico operativo es deliberadamente genérico.
 - Las limitaciones de JWT, revocación y auto degradación del último Admin descritas en 9.3 no cambian. Este comando no crea un canal de administración HTTP sin autenticación.
+
+
+## Frontend — fase 10.2
+
+Angular consume los endpoints anteriores sin modificar sus políticas. `/login` envía email/password; `/register`, name/email/password, sin selector de rol. El registro no devuelve token: tras HTTP 201 se vuelve al login. La política existente de 15–128 unidades UTF-16 se aplica al registro; no se recorta ni transforma la contraseña.
+
+La sesión JWT solo vive en memoria; no utiliza localStorage, sessionStorage ni cookies. Recargar, cerrar la pestaña, logout, caducidad o 401 autenticado eliminan el estado local. El cierre local no revoca un token ya emitido. No se añaden refresh tokens ni endpoints de logout/recuperación.
+
+El interceptor solo adjunta tokens a las rutas relativas protegidas users/tickets de la propia API y rechaza redirecciones. Health, login, registro y URLs externas quedan excluidos. Los claims se utilizan para UX y guards; la firma y la autorización se validan en .NET. La sesión expira en el límite menor de exp y expiresIn y usa una versión para ignorar respuestas tardías de sesiones anteriores. Los mensajes visibles distinguen 401/403/409/red sin reflejar datos del proveedor.
+
+Este diseño no elimina XSS ni revoca tokens copiados. Se mantiene el escape de Angular, no se añade HTML arbitrario y se exige HTTPS fuera del desarrollo local. Procedimiento manual, incluida la necesidad de una base aislada para cualquier registro válido, en el README raíz. No se ejecutó un registro real durante la implementación. Detalles en la decisión 040 de ARCHITECTURE.md.

@@ -2,7 +2,7 @@
 
 Aplicación de gestión de incidencias técnicas: permite registrar tickets, actualizar su información y clasificarlos por estado, prioridad y categoría.
 
-Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfolio. Su objetivo es practicar el diseño de APIs, la persistencia relacional y las pruebas automatizadas mediante una evolución incremental. Actualmente ofrece una API HTTP con autenticación JWT y autorización por roles, y una primera interfaz Angular responsive con comprobación de disponibilidad de la API. El login y la gestión de incidencias desde el frontend se incorporarán en fases posteriores.
+Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfolio. Su objetivo es practicar el diseño de APIs, la persistencia relacional y las pruebas automatizadas mediante una evolución incremental. Actualmente ofrece una API HTTP con autenticación JWT y autorización por roles, y una primera interfaz Angular responsive con comprobación de disponibilidad de la API. El frontend incorpora login, registro y sesión solo en memoria. La gestión de incidencias desde la interfaz se incorporará en fases posteriores.
 
 [Repositorio en GitHub](https://github.com/Ancodi1/HelpDeskt.NET)
 
@@ -19,9 +19,9 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 | xUnit | Pruebas unitarias y de integración |
 | WebApplicationFactory / TestServer | Pruebas HTTP en memoria |
 
-## Frontend — fase 10.1
+## Frontend — fases 10.1 y 10.2
 
-`HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. No incluye todavía login, registro ni gestión de tickets.
+`HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. La fase 10.2 añade formularios reactivos de login/registro y una sesión JWT solo en memoria; todavía no incluye gestión de tickets ni panel administrativo.
 
 Requisitos: Node.js compatible con Angular 22 (desarrollo validado con Node 24.15.0 y npm 11.12.1). No hace falta instalar Angular CLI globalmente: los scripts utilizan la versión local. `package-lock.json` está versionado; en una copia nueva, ejecutar:
 
@@ -61,6 +61,39 @@ curl --fail --silent --show-error http://localhost:4200/api/health
 ```
 
 La respuesta esperada es `{"status":"ok"}`. Los servidores se detienen con Ctrl+C en sus respectivas terminales. La estructura y decisiones se describen en [ARCHITECTURE.md](docs/ARCHITECTURE.md); el estado y las validaciones, en [PROGRESS.md](docs/PROGRESS.md).
+
+### Autenticación Angular — fase 10.2
+
+Rutas públicas `/login` y `/register`; ruta privada `/session`. Los formularios usan los contratos existentes: login envía `email` y `password` y recibe `accessToken`, `tokenType` y `expiresIn`; registro envía `name`, `email` y `password` y recibe el usuario público con HTTP 201. El rol lo fija la API en User: no se envía ningún campo de rol. Tras registrar, se vuelve al login sin autenticar automáticamente.
+
+El correo se normaliza; la contraseña nunca se recorta ni transforma. Registro exige nombre no vacío de hasta 100 unidades UTF-16, correo con dominio completo de hasta 254 y contraseña de 15–128 unidades UTF-16, sin controles ni solo espacios. Login exige correo y contraseña no vacíos, sin imponerle la política de longitud del registro. La validación del servidor sigue siendo la autoridad final.
+
+El JWT, el usuario y la caducidad solo viven en memoria. Recargar o cerrar la pestaña pierde la sesión; cada pestaña mantiene su propia sesión. No hay localStorage, sessionStorage, cookies JWT, refresh tokens ni claves de firma en el cliente. El cierre de sesión es local y no revoca copias del JWT: el backend actual no ofrece revocación.
+
+El interceptor funcional adjunta Bearer únicamente a las rutas relativas protegidas de `/api/users` y `/api/tickets`; nunca a health, login, registro, URLs absolutas o dominios externos. Las peticiones autenticadas y las de credenciales rechazan redirecciones HTTP. La sesión vence en el primero de los límites `exp` y `expiresIn`; un 401 autenticado la elimina y vuelve al login. 403 indica falta de permiso, 409 conflicto y los errores de red/timeout muestran mensajes seguros, sin reflejar la respuesta del proveedor. Los guards y los claims solo orientan la navegación; .NET valida la firma y autoriza cada petición protegida.
+
+#### Comprobación manual sin cambiar desarrollo
+
+1. Arrancar backend y frontend con los comandos anteriores. Abrir `/session` sin iniciar sesión: debe redirigir a `/login`.
+2. En `/login`, introducir en el navegador una cuenta existente con su contraseña conocida. No copiarlas al código, al chat ni a registros. Tras HTTP 200 debe abrirse `/session`, mostrarse correo/rol y aparecer «Cerrar sesión». La navegación se adapta a User, Technician y Admin, pero todavía no enlaza a paneles o tickets.
+3. Pulsar «Cerrar sesión»: vuelve al login y desaparece la identidad. `/session` debe quedar bloqueada. Iniciar sesión y recargar también debe perder la sesión. La caducidad normal es de 30 minutos; las pruebas automatizadas comprueban la expiración sin esperar ese tiempo.
+4. Abrir `/register` y enviar campos vacíos o una contraseña demasiado corta: deben aparecer errores locales sin enviar una petición de registro.
+5. **Un registro válido crea una cuenta. Para probarlo sin escribir en `helpdesk_db`, usar exclusivamente una instancia de la API configurada y revisada para una base aislada ya preparada, como `helpdesk_test_db`.** No ejecutar un registro válido contra desarrollo durante esta verificación. El backend de pruebas debe ocupar el puerto 5085, sin mantener otra API en ese puerto.
+
+Para arrancar esa API aislada sin guardar su conexión en archivos o argumentos, desde la raíz y tras comprobar manualmente el destino y su usuario:
+
+```bash
+(
+  read -r -s -p 'Conexión exclusiva de helpdesk_test_db revisada: ' ConnectionStrings__DefaultConnection
+  printf '\n'
+  export ConnectionStrings__DefaultConnection
+  dotnet run --project HelpDesk.Api --launch-profile http
+)
+```
+
+La API requiere también su configuración JWT externa habitual. Este comando no valida por sí solo el destino introducido: debe corresponder a la base aislada revisada. No ejecuta migraciones ni crea la base. Al terminar el proceso, el subshell descarta la variable.
+
+Con ese destino aislado, enviar `/register` con nombre, correo disponible y contraseña válida: se espera HTTP 201 y regreso al login con confirmación. Iniciar sesión con la nueva cuenta debe mostrar User. Repetir el registro del mismo correo debe mostrar el conflicto 409. No se ha realizado ninguna de estas escrituras durante la implementación. No imprimir ni compartir el JWT de las herramientas del navegador.
 
 ## Funcionalidades
 

@@ -1,0 +1,77 @@
+<section class="auth-page" aria-labelledby="register-title">
+  <p class="eyebrow">TU PRIMER PASO</p>
+  <h1 id="register-title">Un espacio para ti.</h1>
+  <p class="intro">Crea tu cuenta de usuario en HelpDesk.NET.</p>
+  <form class="auth-card" [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="pending()">
+    @if (error()) {
+      <p class="feedback" role="alert">{{ error() }}</p>
+    }
+    <fieldset [disabled]="pending()">
+      <legend class="sr-only">Datos de registro</legend>
+      <div class="field">
+        <label for="register-name">Nombre</label>
+        <input
+          id="register-name"
+          type="text"
+          formControlName="name"
+          autocomplete="name"
+          maxlength="100"
+          required
+          [attr.aria-invalid]="form.controls.name.touched && form.controls.name.invalid"
+          aria-describedby="register-name-error"
+        />
+        @if (form.controls.name.touched && form.controls.name.invalid) {
+          <p id="register-name-error" class="field-error">
+            Introduce un nombre de hasta 100 caracteres.
+          </p>
+        }
+      </div>
+      <div class="field">
+        <label for="register-email">Correo electrónico</label>
+        <input
+          id="register-email"
+          type="email"
+          formControlName="email"
+          autocomplete="username"
+          required
+          [attr.aria-invalid]="form.controls.email.touched && form.controls.email.invalid"
+          aria-describedby="register-email-error"
+        />
+        @if (form.controls.email.touched && form.controls.email.invalid) {
+          <p id="register-email-error" class="field-error">
+            Introduce un correo válido de hasta 254 caracteres y dominio completo.
+          </p>
+        }
+      </div>
+      <div class="field">
+        <label for="register-password">Contraseña</label>
+        <input
+          id="register-password"
+          type="password"
+          formControlName="password"
+          autocomplete="new-password"
+          required
+          [attr.aria-invalid]="form.controls.password.touched && form.controls.password.invalid"
+          aria-describedby="password-policy register-password-error"
+        />
+        <p class="hint" id="password-policy">
+          Entre 15 y 128 unidades UTF-16, sin caracteres de control ni solo espacios. Algunos
+          símbolos ocupan dos unidades. Los espacios iniciales y finales forman parte de tu
+          contraseña.
+        </p>
+        @if (form.controls.password.touched && form.controls.password.invalid) {
+          <p id="register-password-error" class="field-error">
+            La contraseña no cumple estos requisitos.
+          </p>
+        }
+      </div>
+      <button type="submit" [disabled]="pending()">
+        {{ pending() ? 'Creando cuenta…' : 'Crear cuenta' }}
+      </button>
+    </fieldset>
+    <p class="switch">¿Ya tienes cuenta? <a routerLink="/login">Iniciar sesión</a></p>
+  </form>
+  <p class="privacy-note">
+    El registro crea una cuenta de usuario. No permite elegir permisos administrativos.
+  </p>
+</section>

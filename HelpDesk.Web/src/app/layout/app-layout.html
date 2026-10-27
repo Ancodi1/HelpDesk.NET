@@ -54,6 +54,15 @@
           </svg>
           El proyecto
         </a>
+        @if (auth.user(); as user) {
+          <a
+            class="nav-link"
+            routerLink="/session"
+            routerLinkActive="active"
+            ariaCurrentWhenActive="page"
+            >{{ navigation[user.role] }}</a
+          >
+        }
       </nav>
     </div>
 
@@ -71,9 +80,9 @@
   <div class="workspace">
     <header class="topbar">
       <div class="breadcrumb">
-        Espacio de trabajo <span aria-hidden="true">/</span> <strong>Inicio</strong>
+        Espacio de trabajo <span aria-hidden="true">/</span> <strong>{{ breadcrumb() }}</strong>
       </div>
-      <span class="environment"><span aria-hidden="true"></span>Entorno local</span>
+      <app-session-menu />
     </header>
     <main id="contenido" tabindex="-1"><router-outlet /></main>
     <footer class="page-footer">

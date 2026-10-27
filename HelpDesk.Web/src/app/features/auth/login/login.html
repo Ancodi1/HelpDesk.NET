@@ -1,0 +1,65 @@
+<section class="auth-page" aria-labelledby="login-title">
+  <p class="eyebrow">BIENVENIDO DE NUEVO</p>
+  <h1 id="login-title">Conecta con tu espacio.</h1>
+  <p class="intro">Inicia sesión en HelpDesk.NET con tu correo y contraseña.</p>
+  @if (registered) {
+    <p class="feedback notice" role="status">Cuenta creada. Ya puedes iniciar sesión.</p>
+  }
+  @if (auth.notice()) {
+    <p class="feedback notice" role="status">
+      {{
+        auth.notice() === 'expired'
+          ? 'Tu sesión ha caducado. Inicia sesión de nuevo.'
+          : 'La sesión ya no es válida. Inicia sesión de nuevo.'
+      }}
+    </p>
+  }
+  <form class="auth-card" [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="pending()">
+    @if (error()) {
+      <p class="feedback" role="alert">{{ error() }}</p>
+    }
+    <fieldset [disabled]="pending()">
+      <legend class="sr-only">Datos de acceso</legend>
+      <div class="field">
+        <label for="login-email">Correo electrónico</label>
+        <input
+          id="login-email"
+          type="email"
+          formControlName="email"
+          autocomplete="username"
+          required
+          [attr.aria-invalid]="form.controls.email.touched && form.controls.email.invalid"
+          aria-describedby="login-email-error"
+        />
+        @if (form.controls.email.touched && form.controls.email.invalid) {
+          <p id="login-email-error" class="field-error">
+            Introduce un correo válido con dominio completo.
+          </p>
+        }
+      </div>
+      <div class="field">
+        <label for="login-password">Contraseña</label>
+        <input
+          id="login-password"
+          type="password"
+          formControlName="password"
+          autocomplete="current-password"
+          required
+          [attr.aria-invalid]="form.controls.password.touched && form.controls.password.invalid"
+          aria-describedby="login-password-error"
+        />
+        @if (form.controls.password.touched && form.controls.password.invalid) {
+          <p id="login-password-error" class="field-error">Introduce tu contraseña.</p>
+        }
+      </div>
+      <button type="submit" [disabled]="pending()">
+        {{ pending() ? 'Iniciando sesión…' : 'Iniciar sesión' }}
+      </button>
+    </fieldset>
+    <p class="switch">¿Todavía no tienes cuenta? <a routerLink="/register">Crear una cuenta</a></p>
+  </form>
+  <p class="privacy-note">
+    La sesión se conserva solo mientras esta página permanece abierta. Si la recargas, tendrás que
+    iniciar sesión de nuevo.
+  </p>
+</section>
