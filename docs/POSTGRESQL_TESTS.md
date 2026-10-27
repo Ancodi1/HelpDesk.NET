@@ -1,6 +1,6 @@
 # Pruebas de persistencia con PostgreSQL aislado
 
-Revisión del 23 de octubre de 2026: el usuario comunica 277/280 PostgreSQL superadas antes de las correcciones. Se revisan dos comparaciones de CreatedAt a precisión de microsegundos y la sincronización de reasignación/estado después del UPDATE, conservando bloqueos reales y seguridad. Hay ahora 281 casos PostgreSQL descubiertos por la regresión del orden inverso, pendientes de ejecutar; 257 sin PostgreSQL ejecutados y superados. HELPDESK_TEST_CONNECTION_STRING ausente en esta revisión. Los resultados anteriores de esta guía son históricos; 9.4 sigue pendiente de cierre.
+Estado vigente de cierre de 9.4, confirmado por el usuario: **538 pruebas superadas, 0 fallidas**, distribuidas en **257 sin PostgreSQL y 281 con PostgreSQL**. Build anterior sin errores ni advertencias; auditoría de aislamiento PostgreSQL superada. La suite corregida ya se ha ejecutado satisfactoriamente. Los registros de ampliaciones siguientes son históricos: sus menciones a pruebas pendientes describen aquellas sesiones, no el estado actual.
 
 Para verificar las correcciones, cargar de forma oculta la conexión según esta guía, exclusivamente a helpdesk_test_db. El validador y la fixture existentes verifican destino y rol limitado antes de preparar el esquema; nunca usar DefaultConnection. Desde la raíz:
 
@@ -21,7 +21,7 @@ Estas ejecuciones deben demostrar espera real, finalización sin interbloqueos, 
 
 ## Estado
 
-Infraestructura y 245 casos PostgreSQL preparados y compilados: HTTP de tickets y usuarios, persistencia, relaciones y asignaciones. Su ejecución en esta sesión está pendiente de configuración PostgreSQL. No se ha configurado `HELPDESK_TEST_CONNECTION_STRING` en la sesión de implementación. No se ha comprobado que exista la base de pruebas ni se han aplicado sus migraciones.
+Base exclusiva `helpdesk_test_db` y rol `helpdesk_test_user` auditados. El rol no tiene atributos privilegiados, membresías ni permisos de escritura sobre tablas, columnas o secuencias de desarrollo, tampoco mediante otros roles accesibles. La suite PostgreSQL completa (281 casos) ha sido ejecutada y confirmada por el usuario como superada. La conexión sigue siendo externa mediante `HELPDESK_TEST_CONNECTION_STRING`; no hay fallback a la base de desarrollo.
 
 ## Preparación manual
 
@@ -184,7 +184,7 @@ No usar DefaultConnection de desarrollo ni cambiar usuarios existentes para obte
 
 ## Bootstrap CLI del primer Admin — etapa 9.4
 
-Suite actual: **537 casos**, **257 sin PostgreSQL superados** y **280 PostgreSQL descubiertos sin ejecutar**. Se añaden 41 casos sin PostgreSQL y siete de integración. Los resultados de 9.3 anteriores son históricos. Esta sesión no tiene HELPDESK_TEST_CONNECTION_STRING: no se ejecutó bootstrap sobre una base ni se aplicaron migraciones.
+Suite al implementar inicialmente 9.4 (registro histórico): **537 casos**, **257 sin PostgreSQL superados** y **280 PostgreSQL descubiertos sin ejecutar**. El cierre posterior confirma 538 pruebas superadas, incluidas las 281 PostgreSQL de la suite corregida. Se añaden 41 casos sin PostgreSQL y siete de integración. Los resultados de 9.3 anteriores son históricos. Esta sesión no tiene HELPDESK_TEST_CONNECTION_STRING: no se ejecutó bootstrap sobre una base ni se aplicaron migraciones.
 
 Las pruebas sin base verifican validación compartida, hash, confirmación exacta, destino, rechazo de argumentos/redirección y ausencia de secretos en errores. Una ejecuta la consola real en pseudoterminal Linux y cancela antes de conectar. Requiere `script` (util-linux), `stty` (coreutils) y `dotnet` en PATH; la solución debe compilarse previamente. La PTY registra solo en memoria y usa /dev/null como destino de script, nunca un archivo de transcripción. No hay flags ni variables para saltarse el requisito interactivo. Las credenciales de ese caso son efímeras ficticias y nunca se usan para conectar.
 
@@ -214,4 +214,4 @@ Para ejecutar únicamente el nuevo bootstrap PostgreSQL sin sustituir la validac
 dotnet test HelpDesk.NET.slnx --no-build --filter 'Category=PostgreSQL&FullyQualifiedName~Bootstrap'
 ```
 
-Listar con --list-tests no ejecuta fixture ni valida persistencia/concurrencia. Los ejemplos manuales que sí crean el primer Admin real están en AUTHENTICATION.md y requieren la autorización pendiente del usuario; no se ejecutan como parte de esta implementación.
+Listar con --list-tests no ejecuta fixture ni valida persistencia/concurrencia. Los ejemplos manuales que sí crean el primer Admin real están en AUTHENTICATION.md y requieren autorización específica para el destino; el primer Admin de desarrollo ya fue creado y verificado y no debe recrearse.
