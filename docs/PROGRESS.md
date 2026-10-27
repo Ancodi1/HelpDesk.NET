@@ -2,7 +2,15 @@
 
 Última actualización: 2026-10-27.
 
-## Estado vigente de la etapa 9.4 — completada
+## Estado vigente — fase 10.1 implementada
+
+Primera base del frontend en `HelpDesk.Web`: Angular 22.2, TypeScript 6 con modo estricto, SCSS, componentes standalone y Router. Layout responsive con navegación a inicio/conexión/proyecto y página de presentación. Panel de disponibilidad con `HttpClient`, estados de carga/éxito/error, reintento manual, timeout de ocho segundos y cancelación al salir. Solo llama a `GET /api/health`; no comprueba PostgreSQL ni escribe datos.
+
+Proxy de desarrollo `/api/**` a `http://localhost:5085`, activado por `npm start` en localhost:4200. Backend, autenticación, endpoints, proyectos .NET y sus pruebas intactos. Sin login, registro ni gestión de incidencias en la interfaz. Siguientes funcionalidades pendientes de solicitud; no se crean carpetas vacías para ellas.
+
+La etapa 9.4 y sus 538 pruebas superadas permanecen como base previa. La suite PostgreSQL no se repite durante 10.1.
+
+## Etapa 9.4 — completada (base del backend)
 
 Cierre funcional confirmado por el usuario el 27 de octubre de 2026: primer administrador creado con `HelpDesk.AdminBootstrap`, ID 3 y rol Admin. Acceso recuperado mediante una herramienta temporal externa al repositorio; esa intervención no incorpora una funcionalidad permanente de recuperación. Se conservan tres usuarios y seis tickets. API arrancada en Development, login HTTP 200, directorio administrativo sin token HTTP 401 y con JWT del administrador HTTP 200; cuenta ID 3 identificada correctamente en la respuesta.
 
@@ -105,7 +113,7 @@ Estos pasos son orientativos y requieren una tarea solicitada:
 
 1. Ampliar las funcionalidades del dominio únicamente mediante tareas solicitadas; las transiciones de estado ya están implementadas.
 2. Incorporar comentarios e historial por tareas concretas. Relaciones y asignación de técnicos, endpoints GET/POST/PUT de usuarios, categorías, prioridades y transiciones ya están implementados.
-3. Ampliar las pruebas automatizadas y, cuando se solicite, incorporar frontend con Angular y TypeScript y Docker. Autenticación, autorización y primer administrador ya están implementados.
+3. Continuar el frontend Angular por fases solicitadas (la base 10.1 ya está implementada), ampliar las pruebas automatizadas e incorporar Docker cuando aporte valor. Autenticación, autorización y primer administrador ya están implementados.
 
 Cada cambio importante debe actualizar este documento y, si afecta al diseño, `ARCHITECTURE.md`.
 
@@ -576,3 +584,25 @@ Resultados comunicados y confirmados por el usuario tras ejecutar ambas suites:
 La etapa 9.4 queda completada con ambas suites superadas. Las menciones históricas a ejecución PostgreSQL pendiente ya no representan el estado vigente. Se mantiene el procedimiento de creación del primer Admin en AUTHENTICATION.md, incluida la política de 15–128 unidades UTF-16.
 
 Esta actualización solo registra los resultados confirmados; no vuelve a ejecutar pruebas, migraciones ni operaciones de base de datos. Verificación documental mediante `git diff --check` y revisión de archivos modificados; sin commit ni push.
+
+
+## Fase 10.1 — base Angular y conexión HTTP (27 de octubre de 2026)
+
+- Proyecto generado con Angular CLI 22.2.4; dependencias instaladas con Node 24.15.0 y npm 11.12.1. TypeScript 6, Vitest y lockfile versionado, sin CLI global ni dependencias visuales adicionales.
+- Organización mínima por funcionalidad: `layout`, `features/home` y `core/api`. Presentación separada en `HomeIntro`; servicio health inyectado y estado de la página mediante signals.
+- Navegación Router, título de documento, idioma español, enlace para saltar al contenido, foco visible, estados anunciados con `role="status"`, iconos decorativos ocultos al lector y respeto de movimiento reducido.
+- SCSS con tokens globales y estilos locales; layout adaptable para escritorio y móvil, sin métricas ni incidencias ficticias.
+- Documentación de arranque y proxy en README. Exclusiones de node_modules, dist, caché Angular y cobertura; `package-lock.json` conservado.
+
+Validaciones realizadas:
+
+- `npm run build`: correcto, sin advertencias en la versión final. Un aviso inicial de presupuesto SCSS se resolvió separando la presentación en su componente, sin aumentar los presupuestos.
+- `npm test -- --watch=false`: 14 pruebas superadas, cero fallidas. HTTP simulado; cubren navegación, carga, éxito, error, reintento, respuesta inválida, timeout y cancelación.
+- API existente: GET `/api/health` correcto. Angular `/`: HTTP 200. Proxy real `http://localhost:4200/api/health`: HTTP 200 y contrato esperado. Solo peticiones de lectura, sin consultas a PostgreSQL.
+- Revisión visual con Firefox headless a 1440 × 1100 y 390 × 1200; layout de escritorio y móvil con conexión correcta.
+- `dotnet build HelpDesk.NET.slnx --no-restore --nologo`: correcto, cero errores y advertencias. `dotnet test HelpDesk.NET.slnx --no-build --no-restore --filter 'Category!=PostgreSQL' --nologo`: 257 superadas, cero fallidas/omitidas. Sin ejecutar las pruebas PostgreSQL ni migraciones.
+- El intento inicial de generación Angular quedó sin salida dentro del sandbox; se canceló antes de crear archivos y se completó fuera de él. El sandbox también bloqueó sockets del servidor Angular y el build de MSBuild; repetidos fuera con autorización. Firefox necesitó crear previamente sus perfiles temporales en `/tmp`. Ninguno de estos diagnósticos cambió configuración de producción.
+
+`git diff --check` correcto, incluida revisión de whitespace de los 34 archivos nuevos. Comprobado que node_modules, dist, caché y cobertura están excluidos y que package-lock.json no está ignorado. `git diff --exit-code` sobre los tres proyectos .NET y la solución confirma que no han cambiado.
+
+La fase 10.1 añade únicamente el cliente, documentación y exclusiones de archivos generados; no modifica datos, endpoints ni autenticación. Sin commit ni push.

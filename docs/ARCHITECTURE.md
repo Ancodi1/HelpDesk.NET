@@ -4,6 +4,9 @@
 
 ## Estado actual
 
+Fase 10.1: cliente Angular independiente en `HelpDesk.Web`, con componentes standalone, Router, TypeScript estricto y SCSS. Solo consume `GET /api/health` mediante el proxy de desarrollo; no cambia la API ni incorpora autenticación frontend. Decisión 039 al final.
+
+
 Revisión del 23 de octubre de 2026: los tres fallos PostgreSQL comunicados en 9.4 se abordan en las pruebas, sin cambios del protocolo de bloqueo, endpoints, esquema ni dependencias. Las comparaciones POST/persistencia usan microsegundos y la barrera de reasignación se sitúa después del UPDATE, antes del commit explícito. Se cubren ambos órdenes con pg_blocking_pids y rechazo del antiguo técnico. Las correcciones quedaron validadas por las 281 pruebas PostgreSQL superadas que confirma el usuario al cierre; junto con las 257 sin PostgreSQL suman 538 superadas y 0 fallidas. Resultados en PROGRESS.md. No constituye una nueva decisión de arquitectura.
 
 La etapa 9.3 protege todas las rutas excepto health/register/login mediante JWT y comprobación de cuenta/rol actual en PostgreSQL. Tickets se filtran por propietario o asignación; la gestión completa y administración de usuarios requieren Admin (decisión 037). La etapa 9.4 incorpora una consola manual del primer Admin, sin cambiar rutas ni permisos; creación real y acceso administrativo confirmados por el usuario al cerrar 9.4 el 27 de octubre de 2026 (decisión 038). Las decisiones anteriores registran la evolución histórica.
@@ -511,3 +514,18 @@ Motivo: resolver el bloqueo del primer administrador sin introducir una vía HTT
 Consecuencias: operación excepcional que requiere acceso PostgreSQL legítimo y permisos para SELECT/INSERT, secuencia y este modo de bloqueo; coordinarla porque el bloqueo afecta temporalmente a escrituras de Users. No mantener interacción humana ni el coste del hash bajo el bloqueo. No hay UPDATE/DELETE de usuarios existentes ni escrituras de Tickets. La condición es ausencia actual de Admin, no un registro permanente de que ya hubo un bootstrap. Pérdida de respuesta durante commit exige verificar el resultado; no hay recuperación de contraseña. No se garantiza borrado de strings de memoria ni protección frente a operadores con control del equipo/base. No hay nuevas dependencias NuGet, capas, modelos ni migraciones.
 
 Pruebas: nueva referencia de Tests a la consola para verificar servicio/entrada y ejecutar el binario con una PTY Linux real (script/stty, sin grabaciones ni secretos en argumentos). Un caso sin PostgreSQL cancela por confirmación incorrecta y comprueba que no se muestra la contraseña. Integración añadida a la clase parcial existente: primera creación/login/JWT/Admin, rechazos, conservación de dos usuarios/seis tickets propios y dos procesos CLI realmente bloqueados a la vez. No se eliminan Admin ajenos para preparar casos: si existen en helpdesk_test_db, se falla con diagnóstico seguro. Se mantiene fixture/validador y limpieza por datos propios. Resultados realmente ejecutados en PROGRESS.md.
+
+
+### 039 — Frontend Angular independiente y proxy de desarrollo (fase 10.1)
+
+Estado: implementada el 27 de octubre de 2026. Angular 22.2 y TypeScript 6, con configuración estricta explícita, Router y componentes standalone. Proyecto hermano `HelpDesk.Web`, independiente de la solución y los proyectos .NET. Sin SSR ni bibliotecas visuales adicionales.
+
+Decisión: organización por funcionalidad con `layout`, `features/home` y `core/api`; crear otras carpetas solo cuando haya código que las necesite. `HomeIntro` encapsula la presentación y sus estilos; `Home` gestiona el panel y `HealthService` ejecuta la petición HTTP. `provideHttpClient` se registra junto a `provideRouter`. La ruta inicial se carga bajo demanda y las desconocidas redirigen al inicio.
+
+La única integración es GET relativo `/api/health`. Se valida el contrato real `{status: 'ok'}` antes de mostrar éxito, se limita la espera a ocho segundos y se cancela al destruir la página. Signals representan el estado visible; RxJS gestiona la petición. La comprobación no prueba disponibilidad de PostgreSQL ni autentica al usuario. No se consulta ni almacena JWT en esta fase.
+
+Proxy registrado en `angular.json`: `/api/**` hacia `http://localhost:5085`, mientras Angular sirve en localhost:4200. Evita CORS en desarrollo sin modificar el backend. El proxy no forma parte de los archivos estáticos de producción; el despliegue deberá resolver `/api` mediante proxy inverso o una configuración CORS explícita si se usan orígenes separados. No hay secretos en la configuración pública del frontend.
+
+Motivo: conectar incrementalmente la interfaz a la API probada, manteniendo responsabilidades simples y el backend intacto. El layout usa SCSS local y tokens globales, diseño responsive y elementos semánticos con accesibilidad básica.
+
+Consecuencias: frontend y backend se arrancan por separado en desarrollo; `package-lock.json` permite instalaciones reproducibles. Vitest y HttpTestingController validan el cliente sin acceder a la base de datos. Login, guards por rol, interceptores JWT y gestión de tickets quedan para futuras tareas. Estrategia prevista de autenticación: token solo en memoria y autorización efectiva siempre en el servidor; aún no implementada. Resultados de validación en PROGRESS.md.

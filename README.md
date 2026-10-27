@@ -2,7 +2,7 @@
 
 Aplicación de gestión de incidencias técnicas: permite registrar tickets, actualizar su información y clasificarlos por estado, prioridad y categoría.
 
-Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfolio. Su objetivo es practicar el diseño de APIs, la persistencia relacional y las pruebas automatizadas mediante una evolución incremental. Actualmente ofrece una API HTTP; la interfaz web y la autenticación están previstas para etapas posteriores.
+Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfolio. Su objetivo es practicar el diseño de APIs, la persistencia relacional y las pruebas automatizadas mediante una evolución incremental. Actualmente ofrece una API HTTP con autenticación JWT y autorización por roles, y una primera interfaz Angular responsive con comprobación de disponibilidad de la API. El login y la gestión de incidencias desde el frontend se incorporarán en fases posteriores.
 
 [Repositorio en GitHub](https://github.com/Ancodi1/HelpDeskt.NET)
 
@@ -14,8 +14,53 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 | ASP.NET Core Minimal APIs | Endpoints HTTP y serialización JSON |
 | Entity Framework Core 10 | Acceso a datos y migraciones |
 | PostgreSQL y Npgsql | Persistencia relacional |
+| Angular 22, TypeScript 6 y SCSS | Frontend standalone, tipado estricto y diseño responsive |
+| Vitest | Pruebas del frontend con HTTP simulado |
 | xUnit | Pruebas unitarias y de integración |
 | WebApplicationFactory / TestServer | Pruebas HTTP en memoria |
+
+## Frontend — fase 10.1
+
+`HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. No incluye todavía login, registro ni gestión de tickets.
+
+Requisitos: Node.js compatible con Angular 22 (desarrollo validado con Node 24.15.0 y npm 11.12.1). No hace falta instalar Angular CLI globalmente: los scripts utilizan la versión local. `package-lock.json` está versionado; en una copia nueva, ejecutar:
+
+```bash
+cd HelpDesk.Web
+npm ci
+```
+
+Desde la raíz del repositorio, arrancar el backend en una terminal con su configuración externa de desarrollo ya existente:
+
+```bash
+dotnet run --project HelpDesk.Api --launch-profile http
+```
+
+En otra terminal, desde la raíz:
+
+```bash
+cd HelpDesk.Web
+npm start
+```
+
+Abrir **http://localhost:4200/**. El panel debería mostrar «La API está disponible». La primera petición se realiza automáticamente y puede repetirse con el botón. Si la API no responde, aparece un error recuperable tras un máximo de ocho segundos. La comprobación health no consulta PostgreSQL ni demuestra la salud de la base de datos.
+
+Angular llama a `/api/health`; `src/proxy.conf.json` reenvía `/api/**` a `http://localhost:5085` conservando la ruta. El proxy se configura en `angular.json`, por lo que `npm start` lo activa automáticamente. No se han añadido CORS ni cambios al backend. En desarrollo, el navegador utiliza el mismo origen de Angular; el proxy es exclusivo del servidor de desarrollo. Un despliegue futuro necesitará configurar su propio proxy inverso o CORS con orígenes explícitos. Reiniciar `npm start` si se cambia el archivo del proxy.
+
+Comprobaciones desde `HelpDesk.Web`:
+
+```bash
+npm run build
+npm test -- --watch=false
+```
+
+Las pruebas Angular utilizan HTTP simulado; no acceden a PostgreSQL ni a la API real. Para comprobar el proxy con ambos servidores arrancados:
+
+```bash
+curl --fail --silent --show-error http://localhost:4200/api/health
+```
+
+La respuesta esperada es `{"status":"ok"}`. Los servidores se detienen con Ctrl+C en sus respectivas terminales. La estructura y decisiones se describen en [ARCHITECTURE.md](docs/ARCHITECTURE.md); el estado y las validaciones, en [PROGRESS.md](docs/PROGRESS.md).
 
 ## Funcionalidades
 

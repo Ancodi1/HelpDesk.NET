@@ -426,3 +426,9 @@ FodyWeavers.xsd
 
 # Official VS Code C# Dev Kit Extension exclusion
 #*.lscache
+
+# Angular frontend (keep package-lock.json versioned)
+/HelpDesk.Web/node_modules/
+/HelpDesk.Web/dist/
+/HelpDesk.Web/.angular/
+/HelpDesk.Web/coverage/

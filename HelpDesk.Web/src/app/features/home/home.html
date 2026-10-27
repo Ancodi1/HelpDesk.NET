@@ -1,0 +1,140 @@
+<div class="home">
+  <app-home-intro />
+
+  <section id="conexion" class="connection-section" aria-labelledby="connection-title">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">ESTADO DEL SISTEMA</p>
+        <h2 id="connection-title">Una conexión, todo preparado.</h2>
+      </div>
+      <span class="section-index" aria-hidden="true">01 /</span>
+    </div>
+    <div
+      class="connection-card"
+      [class.is-success]="connection() === 'success'"
+      [class.is-error]="connection() === 'error'"
+    >
+      <div class="connection-content">
+        <div
+          class="connection-icon"
+          [class.spinning]="connection() === 'loading'"
+          aria-hidden="true"
+        >
+          @switch (connection()) {
+            @case ('loading') {
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M20 12a8 8 0 1 1-8-8" />
+              </svg>
+            }
+            @case ('success') {
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="m6 12 4 4 8-8" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            }
+            @case ('error') {
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M12 5v9M12 17v2" stroke-linecap="round" />
+              </svg>
+            }
+          }
+        </div>
+        <div class="connection-message" role="status" aria-live="polite" aria-atomic="true">
+          @switch (connection()) {
+            @case ('loading') {
+              <span class="status-label">COMPROBANDO</span>
+              <h3>Conectando con el servidor…</h3>
+              <p>Estamos comprobando la disponibilidad de la API.</p>
+            }
+            @case ('success') {
+              <span class="status-label">CONEXIÓN CORRECTA</span>
+              <h3>La API está disponible</h3>
+              <p>El servidor responde. La conexión con HelpDesk.NET funciona correctamente.</p>
+            }
+            @case ('error') {
+              <span class="status-label">SIN CONEXIÓN CONFIRMADA</span>
+              <h3>No hemos podido conectar</h3>
+              <p>Comprueba que la API esté en marcha y vuelve a intentarlo.</p>
+            }
+          }
+        </div>
+        <button
+          class="check-button"
+          type="button"
+          (click)="checkConnection()"
+          [disabled]="connection() === 'loading'"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            aria-hidden="true"
+          >
+            <path d="M20 7v5h-5M4 17v-5h5M19 10a7 7 0 0 0-12-4L4 9m16 6-3 3A7 7 0 0 1 5 14" />
+          </svg>
+          {{
+            connection() === 'loading'
+              ? 'Comprobando…'
+              : connection() === 'error'
+                ? 'Reintentar'
+                : 'Comprobar de nuevo'
+          }}
+        </button>
+      </div>
+      <div class="connection-details">
+        <span><span class="detail-dot" aria-hidden="true"></span>API de HelpDesk.NET</span
+        ><code>GET /api/health</code
+        ><span>{{
+          lastChecked()
+            ? 'Última comprobación: ' + (lastChecked() | date: 'HH:mm:ss')
+            : 'Esperando respuesta'
+        }}</span>
+      </div>
+    </div>
+    <p class="connection-note">
+      Esta comprobación consulta la disponibilidad de la API; no verifica PostgreSQL ni modifica
+      datos.
+    </p>
+  </section>
+
+  <section id="proyecto" class="project-section" aria-labelledby="project-title">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">EL PROYECTO</p>
+        <h2 id="project-title">Una base sólida. Un propósito claro.</h2>
+      </div>
+      <span class="section-index" aria-hidden="true">02 /</span>
+    </div>
+    <div class="project-grid">
+      <article>
+        <span class="card-number">01</span>
+        <h3>Soporte con contexto</h3>
+        <p>
+          Un HelpDesk para organizar incidencias y conectar usuarios, técnicos y administradores.
+        </p>
+        <span class="card-tag">Personas primero</span>
+      </article>
+      <article>
+        <span class="card-number">02</span>
+        <h3>Diseñado para evolucionar</h3>
+        <p>Una API ASP.NET Core y un frontend Angular que crecen juntos, paso a paso.</p>
+        <span class="card-tag">Una arquitectura sencilla</span>
+      </article>
+      <article>
+        <span class="card-number">03</span>
+        <h3>Cada detalle cuenta</h3>
+        <p>
+          Una interfaz adaptable y accesible, con estados claros para saber qué está ocurriendo.
+        </p>
+        <span class="card-tag">Claridad en cada pantalla</span>
+      </article>
+    </div>
+  </section>
+  <div class="phase-note">
+    <span class="phase-badge">EN CONSTRUCCIÓN</span>
+    <p>
+      Esta primera versión conecta la interfaz con la API. El acceso y la gestión de incidencias
+      llegarán en las siguientes fases.
+    </p>
+  </div>
+</div>

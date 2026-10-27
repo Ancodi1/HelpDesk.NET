@@ -1,0 +1,83 @@
+<a class="skip-link" href="#contenido">Saltar al contenido</a>
+<div class="app-shell">
+  <aside class="sidebar" aria-label="Navegación principal">
+    <a class="brand" routerLink="/" aria-label="HelpDesk.NET, inicio">
+      <img class="brand-mark" src="favicon.svg" width="38" height="38" alt="" />
+      <span>HelpDesk<span class="brand-suffix">.NET</span></span>
+    </a>
+
+    <div class="nav-group">
+      <p class="nav-caption">ESPACIO DE TRABAJO</p>
+      <nav aria-label="Secciones">
+        <a
+          class="nav-link"
+          routerLink="/"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{ exact: true }"
+          ariaCurrentWhenActive="page"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            aria-hidden="true"
+          >
+            <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" />
+          </svg>
+          Inicio <span class="nav-arrow" aria-hidden="true">↗</span>
+        </a>
+        <a class="nav-link" routerLink="/" fragment="conexion">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            aria-hidden="true"
+          >
+            <rect x="3" y="4" width="18" height="7" rx="2" />
+            <rect x="3" y="14" width="18" height="7" rx="2" />
+            <path d="M7 7.5h.01M7 17.5h.01M11 7.5h6M11 17.5h6" />
+          </svg>
+          Conexión
+        </a>
+        <a class="nav-link" routerLink="/" fragment="proyecto">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            aria-hidden="true"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="5" />
+            <path d="M12 11v6M12 7v1" />
+          </svg>
+          El proyecto
+        </a>
+      </nav>
+    </div>
+
+    <div class="sidebar-note">
+      <span class="phase-dot" aria-hidden="true"></span>
+      <p>Construido paso a paso</p>
+      <span>Una base sólida para un mejor soporte.</span>
+    </div>
+    <div class="sidebar-footer">
+      <span class="mini-mark" aria-hidden="true">H</span>
+      <div>HelpDesk.NET<small>Proyecto en desarrollo</small></div>
+    </div>
+  </aside>
+
+  <div class="workspace">
+    <header class="topbar">
+      <div class="breadcrumb">
+        Espacio de trabajo <span aria-hidden="true">/</span> <strong>Inicio</strong>
+      </div>
+      <span class="environment"><span aria-hidden="true"></span>Entorno local</span>
+    </header>
+    <main id="contenido" tabindex="-1"><router-outlet /></main>
+    <footer class="page-footer">
+      <span>HelpDesk.NET · Diseñado para resolver.</span><span>Angular + ASP.NET Core</span>
+    </footer>
+  </div>
+</div>

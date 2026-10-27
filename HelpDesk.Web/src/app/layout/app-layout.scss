@@ -1,0 +1,262 @@
+.app-shell {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 244px minmax(0, 1fr);
+}
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 38px 24px 24px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 750;
+  text-decoration: none;
+  letter-spacing: -0.7px;
+}
+.brand-mark {
+  display: grid;
+  place-content: center;
+  width: 38px;
+  height: 38px;
+  background: var(--accent);
+  color: white;
+  border-radius: 11px;
+  font-size: 30px;
+  line-height: 1;
+}
+.brand-suffix {
+  font-weight: 450;
+  color: var(--muted);
+}
+.nav-group {
+  margin-top: 52px;
+}
+.nav-caption {
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  padding-left: 12px;
+  margin-bottom: 18px;
+}
+nav {
+  display: grid;
+  gap: 6px;
+}
+.nav-link {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 46px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 550;
+}
+.nav-link svg {
+  width: 19px;
+  height: 19px;
+}
+.nav-link:hover {
+  background: var(--canvas);
+  color: var(--ink);
+}
+.nav-link.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.nav-arrow {
+  margin-left: auto;
+  font-size: 16px;
+}
+.sidebar-note {
+  margin-top: auto;
+  padding: 24px 12px 28px;
+}
+.phase-dot {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-bottom: 12px;
+}
+.sidebar-note p {
+  font-size: 12px;
+  font-weight: 650;
+  margin: 0 0 8px;
+}
+.sidebar-note > span:last-child {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.mini-mark {
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 33px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--accent);
+}
+small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  margin-top: 4px;
+}
+.workspace {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.topbar {
+  height: 82px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 48px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.breadcrumb {
+  color: var(--muted);
+  font-size: 11px;
+}
+.breadcrumb span {
+  margin: 0 14px;
+  color: #babdc9;
+}
+.breadcrumb strong {
+  color: var(--ink);
+  font-weight: 550;
+}
+.environment {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+.environment span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+main {
+  flex: 1;
+  outline: none;
+  padding: 48px;
+}
+.page-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 48px;
+  color: var(--muted);
+  font-size: 10px;
+}
+@media (min-width: 1500px) {
+  main {
+    width: 100%;
+    max-width: 1250px;
+    align-self: center;
+    padding-top: 64px;
+  }
+}
+@media (max-width: 1000px) {
+  main {
+    padding: 32px;
+  }
+  .topbar {
+    padding-inline: 32px;
+  }
+  .page-footer {
+    padding-inline: 32px;
+  }
+  .app-shell {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+  .sidebar {
+    padding-inline: 18px;
+  }
+}
+@media (max-width: 720px) {
+  .app-shell {
+    display: block;
+  }
+  .sidebar {
+    position: static;
+    height: auto;
+    padding: 18px 20px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand {
+    font-size: 19px;
+  }
+  .nav-group {
+    margin-top: 18px;
+  }
+  .nav-caption,
+  .sidebar-note,
+  .sidebar-footer {
+    display: none;
+  }
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .nav-link {
+    min-height: 42px;
+    padding-inline: 10px;
+    font-size: 12px;
+  }
+  .nav-link svg {
+    width: 16px;
+  }
+  .nav-arrow {
+    display: none;
+  }
+  .topbar {
+    height: 58px;
+    padding-inline: 20px;
+  }
+  main {
+    padding: 30px 20px;
+  }
+  .page-footer {
+    padding: 16px 20px;
+    flex-wrap: wrap;
+  }
+}
