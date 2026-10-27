@@ -27,6 +27,13 @@ export const routes: Routes = [
         loadComponent: () => import('./features/auth/register/register').then((m) => m.Register),
       },
       {
+        path: 'tickets',
+        title: 'Incidencias | HelpDesk.NET',
+        data: { label: 'Incidencias' },
+        canActivate: [authGuard],
+        loadComponent: () => import('./features/tickets/tickets').then((m) => m.Tickets),
+      },
+      {
         path: 'session',
         title: 'Mi sesión | HelpDesk.NET',
         data: { label: 'Mi sesión' },

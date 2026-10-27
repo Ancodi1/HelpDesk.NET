@@ -2,7 +2,7 @@
 
 Aplicación de gestión de incidencias técnicas: permite registrar tickets, actualizar su información y clasificarlos por estado, prioridad y categoría.
 
-Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfolio. Su objetivo es practicar el diseño de APIs, la persistencia relacional y las pruebas automatizadas mediante una evolución incremental. Actualmente ofrece una API HTTP con autenticación JWT y autorización por roles, y una primera interfaz Angular responsive con comprobación de disponibilidad de la API. El frontend incorpora login, registro y sesión solo en memoria. La gestión de incidencias desde la interfaz se incorporará en fases posteriores.
+Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfolio. Su objetivo es practicar el diseño de APIs, la persistencia relacional y las pruebas automatizadas mediante una evolución incremental. Actualmente ofrece una API HTTP con autenticación JWT y autorización por roles, y una primera interfaz Angular responsive con comprobación de disponibilidad de la API. El frontend incorpora login, registro y sesión solo en memoria. La fase 10.3.1 incorpora consulta de incidencias con búsqueda, filtros y paginación. La creación, edición y eliminación desde la interfaz se incorporarán en fases posteriores.
 
 [Repositorio en GitHub](https://github.com/Ancodi1/HelpDeskt.NET)
 
@@ -19,9 +19,9 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 | xUnit | Pruebas unitarias y de integración |
 | WebApplicationFactory / TestServer | Pruebas HTTP en memoria |
 
-## Frontend — fases 10.1 y 10.2
+## Frontend — fases 10.1, 10.2 y 10.3.1
 
-`HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. La fase 10.2 añade formularios reactivos de login/registro y una sesión JWT solo en memoria; todavía no incluye gestión de tickets ni panel administrativo.
+`HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. La fase 10.2 añade formularios reactivos de login/registro y una sesión JWT solo en memoria; La fase 10.3.1 añade el listado de tickets de solo lectura; no incluye creación, edición, eliminación ni panel administrativo.
 
 Requisitos: Node.js compatible con Angular 22 (desarrollo validado con Node 24.15.0 y npm 11.12.1). No hace falta instalar Angular CLI globalmente: los scripts utilizan la versión local. `package-lock.json` está versionado; en una copia nueva, ejecutar:
 
@@ -94,6 +94,37 @@ Para arrancar esa API aislada sin guardar su conexión en archivos o argumentos,
 La API requiere también su configuración JWT externa habitual. Este comando no valida por sí solo el destino introducido: debe corresponder a la base aislada revisada. No ejecuta migraciones ni crea la base. Al terminar el proceso, el subshell descarta la variable.
 
 Con ese destino aislado, enviar `/register` con nombre, correo disponible y contraseña válida: se espera HTTP 201 y regreso al login con confirmación. Iniciar sesión con la nueva cuenta debe mostrar User. Repetir el registro del mismo correo debe mostrar el conflicto 409. No se ha realizado ninguna de estas escrituras durante la implementación. No imprimir ni compartir el JWT de las herramientas del navegador.
+
+### Listado de incidencias — fase 10.3.1
+
+La ruta protegida **`/tickets`** consulta exclusivamente `GET /api/tickets` a través del proxy y del interceptor JWT existente. No escribe datos. La API determina tanto las filas como sus totales: User ve las creadas por él; Technician, las creadas por él o asignadas a él; Admin, todas. El frontend no solicita filas de otros usuarios ni intenta reconstruir permisos mediante filtros locales.
+
+| Parámetro | Contrato |
+|---|---|
+| `search` | Búsqueda literal en título o descripción, sin distinguir mayúsculas. Se conservan espacios y caracteres como `%` o `_`. Debounce de 350 ms. |
+| `status` | `Open`, `InProgress`, `Resolved`, `Closed` |
+| `priority` | `Low`, `Medium`, `High`, `Critical` |
+| `category` | `Hardware`, `Software`, `Network`, `Access`, `Other` |
+| `page` | Entero positivo, por defecto 1; desplazamiento máximo compatible con la API. |
+| `pageSize` | De 1 a 100, por defecto 10. El selector ofrece tamaños habituales y respeta otros tamaños válidos recibidos en la URL. |
+
+El orden es fijo: `CreatedAt` descendente e ID descendente para desempatar. **No existe un parámetro de ordenación configurable.** La respuesta real es `{ items, totalCount, page, pageSize, totalPages }`. Los tickets incluyen id, título, descripción, fecha UTC, estado/prioridad/categoría como strings y IDs de creador/técnico que pueden ser null. Las relaciones completas de usuarios no se serializan. Por eso la tabla muestra «Sin asignar» o el ID del técnico, sin inventar nombres ni hacer consultas adicionales a usuarios.
+
+La vista usa tabla en escritorio y tarjetas en móvil, con etiquetas de estado/prioridad. Las fechas se presentan en hora local. Incluye carga, error seguro, reintento, ausencia de incidencias, ausencia de coincidencias y recuperación a primera página si la página solicitada queda fuera del rango. No hay acciones de escritura ni enlaces a detalles todavía.
+
+Filtros, búsqueda, tamaño y página se conservan en query parameters. Cambiar filtros o tamaño vuelve a página 1; buscar reemplaza la entrada del historial para no crear una por cada escritura. Volver atrás restaura controles y consulta. Parámetros repetidos, filtros desconocidos, números inválidos y parámetros no soportados se normalizan en la URL antes de consultar. Cualquier cambio cancela la petición anterior y también una búsqueda pendiente; abandonar la página cancela ambas. Las respuestas no se guardan en almacenamiento local ni se mezclan con datos simulados.
+
+Para probar manualmente, con API y frontend arrancados según los comandos anteriores:
+
+1. Abrir `/tickets` sin sesión: debe redirigir a `/login` antes de pedir tickets.
+2. Iniciar sesión con una cuenta existente y pulsar «Tickets» en la barra lateral, o abrir `http://localhost:4200/tickets`. El enlace se identifica como activo también cuando hay filtros en la URL. No crear ni modificar cuentas para preparar esta prueba.
+3. Revisar títulos, estados, prioridades, categorías, fechas y asignación. Una cuenta sin tickets visibles puede mostrar legítimamente una lista vacía.
+4. Escribir una búsqueda, combinar filtros y cambiar el tamaño de página. Comprobar que la URL refleja la consulta y que los cambios de filtro vuelven a la primera página.
+5. Usar Anterior/Siguiente cuando haya varias páginas; si no hay suficientes filas, no añadir tickets para forzar el caso: la paginación también está cubierta por pruebas aisladas.
+6. Volver atrás en el navegador y comprobar los filtros restaurados. Probar una página fuera de rango, por ejemplo `?page=999999`, y volver a la primera página con el botón disponible si existen resultados.
+7. Si se dispone de cuentas existentes activas para otros roles, repetir y comparar únicamente con la visibilidad que concede la API. No cambiar roles ni contraseñas. El 401 continúa limpiando la sesión mediante el interceptor; 403 se presenta como falta de permiso.
+
+La sesión sigue siendo solo en memoria: recargar pierde el acceso. Tras volver a iniciar sesión se puede abrir nuevamente la URL del listado con sus filtros. Las pruebas unitarias usan respuestas HTTP aisladas; no se ejecuta una autenticación real ni se consulta PostgreSQL durante su ejecución.
 
 ## Funcionalidades
 

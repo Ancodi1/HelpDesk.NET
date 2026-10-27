@@ -1,0 +1,154 @@
+<section class="tickets-page" aria-labelledby="tickets-title">
+  <header class="page-heading">
+    <div>
+      <p class="eyebrow">TU ESPACIO DE SOPORTE</p>
+      <h1 id="tickets-title">Incidencias</h1>
+      <p class="intro">{{ visibility() }}</p>
+    </div>
+    <span class="read-only">Solo consulta</span>
+  </header>
+  <form
+    class="filters"
+    [formGroup]="form"
+    (submit)="$event.preventDefault()"
+    aria-label="Buscar y filtrar incidencias"
+  >
+    <div class="search-field">
+      <label for="ticket-search">Buscar incidencias</label
+      ><input
+        id="ticket-search"
+        type="search"
+        formControlName="search"
+        placeholder="Buscar en título o descripción…"
+        autocomplete="off"
+      />
+    </div>
+    <div>
+      <label for="ticket-status">Estado</label
+      ><select id="ticket-status" formControlName="status">
+        <option value="">Todos los estados</option>
+        @for (status of statuses; track status) {
+          <option [value]="status">{{ statusNames[status] }}</option>
+        }
+      </select>
+    </div>
+    <div>
+      <label for="ticket-priority">Prioridad</label
+      ><select id="ticket-priority" formControlName="priority">
+        <option value="">Todas las prioridades</option>
+        @for (priority of priorities; track priority) {
+          <option [value]="priority">{{ priorityNames[priority] }}</option>
+        }
+      </select>
+    </div>
+    <div>
+      <label for="ticket-category">Categoría</label
+      ><select id="ticket-category" formControlName="category">
+        <option value="">Todas las categorías</option>
+        @for (category of categories; track category) {
+          <option [value]="category">{{ categoryNames[category] }}</option>
+        }
+      </select>
+    </div>
+    @if (hasFilters()) {
+      <button type="button" class="clear" (click)="clearFilters()">Limpiar filtros</button>
+    }
+  </form>
+  <div class="list-toolbar">
+    <span>Más recientes primero</span>
+    <div>
+      <label for="ticket-page-size">Por página</label
+      ><select id="ticket-page-size" [formControl]="form.controls.pageSize">
+        @if (!pageSizes.includes(query().pageSize)) {
+          <option [ngValue]="query().pageSize">{{ query().pageSize }}</option>
+        }
+        @for (size of pageSizes; track size) {
+          <option [ngValue]="size">{{ size }}</option>
+        }
+      </select>
+    </div>
+  </div>
+  <div class="results" [attr.aria-busy]="state().kind === 'loading'">
+    @let result = state();
+    @switch (result.kind) {
+      @case ('loading') {
+        <div class="state-panel" role="status">
+          <span class="loader" aria-hidden="true"></span>
+          <h2>Cargando incidencias…</h2>
+          <p>Consultando los resultados disponibles para tu cuenta.</p>
+        </div>
+      }
+      @case ('error') {
+        <div class="state-panel error" role="alert">
+          <span class="state-icon" aria-hidden="true">!</span>
+          <h2>No se pudo cargar el listado</h2>
+          <p>{{ result.message }}</p>
+          <button class="primary" type="button" (click)="retry()">Reintentar</button>
+        </div>
+      }
+      @case ('ready') {
+        <p class="result-summary" role="status">
+          {{ result.data.totalCount }}
+          {{ result.data.totalCount === 1 ? 'incidencia encontrada' : 'incidencias encontradas' }}
+        </p>
+        @if (result.data.items.length) {
+          <app-ticket-table [tickets]="result.data.items" />
+        } @else {
+          <div class="state-panel">
+            <span class="state-icon" aria-hidden="true">—</span>
+            <h2>
+              {{
+                result.data.totalCount > 0
+                  ? 'No hay incidencias en esta página'
+                  : hasFilters()
+                    ? 'No hay coincidencias'
+                    : 'No hay incidencias disponibles'
+              }}
+            </h2>
+            <p>
+              {{
+                result.data.totalCount > 0
+                  ? 'La página solicitada está fuera de los resultados actuales.'
+                  : hasFilters()
+                    ? 'Prueba otra búsqueda o cambia los filtros.'
+                    : 'Las incidencias que puedas consultar aparecerán aquí.'
+              }}
+            </p>
+            @if (result.data.totalCount > 0) {
+              <button type="button" class="primary" (click)="goToPage(1)">
+                Volver a la primera página
+              </button>
+            } @else if (hasFilters()) {
+              <button type="button" class="primary" (click)="clearFilters()">
+                Limpiar filtros
+              </button>
+            }
+          </div>
+        }
+        @if (result.data.totalPages > 0 && result.data.page <= result.data.totalPages) {
+          <nav class="pagination" aria-label="Paginación de incidencias">
+            <span>Página {{ result.data.page }} de {{ result.data.totalPages }}</span>
+            <div>
+              <button
+                type="button"
+                (click)="goToPage(result.data.page - 1)"
+                [disabled]="result.data.page <= 1"
+              >
+                Anterior</button
+              ><button
+                type="button"
+                (click)="goToPage(result.data.page + 1)"
+                [disabled]="result.data.page >= result.data.totalPages"
+              >
+                Siguiente
+              </button>
+            </div>
+          </nav>
+        }
+      }
+    }
+  </div>
+  <p class="list-note">
+    La API limita los resultados según tu rol y asignación. Las fechas se muestran en tu hora local.
+  </p>
+</section>

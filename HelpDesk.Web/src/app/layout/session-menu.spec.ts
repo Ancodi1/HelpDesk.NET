@@ -39,7 +39,7 @@ describe('Session navigation', () => {
       expect(f.nativeElement.textContent).toContain(roleNavigation[role]);
       expect(f.nativeElement.querySelector('a[href="/session"]')).not.toBeNull();
       expect(f.nativeElement.querySelector('a[href="/admin"]')).toBeNull();
-      expect(f.nativeElement.querySelector('a[href="/tickets"]')).toBeNull();
+      expect(f.nativeElement.querySelector('a[href="/tickets"]')).not.toBeNull();
     },
   );
   it('closes the session locally and navigates to login', () => {

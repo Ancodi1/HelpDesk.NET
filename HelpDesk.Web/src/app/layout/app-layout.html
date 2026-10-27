@@ -57,6 +57,24 @@
         @if (auth.user(); as user) {
           <a
             class="nav-link"
+            routerLink="/tickets"
+            routerLinkActive="active"
+            ariaCurrentWhenActive="page"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              aria-hidden="true"
+            >
+              <rect x="4" y="3" width="16" height="18" rx="2" />
+              <path d="M8 8h8M8 12h8M8 16h5" />
+            </svg>
+            Tickets
+          </a>
+          <a
+            class="nav-link"
             routerLink="/session"
             routerLinkActive="active"
             ariaCurrentWhenActive="page"

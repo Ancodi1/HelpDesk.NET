@@ -4,7 +4,7 @@
 
 ## Estado actual
 
-Fases 10.1 y 10.2: cliente Angular independiente en `HelpDesk.Web`. A la conexión health y layout inicial se añaden login/registro, sesión solo en memoria, interceptor y guards, sin cambios de API ni base de datos. Decisiones 039 y 040 al final.
+Fases 10.1, 10.2 y 10.3.1: cliente Angular independiente en `HelpDesk.Web`, con inicio/health, autenticación en memoria y listado privado de incidencias. El listado consume los datos autorizados por la API, sin cambiar autenticación, backend ni base de datos. Decisiones 039–041 al final.
 
 
 Revisión del 23 de octubre de 2026: los tres fallos PostgreSQL comunicados en 9.4 se abordan en las pruebas, sin cambios del protocolo de bloqueo, endpoints, esquema ni dependencias. Las comparaciones POST/persistencia usan microsegundos y la barrera de reasignación se sitúa después del UPDATE, antes del commit explícito. Se cubren ambos órdenes con pg_blocking_pids y rechazo del antiguo técnico. Las correcciones quedaron validadas por las 281 pruebas PostgreSQL superadas que confirma el usuario al cierre; junto con las 257 sin PostgreSQL suman 538 superadas y 0 fallidas. Resultados en PROGRESS.md. No constituye una nueva decisión de arquitectura.
@@ -548,3 +548,20 @@ Cada sesión tiene una versión en memoria: un 401 de una petición antigua no i
 Rutas públicas login/registro y ruta privada session con guard funcional. La navegación cambia su etiqueta según User/Technician/Admin y conduce a la misma página de sesión; no hay rutas vacías de tickets o administración. Guard por roles preparado y probado para futuras páginas. Ocultar enlaces y bloquear rutas cliente no es una autorización de seguridad.
 
 Consecuencias: recargar exige login y cada pestaña tiene su propia sesión. Logout es local; no revoca un JWT ya emitido porque el backend no ofrece esa función. Mantener el token en memoria reduce persistencia, pero no protege frente a scripts maliciosos/XSS: se conserva el escape de Angular y no se inserta HTML arbitrario. Fuera del desarrollo local, se requiere HTTPS. Registro manual válido solo contra una base aislada autorizada; los tests automatizados del cliente simulan HTTP y no escriben en PostgreSQL.
+
+
+### 041 — Listado privado de tickets y consulta en la URL (fase 10.3.1)
+
+Estado: listado y navegación implementados el 27 de octubre de 2026; 162 pruebas Angular superadas y build sin advertencias. Resultados en PROGRESS.md.
+
+Decisión: concentrar tipos, contrato de consulta, servicio y componentes en `features/tickets`. Ruta lazy `/tickets` protegida por el authGuard existente y enlace lateral «Tickets» visible solo con sesión, para los tres roles. Se reutiliza el diseño responsive, la clase active y aria-current de la navegación existente. TicketService usa únicamente GET relativo /api/tickets con los seis parámetros soportados; el interceptor actual añade el JWT. No hay cambios de autenticación, backend o dependencias.
+
+El contrato refleja TicketPageDto y los campos serializados de Ticket. IDs de creador/técnico son number|null, no objetos de usuario. Enums como strings y fechas ISO; presentación en hora local. Se verifica la estructura de la respuesta, sin rellenar datos ausentes con fixtures. Sin consultas auxiliares a usuarios: se muestra el ID del técnico cuando existe.
+
+La URL representa búsqueda, filtros, página y tamaño. Los valores desconocidos/repetidos o numéricos inválidos se normalizan antes de consultar, omitiendo defaults y parámetros no soportados. La búsqueda conserva los caracteres literales (el backend escapa comodines) y aplica 350 ms de debounce; filtros y tamaño actúan inmediatamente y reinician página. La ordenación sigue siendo la fija de la API (CreatedAt e Id descendentes), sin control de ordenación ficticio.
+
+Un flujo de eventos de ruta, formulario y acciones usa switchMap para sustituir tanto peticiones como temporizadores; evita respuestas obsoletas incluso al cambiar un select durante una búsqueda o volver por el historial. takeUntilDestroyed cancela al salir. La URL no almacena el JWT; las consultas son sin caché y tienen timeout de 15 segundos. Los términos de búsqueda sí forman parte del historial/URL, por lo que no deben contener secretos.
+
+TicketAccess del servidor decide visibilidad y conteos: User creados por él, Technician creados o asignados y Admin todos. La UI no solicita otros usuarios ni filtra permisos localmente. Los guards solo orientan navegación. Estados de error seguros y reintento; el interceptor conserva la responsabilidad del 401. Tabla semántica en escritorio y presentación en tarjetas en móvil, con texto además del color para estado/prioridad.
+
+Consecuencias: se reutiliza la sesión en memoria; una recarga exige nuevo login antes de volver a la URL del listado. Puede haber páginas vacías si el total cambia o la URL pide una fuera de rango: se ofrece volver a la primera, sin crear ni modificar registros. Creación, detalle, edición y eliminación quedan fuera del alcance. Validación automatizada aislada de PostgreSQL y verificación manual solo con cuentas existentes.

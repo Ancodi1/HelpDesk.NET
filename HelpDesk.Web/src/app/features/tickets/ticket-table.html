@@ -1,0 +1,54 @@
+<table role="table">
+  <caption class="sr-only">
+    Incidencias devueltas por la API para tu cuenta
+  </caption>
+  <thead role="rowgroup">
+    <tr role="row">
+      <th scope="col" role="columnheader">Incidencia</th>
+      <th scope="col" role="columnheader">Estado</th>
+      <th scope="col" role="columnheader">Prioridad</th>
+      <th scope="col" role="columnheader">Categoría</th>
+      <th scope="col" role="columnheader">Creada</th>
+      <th scope="col" role="columnheader">Técnico</th>
+    </tr>
+  </thead>
+  <tbody role="rowgroup">
+    @for (ticket of tickets(); track ticket.id) {
+      <tr role="row">
+        <td role="cell" class="ticket-summary">
+          <span class="ticket-id">#{{ ticket.id }}</span
+          ><span class="ticket-title">{{ ticket.title }}</span>
+          <p class="description">{{ ticket.description }}</p>
+        </td>
+        <td role="cell">
+          <span class="mobile-label" aria-hidden="true">Estado</span
+          ><span class="badge status" [attr.data-value]="ticket.status">{{
+            statusNames[ticket.status]
+          }}</span>
+        </td>
+        <td role="cell">
+          <span class="mobile-label" aria-hidden="true">Prioridad</span
+          ><span class="badge priority" [attr.data-value]="ticket.priority">{{
+            priorityNames[ticket.priority]
+          }}</span>
+        </td>
+        <td role="cell">
+          <span class="mobile-label" aria-hidden="true">Categoría</span
+          ><span>{{ categoryNames[ticket.category] }}</span>
+        </td>
+        <td role="cell">
+          <span class="mobile-label" aria-hidden="true">Creada</span
+          ><time [attr.datetime]="ticket.createdAt">{{
+            ticket.createdAt | date: 'dd/MM/yyyy, HH:mm'
+          }}</time>
+        </td>
+        <td role="cell">
+          <span class="mobile-label" aria-hidden="true">Técnico</span
+          ><span>{{
+            ticket.assignedToUserId === null ? 'Sin asignar' : 'ID ' + ticket.assignedToUserId
+          }}</span>
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>

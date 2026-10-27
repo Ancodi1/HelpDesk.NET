@@ -2,13 +2,13 @@
 
 Última actualización: 2026-10-27.
 
-## Estado vigente — fase 10.2 implementada
+## Estado vigente — fase 10.3.1 implementada
 
-Frontend Angular con login, registro y gestión de sesión JWT exclusivamente en memoria. Formularios reactivos sobre los contratos reales; registro crea User y vuelve al login, sin token automático. Layout conservado, navegación según rol y página privada `/session`, sin gestión de tickets ni panel administrativo. Se mantienen las funciones de inicio y health de 10.1.
+Listado Angular de solo lectura en `/tickets`, con búsqueda, filtros, paginación y query parameters sobre el contrato real de GET /api/tickets. Tipos, servicio y componentes nuevos en features/tickets. La autenticación, el interceptor y los guards de 10.2 se reutilizan sin modificarlos; la API decide la visibilidad por rol/asignación.
 
-Servicio central, interceptor funcional limitado a las rutas API protegidas, guards, caducidad por exp/expiresIn y cierre local. Sin almacenamiento persistente, cookies JWT, refresh tokens ni modificación del backend. El 401 autenticado invalida la sesión; 403/409/red se diferencian sin mostrar mensajes del proveedor. Respuestas tardías no pueden restaurar o cerrar una sesión posterior.
+Enlace «Tickets» en la barra lateral para usuarios autenticados de los tres roles. Reutiliza los estilos responsive y active existentes, con aria-current para la página activa, también con filtros en la URL. Con autorización explícita del usuario se actualizó únicamente la aserción obsoleta de session-menu.spec.ts que exigía la ausencia del enlace; el resto de pruebas anteriores se conserva.
 
-Los resultados del backend de 9.4 (538 pruebas) se conservan como antecedente. En esta fase solo se ejecuta su suite sin PostgreSQL. No se crean cuentas ni se prueba el registro contra desarrollo. El procedimiento manual de registro válido exige una base aislada ya configurada; documentación en README.
+Se mantienen login, registro y sesión solo en memoria de 10.2 y la página de inicio/health de 10.1. Sin creación, edición, eliminación de tickets ni panel administrativo. Sin cambios de backend o base de datos. Los resultados de 9.4 (538 pruebas) siguen como antecedente; la suite PostgreSQL no se repite en esta fase.
 
 ## Etapa 9.4 — completada (base del backend)
 
@@ -631,3 +631,28 @@ Validaciones realizadas:
 - `git diff --check` y revisión de whitespace de archivos nuevos correctos. `git diff --exit-code` confirma que los proyectos .NET, su solución, sus pruebas y los archivos de tests Angular anteriores no cambian. Revisión de TypeScript sin uso de localStorage, sessionStorage, document.cookie o logs de aplicación.
 
 La verificación manual de login con credenciales reales y el registro válido no se ejecutan para respetar la base de datos; pasos en README. El registro válido debe comprobarse únicamente con una API configurada para una base aislada. No se modifican datos durante la implementación. Sin commit ni push.
+
+
+## Fase 10.3.1 — listado de tickets (27 de octubre de 2026)
+
+Revisión previa con repositorio limpio, contratos de Program.cs, TicketPageDto y Ticket, enums y TicketAccess. GET /api/tickets admite search/status/priority/category/page/pageSize. Orden fijo por CreatedAt e Id descendentes; no admite ordenar por parámetros. Respuesta paginada con items/totalCount/page/pageSize/totalPages y IDs de relaciones nullable, sin nombres de usuarios.
+
+- Ruta privada `/tickets` con el authGuard existente, carga bajo demanda y consultas relativas con HttpClient. El interceptor JWT actual ya cubre la ruta; no se cambia.
+- Tipos y comprobación de la respuesta real antes de mostrar filas. Tabla de escritorio y tarjetas en móvil; datos y totales únicamente de la API. Técnico identificado por ID o Sin asignar; fechas locales.
+- Búsqueda literal con debounce de 350 ms, filtros por enums admitidos, tamaño 1–100 y paginación. Los cambios de filtros/tamaño reinician la página. No se añaden filtros de usuario/asignación ni ordenación no soportados.
+- URL como fuente de la consulta, normalización de entradas inválidas y restauración al navegar por el historial. Un único switchMap cancela HTTP y debounce al cambiar cualquier criterio, navegar o salir; peticiones con timeout de 15 segundos y sin caché.
+- Estados explícitos de carga, error, lista vacía, ausencia de coincidencias y página fuera de rango, con reintento o recuperación. Los errores no reflejan cuerpos del proveedor; 401 sigue delegado a la autenticación existente.
+- Nuevas pruebas con HTTP simulado y Router real, sin usar cuentas reales ni acceder a PostgreSQL. Las fixtures no se incorporan al código de producción.
+
+Validaciones realizadas:
+
+- `npm run build`: correcto, sin advertencias.
+- `npm test -- --watch=false`: **162 superadas, 0 fallidas**, en 15 archivos. Se conservan las 105 pruebas anteriores; solo se actualiza la expectativa obsoleta sobre el enlace a tickets, con autorización del usuario. Nuevas pruebas de servicio, consulta URL, interacciones, tabla segura y Router real: filtros, búsqueda/debounce, historial, paginación, validación de respuesta, timeout, error, vacío, reintento, cancelación, recuperación de páginas y acceso por los tres roles.
+- Los tres fallos iniciales correspondían a tests nuevos: un caso construía una respuesta válida mientras esperaba rechazo y el doble de Router no serializaba los números como strings. Se corrigieron las fixtures/doble y se añadieron casos con Router real; suite final superada.
+- `dotnet build HelpDesk.NET.slnx --no-restore --nologo`: correcto, 0 errores y 0 advertencias. El intento dentro del sandbox falló sin diagnóstico; repetido fuera con autorización.
+- `dotnet test HelpDesk.NET.slnx --no-build --no-restore --filter 'Category!=PostgreSQL' --nologo`: 257 superadas, 0 fallidas/omitidas. No se ejecutaron las pruebas PostgreSQL.
+- `git diff --check` y revisión de whitespace de los 15 archivos nuevos correctos. Backend, solución, autenticación, proxy y dependencias intactos. Nueve de los diez archivos de pruebas Angular anteriores no cambian; en session-menu.spec.ts solo cambia una aserción obsoleta, autorizada por el usuario.
+
+Cierre de navegación: enlace autenticado añadido con los mismos estilos e iconografía de la barra lateral. Pruebas con Router real verifican el clic, la clase active y aria-current con y sin filtros, su desactivación al salir y la ausencia del enlace sin sesión. El guard redirige al login antes de consultar tickets. Build Angular y suite completa repetidos: sin advertencias y 162 pruebas superadas.
+
+Limitaciones: No se verificó visualmente un listado autenticado con datos reales ni se manejaron credenciales: el procedimiento manual queda para una cuenta existente, sin crear datos para preparar la prueba. Ordenación fija y técnico por ID porque así lo ofrece la API. Sin migraciones, escrituras de datos, commit ni push.
