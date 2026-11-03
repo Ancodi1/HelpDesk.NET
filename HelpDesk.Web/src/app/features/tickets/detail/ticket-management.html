@@ -1,0 +1,91 @@
+@if (admin() || canStatus()) {
+  <section class="card" aria-labelledby="manage-title">
+    <h2 id="manage-title">Gestionar ticket</h2>
+    @if (message()) {
+      <p class="feedback" [class.success]="success()" role="status">{{ message() }}</p>
+    }
+    <form [formGroup]="text" (ngSubmit)="save()">
+      <fieldset [disabled]="pending() || reviewRequired()">
+        @if (admin()) {
+          <div class="field">
+            <label for="operation">Operación</label>
+            <select id="operation" [formControl]="operation" (change)="prepare()">
+              <option value="text">Título y descripción</option>
+              <option value="status">Estado</option>
+              <option value="priority">Prioridad</option>
+              <option value="category">Categoría</option>
+              <option value="assignment">Asignación</option>
+            </select>
+          </div>
+        }
+        @switch (operation.value) {
+          @case ('text') {
+            <div>
+              <div class="field">
+                <label for="edit-title">Título (obligatorio, máximo 100 caracteres)</label
+                ><input id="edit-title" formControlName="title" maxlength="100" />
+              </div>
+              <div class="field">
+                <label for="edit-description">Descripción (obligatoria)</label
+                ><textarea id="edit-description" formControlName="description" rows="5"></textarea>
+              </div>
+            </div>
+          }
+          @case ('status') {
+            <div class="field">
+              <label for="edit-status">Estado</label
+              ><select id="edit-status" [formControl]="status">
+                @for (value of statuses(); track value) {
+                  <option [value]="value">{{ statusNames[value] }}</option>
+                }
+              </select>
+            </div>
+          }
+          @case ('priority') {
+            <div class="field">
+              <label for="edit-priority">Prioridad</label
+              ><select id="edit-priority" [formControl]="priority">
+                @for (value of priorities; track value) {
+                  <option [value]="value">{{ priorityNames[value] }}</option>
+                }
+              </select>
+            </div>
+          }
+          @case ('category') {
+            <div class="field">
+              <label for="edit-category">Categoría</label
+              ><select id="edit-category" [formControl]="category">
+                @for (value of categories; track value) {
+                  <option [value]="value">{{ categoryNames[value] }}</option>
+                }
+              </select>
+            </div>
+          }
+          @case ('assignment') {
+            <div class="field">
+              <label for="edit-assignment">ID de Technician o Admin</label
+              ><input
+                id="edit-assignment"
+                type="number"
+                min="1"
+                max="2147483647"
+                step="1"
+                [formControl]="assignment"
+              />
+              <p class="hint">
+                Introduce un ID conocido. Deja vacío para desasignar. La API comprueba la existencia
+                y el rol.
+              </p>
+            </div>
+          }
+        }
+        <button class="primary" type="submit">
+          {{ pending() ? 'Guardando…' : 'Guardar cambios' }}
+        </button>
+      </fieldset>
+    </form>
+    @if (reviewRequired()) {
+      <p>Usa «Actualizar detalle» antes de volver a operar.</p>
+    }
+  </section>
+}

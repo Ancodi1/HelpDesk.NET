@@ -1,3 +1,4 @@
+import { TicketManagement } from './ticket-management';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, OnInit, signal, computed } from '@angular/core';
@@ -27,7 +28,7 @@ type DetailState =
 @Component({
   selector: 'app-ticket-detail',
   standalone: true,
-  imports: [RouterLink, DatePipe],
+  imports: [RouterLink, DatePipe, TicketManagement],
   templateUrl: './ticket-detail.html',
   styleUrls: ['../ticket-page.scss', './ticket-detail.scss'],
 })
@@ -75,6 +76,9 @@ export class TicketDetail implements OnInit {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((state) => this.state.set(state));
+  }
+  updated(ticket: Ticket): void {
+    this.state.set({ kind: 'ready', ticket });
   }
   retry(): void {
     this.retryAction.next();

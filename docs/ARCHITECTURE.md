@@ -580,3 +580,16 @@ POST pendiente desactiva el formulario. Tras 201 se valida el Ticket y se navega
 El GET muestra únicamente el Ticket devuelto por la API, con descripción completa escapada, fecha de creación local e IDs nullable de usuarios, sin consultas adicionales para nombres ni fechas inventadas. IDs inválidos se tratan como no disponibles sin petición; las peticiones obsoletas se cancelan al cambiar de ID o abandonar la vista. Inexistente y no visible comparten mensaje 404. El servidor conserva la autorización; los errores nunca reflejan cuerpos del proveedor.
 
 Consecuencias: no hay idempotencia del POST en el backend. Un timeout, desconexión o cancelación del cliente no permite garantizar que la escritura no ocurrió. El cliente no reintenta automáticamente y pide revisar el listado antes de reenviar en esos casos. Cancelar una suscripción HTTP no equivale a rollback del servidor. Las pruebas automatizadas aíslan todo HTTP y no crean filas; el procedimiento manual válido exige un destino autorizado para escritura, preferiblemente aislado. Edición, eliminación y asignación siguen fuera del alcance.
+
+
+### 043 — Gestión Angular mediante contratos existentes (fase 10.3.3)
+
+Estado: implementada el 3 de noviembre de 2026. Backend, esquema, autenticación y dependencias intactos.
+
+TicketManagement es un componente standalone del detalle, con formularios reactivos y una operación por envío. TicketService limita cada cuerpo al DTO efectivo del PUT o PATCH y valida el Ticket devuelto, incluido su ID; no reintenta escrituras. El detalle incorpora la respuesta confirmada y conserva su contexto de navegación.
+
+La presentación consulta el rol de sesión y la asignación del ticket: Admin gestiona textos, estado, prioridad, categoría y asignación; Technician asignado solo estado; User ninguna edición. El servidor conserva la autorización efectiva y decide ante roles o asignaciones obsoletos. Los estados disponibles reproducen TicketStatusTransitions, incluido repetir el estado actual, sin sustituir la comprobación del servidor.
+
+La asignación usa un ID explícito o null para desasignar, sin peticiones auxiliares ni nombres ficticios. La API permite destinos Technician y Admin. Se reutilizan validadores de texto y enums y estilos de página/formulario responsive. No se incorpora eliminación.
+
+Pendiente bloquea envíos duplicados; errores seguros 400/401/403/404/409 y resultados inciertos exigen recargar el detalle antes de reenviar. El interceptor sigue resolviendo 401. La cancelación al destruir no garantiza rollback. No hay versión/ETag ni protección contra última escritura concurrente porque el backend no la ofrece; cada operación es independiente. Pruebas con HTTP simulado y procedimiento manual en README; resultados en PROGRESS.

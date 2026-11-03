@@ -94,6 +94,10 @@
           </dl>
           <p class="time-note">Fecha mostrada en tu hora local.</p>
         </article>
+        <app-ticket-management #management [ticket]="result.ticket" (updated)="updated($event)" />
+        <button class="secondary" type="button" [disabled]="management.pending()" (click)="retry()">
+          Actualizar detalle
+        </button>
       }
     }
   </div>

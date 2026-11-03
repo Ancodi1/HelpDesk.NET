@@ -2,7 +2,7 @@
 
 Aplicación de gestión de incidencias técnicas: permite registrar tickets, actualizar su información y clasificarlos por estado, prioridad y categoría.
 
-Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfolio. Su objetivo es practicar el diseño de APIs, la persistencia relacional y las pruebas automatizadas mediante una evolución incremental. Actualmente ofrece una API HTTP con autenticación JWT y autorización por roles, y una primera interfaz Angular responsive con comprobación de disponibilidad de la API. El frontend incorpora login, registro y sesión solo en memoria. El frontend incorpora listado, creación y detalle de incidencias. La edición, eliminación y asignación desde la interfaz se incorporarán en fases posteriores.
+Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfolio. Su objetivo es practicar el diseño de APIs, la persistencia relacional y las pruebas automatizadas mediante una evolución incremental. Actualmente ofrece una API HTTP con autenticación JWT y autorización por roles, y una primera interfaz Angular responsive con comprobación de disponibilidad de la API. El frontend incorpora login, registro y sesión solo en memoria. El frontend incorpora listado, creación y detalle de incidencias. El detalle permite editar y gestionar tickets según los permisos del backend; la eliminación desde Angular queda fuera de alcance.
 
 [Repositorio en GitHub](https://github.com/Ancodi1/HelpDeskt.NET)
 
@@ -19,9 +19,9 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 | xUnit | Pruebas unitarias y de integración |
 | WebApplicationFactory / TestServer | Pruebas HTTP en memoria |
 
-## Frontend — fases 10.1 a 10.3.2
+## Frontend — fases 10.1 a 10.3.3
 
-`HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. Incluye formularios reactivos de login/registro y una sesión JWT solo en memoria, listado con filtros y paginación, creación y detalle de tickets. No incluye edición, eliminación, asignación ni panel administrativo.
+`HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. Incluye formularios reactivos de login/registro y una sesión JWT solo en memoria, listado con filtros y paginación, creación y detalle de tickets. Incluye edición y asignación en el detalle según permisos; no incluye eliminación ni panel administrativo.
 
 Requisitos: Node.js compatible con Angular 22 (desarrollo validado con Node 24.15.0 y npm 11.12.1). No hace falta instalar Angular CLI globalmente: los scripts utilizan la versión local. `package-lock.json` está versionado; en una copia nueva, ejecutar:
 
@@ -544,3 +544,39 @@ Previsión de evolución, pendiente de implementación:
 - [Pruebas con PostgreSQL aislado](docs/POSTGRESQL_TESTS.md).
 
 Los registros fechados describen etapas anteriores. En particular, las referencias de la guía inicial a escrituras en memoria son históricas: el CRUD actual utiliza EF Core y PostgreSQL.
+
+
+### Gestión desde el detalle — fase 10.3.3
+
+Cada guardado ejecuta una sola operación. No hay guardado conjunto ni transacción entre formularios.
+
+| Operación API | Campos enviados | Permiso |
+|---|---|---|
+| PUT /api/tickets/{id} | title, description | Admin |
+| PATCH /api/tickets/{id}/status | status | Admin o Technician asignado |
+| PATCH /api/tickets/{id}/priority | priority | Admin |
+| PATCH /api/tickets/{id}/category | category | Admin |
+| PATCH /api/tickets/{id}/assignment | assignedToUserId (entero o null explícito) | Admin |
+
+User no puede editar. Technician puede leer un ticket propio sin estar asignado, pero no gestionar su estado. La API comprueba cuenta/rol actuales y acceso al recurso en cada petición. No se implementa DELETE aunque exista en el backend.
+
+Título y descripción conservan la validación del POST: textos no blancos, título máximo 100 unidades UTF-16. Prioridad y categoría usan los enums existentes. Transiciones: Open → InProgress; InProgress → Open/Resolved; Resolved → Open/InProgress/Closed; Closed → Open. Reenviar el mismo estado está permitido. Una transición incompatible devuelve 409.
+
+Asignación por ID conocido, sin inventar nombres ni cargar el directorio de usuarios. Solo Technician o Admin existentes son destinos válidos; vacío envía null y desasigna. El servidor devuelve 400 si el destino no existe o no tiene rol compatible, y 409 si deja de estar disponible durante el guardado. Todas las escrituras devuelven 200 con el Ticket actualizado; también pueden devolver 400/401/403/404 según validación, autenticación y acceso.
+
+El formulario bloquea envíos simultáneos, confirma el éxito y actualiza el detalle con la respuesta validada. Tras un error exige «Actualizar detalle» antes de reenviar. No hay reintentos automáticos; un fallo de conexión, timeout o respuesta ilegible puede ocurrir después de guardar. No hay control de versión: las modificaciones administrativas concurrentes conservan la política del backend de última escritura. Los filtros y la página siguen en la URL al volver al listado.
+
+#### Comprobación manual de edición
+
+Estas comprobaciones escriben datos: usar únicamente una API conectada a un destino aislado autorizado y ya preparado, con cuentas activas y tickets exclusivos de prueba. No cambiar conexiones versionadas ni ejecutar migraciones. Usar el arranque aislado descrito en autenticación y confirmar el destino antes de continuar.
+
+1. Arrancar la API con `dotnet run --project HelpDesk.Api --launch-profile http` y, en otra terminal desde HelpDesk.Web, `npm start`. Abrir http://localhost:4200/login e iniciar sesión como Admin con credenciales introducidas solo en el navegador.
+2. Abrir `/tickets`, aplicar filtros/página y entrar en un ticket de prueba. Anotar su ID y valores iniciales. En «Gestionar ticket», elegir «Título y descripción». Probar vacío/solo espacios: no debe salir PUT. Guardar textos válidos: comprobar un único PUT, confirmación y cabecera/descripción actualizadas.
+3. Elegir Prioridad y después Categoría; guardar cada una. Comprobar PATCH independiente con un solo campo y respuesta 200, badges/datos actualizados y persistencia al pulsar «Actualizar detalle».
+4. Elegir Estado. Recorrer Open → InProgress → Resolved → Closed → Open, guardando cada paso. Solo deben aparecer el actual y los destinos permitidos. Para comprobar 409 con datos de prueba, cambiar el estado desde otra sesión Admin después de cargar el detalle y enviar una transición que haya dejado de ser válida; actualizar el detalle tras el conflicto.
+5. Elegir Asignación. Introducir el ID conocido de una cuenta Technician activa, guardar y verificar el ID devuelto. Probar un ID de User: debe mostrar el 400 sin cambiar la asignación. Actualizar el detalle, vaciar el campo y guardar: debe enviar null y mostrar «Sin asignar». Repetir con un Admin como destino válido.
+6. Asignar el ticket al Technician de prueba. Cerrar sesión e iniciar como ese Technician: debe aparecer solo la gestión del estado. Como Technician creador pero no asignado, no debe aparecer gestión. Como User propietario, debe verse el detalle sin edición. Los tickets ajenos no visibles deben responder 404.
+7. Durante un guardado, comprobar campos/botón desactivados y un solo envío incluso con doble clic. En herramientas del navegador, simular desconexión para comprobar el mensaje de resultado incierto y ausencia de reintentos; reconectar y pulsar «Actualizar detalle» antes de operar.
+8. Volver al listado mediante el enlace y comprobar filtros/página. Revisar el detalle en móvil (por ejemplo 390 px), etiquetas, controles y navegación. No copiar JWT ni credenciales a informes.
+
+La revisión visual autenticada y estas escrituras manuales quedan pendientes de ejecución por el usuario; las pruebas automatizadas simulan HTTP y no modifican tickets reales.

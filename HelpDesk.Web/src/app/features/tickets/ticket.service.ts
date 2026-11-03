@@ -45,6 +45,28 @@ export class TicketService {
       );
   }
 
+  update(id: number, operation: TicketOperation, input: TicketUpdate): Observable<Ticket> {
+    const body =
+      operation === 'text'
+        ? { title: input.title, description: input.description }
+        : {
+            [operation === 'assignment' ? 'assignedToUserId' : operation]:
+              input[operation === 'assignment' ? 'assignedToUserId' : operation],
+          };
+    const request =
+      operation === 'text'
+        ? this.http.put<unknown>(`/api/tickets/${id}`, body)
+        : this.http.patch<unknown>(`/api/tickets/${id}/${operation}`, body);
+    return request.pipe(
+      timeout(15_000),
+      map((response) => {
+        if (!isTicket(response) || response.id !== id)
+          throw new Error('Unexpected update response');
+        return response;
+      }),
+    );
+  }
+
   list(query: TicketQuery): Observable<TicketPage> {
     let params = new HttpParams().set('page', query.page).set('pageSize', query.pageSize);
     for (const key of ['search', 'status', 'priority', 'category'] as const) {
@@ -104,4 +126,14 @@ export class TicketCreationResponseError extends Error {
   constructor() {
     super('Unexpected creation response');
   }
+}
+
+export type TicketOperation = 'text' | 'status' | 'priority' | 'category' | 'assignment';
+export interface TicketUpdate {
+  title?: string;
+  description?: string;
+  status?: Ticket['status'];
+  priority?: Ticket['priority'];
+  category?: Ticket['category'];
+  assignedToUserId?: number | null;
 }

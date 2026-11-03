@@ -1,14 +1,14 @@
 # Progreso — HelpDesk.NET
 
-Última actualización: 2026-10-27.
+Última actualización: 2026-11-03.
 
-## Estado vigente — fase 10.3.2 implementada
+## Estado vigente — fase 10.3.3 implementada
 
-Frontend con listado, creación y detalle de tickets en `/tickets`, `/tickets/new` y `/tickets/:id`. Se reutilizan el servicio, los contratos y los colores de estado/prioridad. El formulario usa los cuatro campos efectivos del POST (title, description, priority, category), bloquea envíos duplicados y redirige al ID validado de la respuesta 201 con confirmación. El detalle muestra exclusivamente los datos autorizados por la API y conserva los filtros al volver al listado.
+Angular permite gestionar tickets desde el detalle conforme a los contratos existentes: Admin edita textos, prioridad, categoría, asignación y estado; Technician solo estado de tickets asignados; User no edita. Se conservan listado, filtros, paginación, creación, detalle, sesión en memoria y diseño responsive. El backend mantiene la autorización efectiva.
 
-Los tres roles autenticados pueden crear. La API fija creador, estado inicial y fecha, y limita el detalle como el listado. Un 404 se trata igual para inexistente y no visible. Sin cambios de autenticación, backend, base de datos, dependencias o pruebas anteriores; sin edición, eliminación o asignación.
+Formularios reactivos con validación de textos/enums, transiciones existentes y asignación por ID conocido (Technician o Admin) o null para desasignar. Envío duplicado bloqueado, confirmación y actualización desde la respuesta real. Errores seguros y recarga obligatoria del detalle después de un fallo; no hay reintentos automáticos de escritura. Sin cambios de backend, PostgreSQL, migraciones, dependencias o pruebas previas. Sin eliminación desde Angular.
 
-Se mantienen login, registro y sesión solo en memoria y la página de inicio/health. Las pruebas de frontend usan HTTP simulado, sin crear tickets reales. No se ejecutan migraciones ni pruebas PostgreSQL. El límite de idempotencia del POST y los pasos manuales para un destino aislado/autorizado se documentan en README. Los resultados históricos de 9.4 (538 pruebas) siguen como antecedente.
+Pruebas actuales: 243 Angular y 257 .NET sin PostgreSQL superadas; builds Angular y .NET correctos. Procedimiento manual de edición y limitaciones en README. La comprobación manual/visual autenticada está pendiente. Los apartados siguientes conservan el historial de fases previas.
 
 ## Etapa 9.4 — completada (base del backend)
 
@@ -680,3 +680,22 @@ Validaciones realizadas:
 - Verificado que las fixtures no aparecen en el build de producción. No se utilizan datos simulados en la aplicación.
 
 Limitaciones: la comprobación visual/manual autenticada con datos reales queda para el usuario; no se solicitan credenciales ni se crean tickets reales durante la implementación. La creación manual debe realizarse solo en un destino autorizado para escritura, preferiblemente aislado y ya preparado, siguiendo README. El backend solo ofrece fecha de creación e IDs de usuarios, y no garantiza idempotencia del POST; no se modifica para ampliar ese contrato. Sin commit ni push.
+
+
+## Fase 10.3.3 — edición y gestión (3 de noviembre de 2026)
+
+Revisión previa con repositorio limpio, AGENTS, documentación, endpoints/DTOs, TicketAccess, transiciones y componentes existentes. PUT solo admite title/description; PATCH independientes para status, priority, category y assignment. Todos responden Ticket con 200. Se conservan validaciones reales y 400/401/403/404/409 según operación. DELETE existe solo para Admin, pero queda fuera del frontend solicitado.
+
+TicketManagement encapsula formularios reactivos y permisos de presentación; el detalle recibe el Ticket confirmado mediante output. TicketService construye cada DTO con campos explícitos y comprueba la respuesta y su ID. No se carga el directorio de usuarios: asignación por ID sin inventar nombres. Se reutilizan validadores Unicode/UTF-16, labels y SCSS existentes. La API sigue decidiendo ante cambios concurrentes de asignación/rol.
+
+Nuevas pruebas aisladas de servicio, componente e integración del detalle cubren DTOs, permisos de los tres roles y técnico no asignado, validación de textos/IDs/transiciones, bloqueo duplicado y carga, errores 400/401/403/404/409/red, respuesta con ID incorrecto, confirmación, actualización visible y conservación del enlace al listado con filtros/página. No se modifican tests previos ni se escriben tickets reales.
+
+Validación ejecutada:
+
+- `npm test -- --watch=false`: **243 superadas, 0 fallidas**, 22 archivos. Las 226 anteriores permanecen intactas. Hubo ejecuciones intermedias con timeouts de 5/10 segundos y fallos derivados de TestBed; la repetición final completa pasó sin cambiar tests/configuración para aumentar plazos. La causa exacta de esos timeouts no está determinada; la primera coincidió con builds paralelos.
+- `npm run build`: correcto, sin advertencias, también tras el ajuste final que bloquea actualizar durante un guardado.
+- `dotnet build HelpDesk.NET.slnx`: correcto, 0 errores y 0 advertencias. El sandbox falló sin diagnóstico; ejecutado fuera con autorización.
+- `dotnet test HelpDesk.NET.slnx --filter 'Category!=PostgreSQL'`: **257 superadas, 0 fallidas/omitidas**. El intento restringido falló por sockets de MSBuild; completado fuera con autorización. Sin suite PostgreSQL ni migraciones.
+- `git diff --check`: correcto. Backend, solución, proyectos .NET, dependencias y pruebas anteriores sin cambios. Archivos nuevos revisados para whitespace.
+
+Limitaciones: asignación por ID conocido, sin selector de directorio. Sin ETag/versionado ni guardado conjunto; el backend conserva última escritura para edición administrativa concurrente. Fallo de red, timeout, respuesta ilegible o cancelación no garantiza rollback; revisar mediante Actualizar detalle antes de repetir. La revisión visual y las escrituras manuales autenticadas quedan pendientes para el destino aislado autorizado descrito en README. Sin commit ni push.
