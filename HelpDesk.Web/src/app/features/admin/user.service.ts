@@ -60,6 +60,15 @@ function readUser(value: unknown): PublicUser {
 
 export function userError(error: unknown, writing = false): string {
   const status = error instanceof HttpErrorResponse ? error.status : 0;
+  if (
+    error instanceof HttpErrorResponse &&
+    status === 409 &&
+    error.error !== null &&
+    typeof error.error === 'object' &&
+    error.error.code === 'last_admin'
+  ) {
+    return 'No se puede cambiar el rol del último administrador. Conserva al menos una cuenta con rol Administrador.';
+  }
   const messages: Record<number, string> = {
     400: 'El servidor no acepta los datos. Revisa nombre, correo y rol.',
     401: 'Tu sesión ya no es válida. Inicia sesión de nuevo.',

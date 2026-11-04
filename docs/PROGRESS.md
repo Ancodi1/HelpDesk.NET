@@ -2,13 +2,13 @@
 
 Última actualización: 2026-11-04.
 
-## Estado vigente — fase 10.5 implementada y validada sin PostgreSQL
+## Estado vigente — fase 10.6.1 validada con PostgreSQL aislado
 
-Angular incorpora Administración `/admin` para Admin: resumen global por estado, directorio completo con búsqueda/filtro y edición de nombre, correo y rol con confirmación. Asignación en detalle usa un selector de Technician/Admin por nombre y correo. Se conservan el panel Technician `/my-tickets`, sus filtros/retorno y toda la gestión anterior de tickets. El backend mantiene la autorización efectiva.
+El backend rechaza degradar al último Admin mediante PUT de usuarios, con 409 y código last_admin, comprobación bajo bloqueo de tabla y fila en la misma transacción. Angular muestra un mensaje seguro, conserva sesión/formulario y exige recarga antes de reenviar. Se mantienen Administración, selector de responsables, panel Technician y las operaciones/permisos anteriores.
 
-Se conservan validación, bloqueo de envíos duplicados y recarga obligatoria después de un fallo de escritura. La fase 10.5 reutiliza los contratos existentes, sin cambiar backend, esquema, autenticación, dependencias ni permisos. Sin creación administrativa sin credencial ni eliminación desde Angular.
+Se conservan validaciones, confirmaciones y bloqueo de duplicados. No cambian esquema, autenticación JWT, dependencias ni políticas de acceso. No hay creación administrativa con activación ni eliminación/desactivación de usuarios. La protección conserva cuentas con rol Admin; no garantiza que dispongan de credenciales operativas ni impide SQL externo.
 
-Pruebas actuales ejecutadas: 320 Angular y 265 .NET sin PostgreSQL superadas, cero fallidas; builds Angular y .NET correctos. Sin ejecución PostgreSQL en 10.5; revisión manual/visual autenticada pendiente. Procedimientos y contratos en README. Los apartados siguientes conservan el historial de fases previas.
+Pruebas ejecutadas: 328 Angular y 265 .NET sin PostgreSQL superadas en la implementación; cierre posterior con los 12 casos nuevos PostgreSQL y la suite completa de 301 PostgreSQL superados, cero fallos/omitidas. Builds Angular y .NET repetidos correctamente. Concurrencia real verificada; cero interbloqueos o transacciones pendientes. Revisión visual autenticada pendiente. Procedimiento aislado en POSTGRESQL_TESTS.md. Los apartados siguientes conservan el historial y sus limitaciones en cada momento.
 
 ## Etapa 9.4 — completada (base del backend)
 
@@ -760,3 +760,56 @@ Se adaptan únicamente dos tests previos por incompatibilidades demostradas: tic
 El primer build .NET restringido falló sin diagnóstico de código; build y tests se completaron fuera del sandbox con autorización. Total final de ambas suites, sin sumar ejecuciones dirigidas de nuevo: 585 superadas y cero fallidas.
 
 Limitaciones: no se ejecutó suite PostgreSQL ni migraciones, ni se accedió a datos reales para estas pruebas. La revisión visual autenticada con Admin y datos de prueba queda pendiente; instrucciones completas en README. El directorio es completo y no paginado por contrato, sin información de activación; los contadores y la elegibilidad pueden cambiar entre lecturas. Se conserva última escritura administrativa, sin ETag. Sin cambios de backend/dependencias, publicación, commit o push.
+
+## Fase 10.6.1 — protección del último Admin (4 de noviembre de 2026)
+
+Auditoría previa con Git limpio, lectura de AGENTS/documentación, endpoints/DTOs, autorización y pruebas de transacciones/concurrencia. Única vía HTTP que puede quitar Admin: PUT /api/users/{id}. No hay eliminación/desactivación de usuarios; registro solo crea User y bootstrap solo inserta el primer Admin. La protección anterior por fila no evitaba dos degradaciones simultáneas sobre usuarios distintos.
+
+Se reutiliza el bloqueo de tabla SHARE ROW EXCLUSIVE de bootstrap, dentro del ReadCommitted existente y antes de FOR NO KEY UPDATE en todos los PUT de usuarios. Se comprueba si una transición desde Admin a otro rol dejaría cero Admin, consultando si existe otro bajo el bloqueo. En ese caso se devuelve 409 con error seguro y code=last_admin antes de modificar campos. No se usa un contador sin sincronización. El bloqueo se mantiene hasta commit/rollback; la segunda operación espera y su lectura ReadCommitted ve el resultado confirmado de la primera. Orden de bloqueos: tabla Users → fila usuario → comprobación de asignaciones → escritura. Assignment conserva usuario → ticket, sin cambios.
+
+Todos los PUT toman primero el bloqueo global para evitar inversiones de orden con ediciones que preserven o promuevan Admin. El coste es serializar ediciones y retrasar temporalmente escrituras de Users (registro, aprovisionamiento o rehash), sin bloquear SELECT ordinarios. No se modifica el esquema ni se añaden servicios, dependencias o mecanismos externos de coordinación. Los cambios se mantienen dentro del endpoint sencillo y el protocolo ya existente.
+
+Se preservan permisos Admin, validación 400, inexistente 404, correo duplicado 409 y cambio a User prohibido con asignaciones. Editar al único Admin sin cambiar su rol funciona; degradar uno con otro Admin restante también. JWT no cambia y las peticiones ya autorizadas no se revocan en mitad de su ejecución; aun así deben superar la comprobación transaccional de último Admin.
+
+Angular reconoce solo 409 con código last_admin y muestra texto propio, no cuerpos del servidor. La sesión y el rol confirmado permanecen, el formulario conserva el intento y bloquea guardado hasta recargar. Se mantienen confirmaciones y cierre local de sesión únicamente tras éxito de cambio del propio rol. Textos de ayuda actualizados; sin rediseño.
+
+Pruebas realmente ejecutadas:
+
+| Comando | Resultado |
+| --- | --- |
+| `dotnet build HelpDesk.NET.slnx --no-restore --nologo` | Correcto, 0 errores y 0 advertencias; compila también los nuevos tests PostgreSQL |
+| `dotnet test HelpDesk.NET.slnx --no-build --no-restore --filter 'Category!=PostgreSQL' --nologo` | 265 superadas, 0 fallidas/omitidas |
+| Desde HelpDesk.Web: `npm test -- --watch=false --include=src/app/features/admin/*.spec.ts` | 43 superadas, 0 fallidas |
+| Desde HelpDesk.Web: `npm test -- --watch=false` | 328 superadas, 0 fallidas; 29 archivos |
+| Desde HelpDesk.Web: `npm run build` | Correcto, sin advertencias |
+| `git diff --check` y whitespace de archivos nuevos | Correctos |
+
+Total de suites finales: 593 superadas, cero fallidas; no se suman los casos dirigidos otra vez. Ocho nuevos casos Angular verifican los dos roles de destino, confirmación, 409, sesión/formulario/recarga, edición posterior con Admin, mensajes seguros y fallback de otros errores. El primer build .NET en sandbox terminó sin diagnóstico de código; build y tests se completaron fuera con autorización.
+
+Doce nuevos casos PostgreSQL escritos y compilados en TicketEndpointsTests.LastAdmin.cs: rechazo a User/Technician y conservación de campos/ticket/sesión; degradación propia/ajena con otro Admin; restricción de asignaciones; User/Technician sin permisos; validación/404/duplicados; dos órdenes de degradación concurrente con bloqueo real observado mediante pg_blocking_pids. Los casos de último Admin fallan si hay Admin ajeno preexistente y no lo borran ni degradan para preparar el entorno. Limpian solo sus usuarios/tickets propios.
+
+La prueba anterior de unicidad concurrente de PUT se adapta: una barrera que esperaba dos SaveChanges simultáneos bloquearía ahora la primera transacción. Se comprueba en cambio que la segunda espera el bloqueo real, después responde 409 y conserva los campos del perdedor. Se mantiene la carrera original de POST y sus aserciones. Las pruebas existentes de rol/asignación mantienen el bloqueo de fila y su orden.
+
+Limitaciones: HELPDESK_TEST_CONNECTION_STRING ausente; no se ejecutaron los nuevos casos PostgreSQL ni la suite de integración. La fixture actual llama a MigrateAsync, por lo que no se invocó ante la prohibición de migraciones. La protección concurrente queda implementada y compilada, pero su validación real en PostgreSQL está pendiente. Revisión manual autenticada pendiente; pasos en README. La regla conserva al menos una fila Admin, no credenciales operativas; SQL externo puede eludirla y no se repara una base que ya tenga cero Admin. No se modificaron datos reales, esquema, configuración de secretos ni JWT. Sin migraciones, commit o push.
+
+### Cierre de integración aislada de 10.6.1 — 4 de noviembre de 2026
+
+El usuario autoriza preparar un entorno Docker exclusivo y aplicar migraciones solo allí. Se conservan los cambios pendientes existentes. Auditoría de contenedores: no había PostgreSQL aislado reutilizable; la configuración habitual se mantiene intacta y no se conecta a ella.
+
+Se crea PostgreSQL 16.15 en contenedor `helpdesk-1061-pg-33937133`, volumen `helpdesk-1061-data-33937133`, red bridge exclusiva `helpdesk-1061-net-33937133` y publicación únicamente `127.0.0.1:15436`. Credenciales nuevas aleatorias de pruebas fuera del repositorio, directorio privado 0700 y archivos 0600; no se imprimen ni se reutilizan secretos habituales. Sin montajes de bases/configuración de desarrollo. La red internal del primer intento no publicó el puerto en esta instalación Docker: se corrigió solo la red/contenedor exclusivos conservando el volumen, antes de cualquier migración/prueba.
+
+Antes de cada suite se verifica ID de contenedor, volumen, red con un único contenedor, publicación loopback y coincidencia de system_identifier entre TCP y el contenedor. Se comprueban base helpdesk_test_db, rol helpdesk_test_user limitado, ausencia de membresías, sin CONNECT a postgres/template1 y ausencia de helpdesk_db en el clúster. El lanzador temporal construye la conexión exacta y elimina variables heredadas de conexión del proceso hijo; TicketApiFactory/validador mantienen sus defensas y sustitución de DefaultConnection, sin modificaciones. Esquema vacío confirmado antes de iniciar. La fixture aplica siete migraciones únicamente al clúster verificado y con el rol limitado.
+
+Ejecuciones reales, con límites de inactividad de 90 segundos y máximo global de 240 segundos por suite, sin dumps ni secretos en salidas:
+
+| Comprobación | Resultado |
+| --- | --- |
+| `dotnet test ... --filter 'Category=PostgreSQL&FullyQualifiedName~LastAdmin_'` con conexión aislada | 12 superadas, 0 fallidas/omitidas; 2 segundos |
+| `dotnet test ... --filter 'Category=PostgreSQL'` con conexión aislada | 301 superadas, 0 fallidas/omitidas; 23 segundos |
+| `dotnet build HelpDesk.NET.slnx --no-restore --nologo` | Correcto, 0 errores y 0 advertencias |
+| Desde HelpDesk.Web: `npm run build` | Correcto, sin advertencias |
+| `git diff --check` | Correcto |
+
+Los 12 casos están incluidos en los 301 de la suite completa: 301 casos PostgreSQL distintos, 313 ejecuciones contando la pasada dirigida. Se verifica concurrencia real con pg_blocking_pids en los dos órdenes de degradación del último Admin y en las regresiones de rol/asignación/estado; pasa también la carrera de bootstrap mediante procesos CLI reales. No hay fallos ni bloqueos indefinidos. Auditoría final de PostgreSQL: cero deadlocks, cero sesiones activas/bloqueadas/idle-in-transaction de pruebas y cero transacciones preparadas; limpieza con cero usuarios y cero tickets, siete migraciones aplicadas.
+
+Contenedor exclusivo detenido al finalizar; volumen y archivos privados temporales conservados para reutilización controlada. Procedimiento y advertencia de caducidad de /tmp en POSTGRESQL_TESTS.md. No fue necesario cambiar código funcional, tests, fixtures ni configuraciones versionadas. Solo se actualiza documentación del procedimiento y los resultados. No se modificaron bases/datos habituales, ni se ejecutaron migraciones fuera de la instancia exclusiva. Sin commit ni push. Queda pendiente únicamente la comprobación visual autenticada, no la validación PostgreSQL ni la concurrencia.

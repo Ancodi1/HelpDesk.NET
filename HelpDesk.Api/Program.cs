@@ -429,6 +429,9 @@ app.MapPost("/api/users", async (CreateUserDto dto, HelpDeskDbContext dbContext)
 app.MapPut("/api/users/{id}", async (int id, UpdateUserDto dto, HelpDeskDbContext dbContext) =>
 {
     await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+    // Igual que bootstrap: serializar antes de bloquear filas, también entre instancias de la API.
+    // ReadCommitted vuelve a leer los roles confirmados después de esperar al escritor anterior.
+    await dbContext.Database.ExecuteSqlRawAsync("LOCK TABLE public.\"Users\" IN SHARE ROW EXCLUSIVE MODE");
     // Mismo protocolo que assignment: usuario antes de cualquier escritura de tickets.
     var user = await dbContext.Users
         .FromSqlInterpolated($"SELECT * FROM \"Users\" WHERE \"Id\" = {id} FOR NO KEY UPDATE")
@@ -438,6 +441,13 @@ app.MapPut("/api/users/{id}", async (int id, UpdateUserDto dto, HelpDeskDbContex
     if (error is not null) return Results.BadRequest(new { error });
     if (await dbContext.Users.AnyAsync(other => other.Id != id && other.Email == email))
         return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
+    if (user.Role == UserRole.Admin && role != UserRole.Admin &&
+        !await dbContext.Users.AnyAsync(other => other.Id != id && other.Role == UserRole.Admin))
+        return Results.Conflict(new
+        {
+            error = "No se puede cambiar el rol del último administrador.",
+            code = "last_admin"
+        });
     if (role == UserRole.User && await dbContext.Tickets.AnyAsync(ticket => ticket.AssignedToUserId == id))
         return Results.Conflict(new { error = "No se puede cambiar a User mientras tenga tickets asignados." });
     user.Name = dto.Name!;

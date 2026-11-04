@@ -277,29 +277,28 @@ public partial class TicketEndpointsTests
     [InlineData(true)]
     public async Task AdminUserManagement_ConcurrentUniquenessRemainsEnforced(bool update)
     {
+        if (update)
+        {
+            // PUT ahora se serializa antes de SaveChanges; una barrera de dos llegadas
+            // en SaveChanges impediría que la primera petición liberase el bloqueo.
+            await AssertSerializedUserEmailUpdatesAsync();
+            return;
+        }
         var target = NewUser();
-        var first = update ? await SeedHttpUserAsync() : null;
-        var second = update ? await SeedHttpUserAsync() : null;
         var barrier = new UserSaveBarrier(target.Email);
         using var factory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             services.AddDbContext<HelpDeskDbContext>(options => options.AddInterceptors(barrier))));
         using var client = await CreateAdminClientAsync(factory);
         var body = new { target.Name, target.Email, role = "User" };
         var responses = await Task.WhenAll(
-            update ? client.PutAsJsonAsync($"/api/users/{first!.Id}", body) : client.PostAsJsonAsync("/api/users", body),
-            update ? client.PutAsJsonAsync($"/api/users/{second!.Id}", body) : client.PostAsJsonAsync("/api/users", body));
+            client.PostAsJsonAsync("/api/users", body), client.PostAsJsonAsync("/api/users", body));
         try
         {
-            Assert.Single(responses, r => r.StatusCode == (update ? HttpStatusCode.OK : HttpStatusCode.Created));
+            Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Created);
             Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Conflict);
             await using var scope = fixture.Factory.Services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<HelpDeskDbContext>();
             Assert.Equal(1, await db.Users.CountAsync(u => u.Email == target.Email));
-            if (update)
-            {
-                var loser = responses[0].StatusCode == HttpStatusCode.Conflict ? first! : second!;
-                await AssertUserStoredAsync(new(loser.Id, loser.Name, loser.Email, loser.Role, loser.CreatedAt));
-            }
         }
         finally { foreach (var response in responses) response.Dispose(); }
     }

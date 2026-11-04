@@ -1,6 +1,56 @@
 # Pruebas de persistencia con PostgreSQL aislado
 
-Estado vigente de cierre de 9.4, confirmado por el usuario: **538 pruebas superadas, 0 fallidas**, distribuidas en **257 sin PostgreSQL y 281 con PostgreSQL**. Build anterior sin errores ni advertencias; auditoría de aislamiento PostgreSQL superada. La suite corregida ya se ha ejecutado satisfactoriamente. Los registros de ampliaciones siguientes son históricos: sus menciones a pruebas pendientes describen aquellas sesiones, no el estado actual.
+## Cierre vigente — fase 10.6.1, 4 de noviembre de 2026
+
+**301 pruebas PostgreSQL superadas, 0 fallidas y 0 omitidas** en un clúster Docker exclusivo. Antes se ejecutaron por separado los **12 casos nuevos LastAdmin**, todos superados; están incluidos en los 301, no son casos adicionales. Se han ejecutado las comprobaciones reales de bloqueo/concurrencia del último Admin, unicidad de PUT, rol/asignación/estado y procesos bootstrap. Build .NET correcto sin errores/advertencias y build Angular correcto sin advertencias.
+
+### Entorno utilizado y aislamiento comprobado
+
+| Recurso | Valor no sensible |
+| --- | --- |
+| Motor | PostgreSQL 16.15, imagen postgres:16 |
+| Contenedor | helpdesk-1061-pg-33937133 |
+| Volumen exclusivo | helpdesk-1061-data-33937133 |
+| Red bridge exclusiva | helpdesk-1061-net-33937133 |
+| Puerto publicado | 127.0.0.1:15436 → 5432; no publicación en interfaces externas |
+| Base / rol de tests | helpdesk_test_db / helpdesk_test_user |
+| Estado final | Contenedor detenido; volumen conservado |
+
+Se inspeccionaron los contenedores existentes y no había un PostgreSQL aislado reutilizable. Se generaron dos credenciales aleatorias nuevas (aprovisionamiento y rol de pruebas), conservadas solo en un directorio privado externo al repositorio, sin imprimirlas ni reutilizar secretos de desarrollo. El rol de pruebas no es superusuario ni tiene CREATEDB/CREATEROLE, membresías o CONNECT a postgres/template1. La instancia contiene únicamente postgres, template0, template1 y helpdesk_test_db: no existe helpdesk_db en ese clúster. Se monta solo el volumen nuevo y el archivo privado de contraseña de aprovisionamiento; ningún volumen ni configuración de la instalación habitual.
+
+Antes de conectar las pruebas se verifica el ID exacto del contenedor, el volumen, el único miembro de la red y la publicación loopback. Se compara el identificador del clúster obtenido por TCP en 15436 con el obtenido dentro del contenedor; también se comparan la hora de arranque y los nombres/privilegios efectivos de base y usuario. Cualquier discrepancia detiene el lanzador. No se confía únicamente en que el nombre de base termine en test. La red `internal` del primer intento no publicó el puerto en esta instalación Docker; se sustituyó solo esa red/contenedor de pruebas por bridge exclusivo, antes de migrar o ejecutar tests.
+
+El lanzador construye la conexión exacta con Port=15436 y elimina las variables heredadas de conexión del proceso hijo. No lee User Secrets, DefaultConnection ni secretos habituales. TicketApiFactory continúa sustituyendo el DbContext del programa por el destino validado; PostgreSqlTestSettings y la fixture permanecen intactos. La fixture confirma base/rol antes de aplicar sus **siete migraciones** al esquema inicialmente vacío del clúster verificado.
+
+### Ejecución y reutilización local de este entorno
+
+La preparación y el lanzador de esta sesión están fuera del repositorio en `/tmp/helpdesk-1061-isolated.py`; su estado y credenciales se guardan en `/tmp/helpdesk-1061-isolated/` (directorio 0700, archivos 0600). Son temporales: `/tmp` puede desaparecer al reiniciar. No copiar su estado ni credenciales a Git o a informes. Si faltan esos archivos, detenerse y aprovisionar de nuevo una instancia exclusiva con credenciales nuevas; no reemplazar el destino por PostgreSQL habitual ni regenerar una conexión a desarrollo.
+
+Mientras esos archivos privados existan, se puede reutilizar este mismo contenedor desde una terminal autorizada para Docker:
+
+```bash
+docker start helpdesk-1061-pg-33937133
+python3 /tmp/helpdesk-1061-isolated.py verify
+python3 /tmp/helpdesk-1061-isolated.py targeted
+python3 /tmp/helpdesk-1061-isolated.py all
+python3 /tmp/helpdesk-1061-isolated.py audit
+python3 /tmp/helpdesk-1061-isolated.py stop
+```
+
+Esperar a que PostgreSQL esté listo antes de verificar. El lanzador verifica aislamiento de nuevo antes y después de cada suite, carga la conexión solo en el entorno hijo y ejecuta desde la raíz del proyecto, después de compilar:
+
+```text
+dotnet test HelpDesk.NET.slnx --no-build --no-restore --nologo --filter 'Category=PostgreSQL&FullyQualifiedName~LastAdmin_' --blame-hang-timeout 90s --blame-hang-dump-type none --results-directory <DIRECTORIO_TEMPORAL_PRIVADO>
+dotnet test HelpDesk.NET.slnx --no-build --no-restore --nologo --filter 'Category=PostgreSQL' --blame-hang-timeout 90s --blame-hang-dump-type none --results-directory <DIRECTORIO_TEMPORAL_PRIVADO>
+```
+
+Estos comandos requieren la conexión exclusiva cargada por el lanzador; por sí solos no seleccionan un destino seguro. Hay además un límite global de 240 segundos por suite y no se reintenta indefinidamente. No se generan dumps. Los registros saneados se conservan temporalmente fuera de Git.
+
+Resultado medido: 12/12 en 2 segundos y 301/301 en 23 segundos. Tras ambas ejecuciones: **0 usuarios, 0 tickets, 7 migraciones**. Auditoría final: **0 deadlocks**, ninguna sesión activa/bloqueada/idle-in-transaction de pruebas y ninguna transacción preparada. El contenedor se detuvo tras verificarlo; no se eliminaron sus datos/volumen ni se tocó ningún otro servicio. No hubo errores de pruebas ni fue necesario modificar código funcional, pruebas, fixtures o configuración versionada. Queda pendiente la revisión visual autenticada de Angular; la concurrencia PostgreSQL ya está validada.
+
+## Historial y preparación manual de etapas anteriores
+
+Registro histórico de cierre de 9.4, confirmado por el usuario: **538 pruebas superadas, 0 fallidas**, distribuidas en **257 sin PostgreSQL y 281 con PostgreSQL**. Build anterior sin errores ni advertencias; auditoría de aislamiento PostgreSQL superada. Los registros de ampliaciones siguientes son históricos: sus menciones a pruebas pendientes describen aquellas sesiones.
 
 Para verificar las correcciones, cargar de forma oculta la conexión según esta guía, exclusivamente a helpdesk_test_db. El validador y la fixture existentes verifican destino y rol limitado antes de preparar el esquema; nunca usar DefaultConnection. Desde la raíz:
 

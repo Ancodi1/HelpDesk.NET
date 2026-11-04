@@ -425,7 +425,7 @@ En la base descrita por el usuario se esperan seis tickets si no hubo otras escr
 - Ante fallo de conexión/permisos/esquema, corregir la configuración fuera del repositorio y volver a revisar el destino. No aumentar privilegios sin revisión ni usar otra base como alternativa. No se ejecutan migraciones automáticamente.
 - Si se pierde la respuesta durante el commit, no se puede asegurar desde el cliente si se confirmó. Verificar mediante el login normal y revisión administrativa de solo lectura antes de reintentar; la condición de Admin evita duplicar el bootstrap tras un commit exitoso.
 - Los strings de contraseña/conexión viven temporalmente en memoria administrada; no se promete borrado criptográfico de esa memoria. Proteger el equipo, volcados, entorno y terminal. La CLI no registra proveedores de logs ni imprime excepciones; su diagnóstico operativo es deliberadamente genérico.
-- Las limitaciones de JWT, revocación y auto degradación del último Admin descritas en 9.3 no cambian. Este comando no crea un canal de administración HTTP sin autenticación.
+- Las limitaciones de JWT y revocación descritas en 9.3 no cambian. La falta histórica de protección del último Admin queda abordada en 10.6.1 mediante el PUT administrativo, descrito al final. Este comando no crea un canal de administración HTTP sin autenticación.
 
 
 ## Frontend — fase 10.2
@@ -437,3 +437,9 @@ La sesión JWT solo vive en memoria; no utiliza localStorage, sessionStorage ni 
 El interceptor solo adjunta tokens a las rutas relativas protegidas users/tickets de la propia API y rechaza redirecciones. Health, login, registro y URLs externas quedan excluidos. Los claims se utilizan para UX y guards; la firma y la autorización se validan en .NET. La sesión expira en el límite menor de exp y expiresIn y usa una versión para ignorar respuestas tardías de sesiones anteriores. Los mensajes visibles distinguen 401/403/409/red sin reflejar datos del proveedor.
 
 Este diseño no elimina XSS ni revoca tokens copiados. Se mantiene el escape de Angular, no se añade HTML arbitrario y se exige HTTPS fuera del desarrollo local. Procedimiento manual, incluida la necesidad de una base aislada para cualquier registro válido, en el README raíz. No se ejecutó un registro real durante la implementación. Detalles en la decisión 040 de ARCHITECTURE.md.
+
+## Fase 10.6.1 — protección del último Admin
+
+La limitación de auto degradación descrita históricamente en 9.3 queda sustituida por la protección transaccional de PUT /api/users/{id}: Admin → otro rol requiere que exista otro Admin. La comprobación ocurre bajo bloqueo SHARE ROW EXCLUSIVE de Users, antes del bloqueo de fila y hasta commit/rollback. Dos degradaciones concurrentes no pueden dejar cero Admin. Rechazo 409 con `code: "last_admin"` y `error` seguro, sin modificar los campos enviados ni invalidar la sesión. El cambio de rol autorizado con otro Admin mantiene los efectos JWT anteriores; Angular exige nuevo login tras cambiar exitosamente el rol propio.
+
+No se cambia firma, duración, revocación ni autorización JWT. La garantía cuenta cuentas con rol Admin aunque no tengan credencial y no protege frente a SQL externo fuera de las rutas de la aplicación. No hay eliminación/desactivación de usuarios ni recuperación de contraseña añadida. El bloqueo puede hacer esperar temporalmente las escrituras de usuarios, incluido un rehash de login. Concurrencia validada en el cierre de 10.6.1: doce casos nuevos y suite de 301 PostgreSQL superados en un clúster Docker exclusivo. Migraciones solo en esa base autorizada, nunca sobre datos reales. Procedimiento aislado en POSTGRESQL_TESTS.md; detalles en README, PROGRESS y decisión 046 de ARCHITECTURE.

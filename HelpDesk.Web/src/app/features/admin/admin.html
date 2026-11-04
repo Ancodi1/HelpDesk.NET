@@ -141,8 +141,8 @@
               </select>
             </div>
             <p class="hint">
-              Pasar a Usuario requiere no tener tickets asignados. No existe protección del último
-              administrador en la API.
+              Pasar a Usuario requiere no tener tickets asignados. No se puede cambiar el rol del
+              último administrador.
             </p>
             @if (confirming()) {
               <div class="confirmation" role="alert">
@@ -152,8 +152,8 @@
                 </p>
                 @if (user.role === 'Admin' && form.controls.role.value !== 'Admin') {
                   <p>
-                    Esta cuenta perderá acceso administrativo. Si es el último administrador
-                    operativo, la administración podría quedar inaccesible.
+                    Esta cuenta perderá acceso administrativo si el cambio se confirma. El servidor
+                    rechazará el cambio si es el último administrador.
                   </p>
                 }
                 @if (selfChange()) {

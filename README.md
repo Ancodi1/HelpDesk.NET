@@ -615,7 +615,7 @@ El resumen muestra todos los estados, incluido Closed, con cuatro consultas a `G
 | `PUT /api/users/{id}` | Envía exclusivamente name/email/role; normaliza solo el correo. Devuelve el DTO público confirmado. Nombre no blanco de hasta 100 unidades UTF-16, correo con dominio completo de hasta 254 y rol User/Technician/Admin. El servidor conserva la validación definitiva. |
 | `PATCH /api/tickets/{id}/assignment` | Reutilizado sin cambios: assignedToUserId real de Technician/Admin o null para desasignar. Directorio solicitado solo al abrir Asignación como Admin. |
 
-Cambiar el rol requiere confirmación explícita. Pasar a User con tickets asignados produce 409; el correo duplicado también produce 409. El mensaje indica ambas causas posibles sin exponer cuerpos del servidor. **La API no impide degradar al último Admin**: la interfaz lo advierte al quitar ese rol, pero no inventa una restricción de seguridad. Cambiar el propio rol con éxito cierra deliberadamente la sesión y vuelve al login; cualquier cambio de rol exige un nuevo login del usuario afectado. Cambiar nombre/correo o editar otra cuenta no provoca logout. No se alteran las reglas JWT existentes.
+Cambiar el rol requiere confirmación explícita. Pasar a User con tickets asignados produce 409; el correo duplicado también produce 409. Desde 10.6.1, **la API rechaza degradar al último Admin con 409 y código `last_admin`**, y Angular muestra un mensaje específico sin exponer cuerpos del servidor. Cambiar el propio rol con éxito cierra deliberadamente la sesión y vuelve al login; cualquier cambio de rol exige un nuevo login del usuario afectado. Un cambio rechazado conserva la sesión y exige actualizar el directorio antes de reenviar. Cambiar nombre/correo o editar otra cuenta no provoca logout. No se alteran las reglas JWT existentes.
 
 Los formularios bloquean envíos duplicados. Errores 400/401/403/404/409 o resultados inciertos muestran mensajes seguros; 401 lo resuelve el interceptor, 403 conserva la sesión. Tras un fallo de escritura se exige actualizar el directorio antes de editar de nuevo, sin reintentos automáticos. Recargar cancela lecturas obsoletas; cancelar una petición no garantiza rollback. No hay ETag ni protección frente a última escritura administrativa concurrente.
 
@@ -632,3 +632,30 @@ No hay creación ni eliminación de usuarios en este panel, edición de contrase
 7. Cerrar sesión y entrar como User/Technician: el enlace administrativo debe desaparecer y `/admin` debe volver a `/session`. Technician conserva su panel y la edición de estado de tickets asignados. La suite automatizada cubre además 401/403, confirmación de cambio del propio rol y errores de escritura sin utilizar datos reales.
 
 Validación de 10.5: builds Angular y .NET correctos; 320 pruebas Angular y 265 .NET sin PostgreSQL superadas, cero fallidas. Comprobación visual autenticada pendiente. Sin cambios de backend, dependencias, migraciones ni datos reales.
+
+### Protección del último administrador — fase 10.6.1
+
+`PUT /api/users/{id}` no permite pasar de Admin a User o Technician cuando no existe otra cuenta Admin. El rechazo es atómico: tampoco guarda el nombre o correo enviados en esa petición. Se permite editar al único Admin manteniendo su rol y degradar una cuenta cuando queda otro Admin, siempre respetando la validación de datos, correo único y la prohibición de pasar a User con tickets asignados. Se conservan 400/401/403/404 y los demás conflictos 409.
+
+```json
+{
+  "error": "No se puede cambiar el rol del último administrador.",
+  "code": "last_admin"
+}
+```
+
+El campo `code` es una ampliación aditiva del error 409; las demás respuestas y DTOs no cambian. Angular reconoce únicamente ese código conocido y genera un mensaje local: no refleja el texto recibido. Se conserva la confirmación previa, el formulario intentado y la sesión Admin tras el rechazo. Se desactiva el guardado hasta actualizar el directorio y revisar el estado real, sin reintentos de escritura.
+
+La transacción ReadCommitted obtiene `LOCK TABLE public."Users" IN SHARE ROW EXCLUSIVE MODE` antes de leer/bloquear la fila con FOR NO KEY UPDATE. Mantiene ambos bloqueos hasta commit/rollback. Este modo, ya usado en bootstrap, serializa los PUT entre instancias de la API y bloquea temporalmente escrituras de usuarios, incluido registro o rehash de login, sin bloquear lecturas ordinarias. Después de esperar, la consulta que busca otro Admin ve los cambios confirmados por la transacción anterior. Dos degradaciones concurrentes de los dos últimos Admin no pueden superar juntas la comprobación. Se mantiene el orden usuario → ticket del protocolo de asignación.
+
+El alcance es conservar al menos una fila con rol Admin mediante la API, no asegurar que esa cuenta tenga credencial utilizable. Se cuentan también Admin sin contraseña, conforme al modelo existente; no se consultan hashes para tomar la decisión. No hay endpoints de eliminación/desactivación de usuarios. SQL directo u otros programas que modifiquen roles fuera de la API pueden eludir la regla después de liberar el bloqueo. No se repara una base que ya carezca de Admin ni se cambian autenticación, esquema o dependencias.
+
+#### Comprobación manual de la protección
+
+1. Utilizar exclusivamente una API conectada a una base aislada, ya preparada y autorizada, con cuentas y tickets de prueba. No ejecutar migraciones ni degradar administradores de desarrollo/producción para preparar el caso.
+2. Con un único Admin de prueba, entrar en `/admin`, intentar cambiar su rol a Technician y confirmar. Esperar 409 con `code: "last_admin"`, mensaje específico, permanencia en `/admin` y sesión válida. El formulario conserva el intento y bloquea el reenvío hasta pulsar **Actualizar directorio**. Repetir hacia User usando una cuenta sin asignaciones para aislar la regla.
+3. Actualizar el directorio: el usuario debe seguir siendo Admin y conservar sus campos. Editar su nombre manteniendo Admin debe funcionar. No debe iniciarse ningún PUT automáticamente al recargar.
+4. En un destino de prueba que ya tenga dos Admin, degradar uno mediante el otro: esperar 200 y comprobar que queda un Admin. Intentar degradar el restante: esperar 409. Si la cuenta degradada es la propia, el éxito sí requiere volver a iniciar sesión; el rechazo nunca cierra sesión.
+5. Comprobar que User/Technician siguen sin poder administrar usuarios y que asignación, estados y consultas de tickets mantienen sus permisos. Los casos de carrera se preparan en `TicketEndpointsTests.LastAdmin.cs` y observan `pg_blocking_pids`; una prueba manual de clics simultáneos no sustituye esa validación.
+
+Validación ejecutada: 328 pruebas Angular y 265 .NET sin PostgreSQL superadas, más **301 pruebas PostgreSQL superadas en Docker exclusivo**, incluidas las doce nuevas y la concurrencia real. Cero fallos/omitidas, interbloqueos o transacciones pendientes. Ambos builds repetidos correctamente y diff sin errores de whitespace. Las siete migraciones se aplicaron únicamente a la base aislada autorizada; ningún acceso a datos habituales. Contenedor de pruebas detenido, volumen conservado. Procedimiento e identidad del entorno en [POSTGRESQL_TESTS.md](docs/POSTGRESQL_TESTS.md). Revisión visual autenticada pendiente; sin commit ni push.
