@@ -10,6 +10,23 @@ AddTicketComments añade una tabla, índices y restricciones; aplicada solo en P
 
 Pruebas ejecutadas: 367 Angular, 280 .NET sin PostgreSQL y 338 PostgreSQL superadas, cero fallos/omitidas. Builds correctos sin advertencias. Concurrencia real verificada y limpieza sin comentarios/usuarios/tickets residuales ni interbloqueos/transacciones pendientes. Revisión visual autenticada pendiente. Procedimiento en README y POSTGRESQL_TESTS.md; los apartados siguientes conservan el historial.
 
+## Preparación de validación manual de comentarios — 4 de noviembre de 2026
+
+Reutilizado el contenedor aislado `helpdesk-1061-pg-33937133`, con volumen/red
+exclusivos y puerto loopback 15436. Identidad interna/TCP verificada; ocho
+migraciones, incluida AddTicketComments, ya aplicadas. Sin nuevas migraciones.
+Se recuperaron las credenciales temporales desaparecidas sin recrear el volumen.
+Preparadas tres cuentas (Admin/Technician/User) sin contraseña, seis tickets
+1160–1165 y 25 comentarios en 1160. Contraseñas pendientes de entrada local
+oculta; lanzador temporal fuera de Git para establecerlas y arrancar la API
+exclusivamente contra pruebas. Contenedor arrancado, revisión visual pendiente.
+
+Procedimiento, comandos absolutos y matriz de validación en
+[MANUAL_COMMENTS.md](MANUAL_COMMENTS.md). No se modificó código/configuración
+habitual ni arquitectura; sin tests/migraciones sobre la base habitual, commit
+o push. Verificación operativa real de aislamiento/esquema/datos y sintaxis
+del lanzador; builds y suites anteriores no repetidos en esta preparación.
+
 ## Etapa 9.4 — completada (base del backend)
 
 Cierre funcional confirmado por el usuario el 27 de octubre de 2026: primer administrador creado con `HelpDesk.AdminBootstrap`, ID 3 y rol Admin. Acceso recuperado mediante una herramienta temporal externa al repositorio; esa intervención no incorpora una funcionalidad permanente de recuperación. Se conservan tres usuarios y seis tickets. API arrancada en Development, login HTTP 200, directorio administrativo sin token HTTP 401 y con JWT del administrador HTTP 200; cuenta ID 3 identificada correctamente en la respuesta.
