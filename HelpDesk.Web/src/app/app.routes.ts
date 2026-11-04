@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { AppLayout } from './layout/app-layout';
-import { authGuard } from './core/auth/auth.guards';
+import { roleGuard, authGuard } from './core/auth/auth.guards';
 
 export const routes: Routes = [
   {
@@ -25,6 +25,13 @@ export const routes: Routes = [
         title: 'Registro | HelpDesk.NET',
         data: { label: 'Registro' },
         loadComponent: () => import('./features/auth/register/register').then((m) => m.Register),
+      },
+      {
+        path: 'my-tickets',
+        title: 'Mis incidencias | HelpDesk.NET',
+        data: { label: 'Mis incidencias', assignedToMe: true },
+        canActivate: [roleGuard('Technician')],
+        loadComponent: () => import('./features/tickets/tickets').then((m) => m.Tickets),
       },
       {
         path: 'tickets/new',

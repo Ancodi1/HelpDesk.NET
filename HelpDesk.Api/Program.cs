@@ -92,7 +92,7 @@ app.MapGet("/api/tickets", async (HttpRequest request, HelpDeskDbContext dbConte
 {
     var parameters = request.Query;
     // Validar antes de ejecutar SQL; rechazar parámetros conocidos repetidos evita ambigüedad.
-    foreach (var name in new[] { "status", "priority", "category", "search", "page", "pageSize" })
+    foreach (var name in new[] { "status", "priority", "category", "search", "page", "pageSize", "assignedToMe" })
     {
         if (parameters[name].Count > 1)
         {
@@ -101,6 +101,15 @@ app.MapGet("/api/tickets", async (HttpRequest request, HelpDeskDbContext dbConte
     }
 
     IQueryable<Ticket> query = dbContext.Tickets.AsNoTracking().VisibleTo(account);
+    if (parameters.TryGetValue("assignedToMe", out var assignedText))
+    {
+        if (assignedText.ToString() is not ("true" or "false"))
+            return Results.BadRequest(new { error = "assignedToMe debe ser true o false." });
+        if (account.Role != UserRole.Technician)
+            return Results.Forbid();
+        if (assignedText.ToString() == "true")
+            query = query.Where(ticket => ticket.AssignedToUserId == account.Id);
+    }
     if (parameters.TryGetValue("status", out var statusText))
     {
         if (!Enum.IsDefined(typeof(TicketStatus), statusText.ToString()))

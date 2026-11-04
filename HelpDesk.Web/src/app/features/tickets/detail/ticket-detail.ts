@@ -1,3 +1,4 @@
+import { AuthService } from '../../../core/auth/auth.service';
 import { TicketManagement } from './ticket-management';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -42,6 +43,10 @@ export class TicketDetail implements OnInit {
     this.router.currentNavigation()?.extras.state?.['createdTicketId'];
   readonly id = signal<number | null>(null);
   readonly created = computed(() => this.id() !== null && this.id() === this.createdTicketId);
+  private readonly auth = inject(AuthService);
+  readonly backPath = toSignal(this.route.queryParamMap.pipe(map(p =>
+    p.getAll('from').length === 1 && p.get('from') === 'my-tickets' && this.auth.user()?.role === 'Technician'
+      ? '/my-tickets' : '/tickets')), { initialValue: '/tickets' });
   readonly backQuery = toSignal(
     this.route.queryParamMap.pipe(map((p) => ticketQueryParams(readTicketQuery(p)))),
     { initialValue: {} },

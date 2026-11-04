@@ -233,3 +233,12 @@ button:disabled {
     padding: 38px 20px;
   }
 }
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-block: 1.5rem;
+  article { background: var(--surface); border: 1px solid var(--border); border-radius: 1rem; padding: 1.25rem; }
+  strong { display: block; color: var(--accent); font-size: 2rem; margin-top: .5rem; }
+}

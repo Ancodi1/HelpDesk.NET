@@ -155,6 +155,24 @@ Los tests automatizados de esta fase usan HTTP simulado y no crean filas reales.
 
 Las comprobaciones con una cuenta real quedan para la ejecución manual del usuario. La recarga sigue perdiendo la sesión en memoria y exige volver a iniciar sesión antes de abrir el detalle.
 
+### Panel de técnicos — fase 10.4
+
+`/my-tickets` reutiliza el listado y está disponible únicamente para `Technician`, mediante el enlace **Mis incidencias**. Consulta `assignedToMe=true`: muestra solo asignaciones a la cuenta autenticada, no todas las incidencias creadas por ella. Conserva búsqueda, estado, prioridad, categoría, tamaño y página en la URL. El listado general `/tickets` mantiene su comportamiento para los tres roles.
+
+Los contadores de abiertas, en progreso y resueltas usan `totalCount` de tres consultas independientes con `pageSize=1`; no incluyen cerradas ni dependen de los filtros del listado. No representan una instantánea transaccional conjunta. Cambiar filtros no recarga el resumen; volver desde el detalle sí lo consulta de nuevo. El resumen tiene su propio reintento de lectura.
+
+El detalle conserva el origen mediante `from=my-tickets` y permite regresar al panel con filtros/página. Se reutiliza la edición de estado existente para el técnico asignado; la autorización definitiva sigue en la API. HTTP 401 termina la sesión mediante el interceptor; 403 comunica falta de permiso sin cerrar sesión ni reintentar automáticamente.
+
+#### Comprobación manual del panel
+
+1. Arrancar la API con configuración externa del destino autorizado (`dotnet run --project HelpDesk.Api --launch-profile http`) y Angular desde `HelpDesk.Web` (`npm start`). No ejecutar migraciones ni crear datos para preparar esta revisión.
+2. Iniciar sesión con una cuenta Technician existente y abrir **Mis incidencias**. En la pestaña de red comprobar una consulta de listado y tres de resumen, todas con `assignedToMe=true`; los contadores usan estados Open/InProgress/Resolved y `pageSize=1`.
+3. Usar filtros y paginación sobre los datos disponibles. Los contadores deben permanecer independientes. Abrir un ticket y volver mediante **Volver al listado**: deben conservarse filtros y página. Si no existen asignaciones, comprobar el estado vacío sin crear ninguna.
+4. Con User o Admin, comprobar que no aparece el enlace y que `/my-tickets` redirige a `/session`. Sin sesión debe redirigir a `/login`. Confirmar que User sigue accediendo a Tickets y a Nuevo ticket.
+5. La comprobación anterior es de lectura. Solo en un entorno aislado con autorización explícita para escribir, cambiar el estado de un ticket ya asignado al técnico, volver y comprobar la actualización de los contadores. No modificar tickets reales para esta prueba. Los casos 401/403 y cambios de estado también están cubiertos con HTTP simulado.
+
+Validación automatizada del cierre: 265 pruebas .NET sin PostgreSQL y 270 Angular superadas, cero fallidas; ambos builds correctos. Vitest ejecuta los archivos en serie mediante `vitest.config.mjs` para evitar contención entre suites Angular/jsdom, manteniendo aislamiento, aserciones y timeouts predeterminados. No se ejecutaron pruebas PostgreSQL ni la revisión visual autenticada; detalles en [PROGRESS.md](docs/PROGRESS.md).
+
 ## Funcionalidades
 
 - CRUD de tickets con persistencia en PostgreSQL.
@@ -346,6 +364,10 @@ GET /api/tickets?status=Open&priority=High&category=Hardware&search=portátil&pa
 ```
 
 Todos los parámetros son opcionales y combinables. `status`, `priority` y `category` aceptan los nombres exactos documentados. `search` busca una subcadena literal en Title o Description sin distinguir mayúsculas/minúsculas; `%`, `_` y `\` se tratan como texto. Una cadena vacía no añade filtro; los espacios se conservan.
+
+`assignedToMe` (fase 10.4) acepta exclusivamente `true` o `false`, en minúsculas y una sola vez. Con `true`, limita a `AssignedToUserId` igual al ID de la cuenta autenticada; con `false` u omitido conserva la visibilidad habitual (para Technician, creados por él o asignados a él). Solo Technician puede enviar este parámetro: User y Admin reciben 403 incluso con `false`. Valores vacíos, desconocidos o repetidos producen 400 antes de consultar SQL; la validación del valor precede al rechazo por rol. Sin autenticación válida se mantiene 401. El cliente no puede elegir otro técnico mediante este filtro; `assignedToUserId` no es un parámetro soportado. Los parámetros desconocidos se ignoran.
+
+Ejemplo para Technician: `GET /api/tickets?assignedToMe=true&status=Open&priority=High&page=1&pageSize=10`. Se combina con el resto de filtros antes de calcular totales y paginar, sin cambiar el DTO ni la ordenación.
 
 `page` es un entero positivo (por defecto 1); `pageSize` está entre 1 y 100 (por defecto 10). Valores vacíos, incorrectos o parámetros conocidos repetidos devuelven `400` con `{"error":"mensaje explicativo"}`. También se rechaza una combinación cuyo desplazamiento `(page - 1) * pageSize` supere `2147483647`.
 

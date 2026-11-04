@@ -73,6 +73,10 @@
             </svg>
             Tickets
           </a>
+          @if (user.role === 'Technician') {
+            <a class="nav-link" routerLink="/my-tickets" routerLinkActive="active"
+              ariaCurrentWhenActive="page">Mis incidencias</a>
+          }
           <a
             class="nav-link"
             routerLink="/session"

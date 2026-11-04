@@ -6,6 +6,7 @@ import { ActivatedRoute, ParamMap, Router } from '@angular/router';
 import {
   catchError,
   EMPTY,
+  forkJoin,
   from,
   map,
   merge,
@@ -62,6 +63,9 @@ export class Tickets implements OnInit {
   private readonly builder = inject(NonNullableFormBuilder);
   private readonly actions = new Subject<Action>();
   readonly auth = inject(AuthService);
+  readonly personal = this.route.snapshot?.data['assignedToMe'] === true;
+  readonly summary = signal<{ kind: 'loading' } | { kind: 'ready'; counts: number[] } | { kind: 'error'; message: string }>({ kind: 'loading' });
+  private readonly summaryActions = new Subject<void>();
   readonly canCreate = computed(() => this.auth.user() !== null);
   readonly query = signal<TicketQuery>({ ...defaultTicketQuery });
   readonly state = signal<ListState>({ kind: 'loading' });
@@ -84,7 +88,7 @@ export class Tickets implements OnInit {
     return !!(q.search || q.status || q.priority || q.category);
   });
   readonly visibility = computed(() =>
-    this.auth.user()?.role === 'Admin'
+    this.personal ? 'Incidencias asignadas a ti.' : this.auth.user()?.role === 'Admin'
       ? 'Todas las incidencias disponibles para tu cuenta de administrador.'
       : this.auth.user()?.role === 'Technician'
         ? 'Incidencias creadas por ti o asignadas a ti.'
@@ -92,6 +96,23 @@ export class Tickets implements OnInit {
   );
 
   ngOnInit(): void {
+    if (this.personal) {
+      this.summaryActions.pipe(
+        startWith(undefined),
+        switchMap(() => {
+          this.summary.set({ kind: 'loading' });
+          return forkJoin(
+            (['Open', 'InProgress', 'Resolved'] as const).map(status =>
+              this.service.list({ ...defaultTicketQuery, status, pageSize: 1 }, true)
+                .pipe(map(page => page.totalCount))),
+          ).pipe(
+            map(counts => ({ kind: 'ready' as const, counts })),
+            catchError((error: unknown) => of({ kind: 'error' as const, message: listError(error) })),
+          );
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      ).subscribe(summary => this.summary.set(summary));
+    }
     const filters = merge(
       this.form.controls.status.valueChanges,
       this.form.controls.priority.valueChanges,
@@ -122,7 +143,11 @@ export class Tickets implements OnInit {
     void this.router.navigate(['/tickets/new'], { queryParams: ticketQueryParams(this.query()) });
   }
   openTicket(id: number): void {
-    void this.router.navigate(['/tickets', id], { queryParams: ticketQueryParams(this.query()) });
+    void this.router.navigate(['/tickets', id], { queryParams: { ...ticketQueryParams(this.query()), ...(this.personal ? { from: 'my-tickets' } : {}) } });
+  }
+
+  retrySummary(): void {
+    this.summaryActions.next();
   }
 
   retry(): void {
@@ -207,7 +232,7 @@ export class Tickets implements OnInit {
     );
   }
   private load(query: TicketQuery): Observable<ListState> {
-    return this.service.list(query).pipe(
+    return (this.personal ? this.service.list(query, true) : this.service.list(query)).pipe(
       map((data): ListState => ({ kind: 'ready', data })),
       catchError((error: unknown) => of<ListState>({ kind: 'error', message: listError(error) })),
       startWith<ListState>({ kind: 'loading' }),

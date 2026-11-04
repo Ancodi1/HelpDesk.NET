@@ -1,10 +1,10 @@
 # Arquitectura — HelpDesk.NET
 
-Última actualización: 2026-10-27.
+Última actualización: 2026-11-04.
 
 ## Estado actual
 
-Fases 10.1 a 10.3.2: cliente Angular independiente en `HelpDesk.Web`, con inicio/health, autenticación en memoria, listado, creación y detalle de incidencias. Consume exclusivamente los contratos autorizados de la API, sin cambiar autenticación, backend ni base de datos. Decisiones 039–042 al final.
+Fases 10.1 a 10.4: cliente Angular independiente en `HelpDesk.Web`, con inicio/health, autenticación en memoria, listado, creación, detalle y gestión por permisos. El panel Technician reutiliza el listado con `assignedToMe` en la API, sin cambios de autenticación, esquema ni dependencias. Decisiones 039–044 al final. Validación automatizada sin PostgreSQL completada; integración PostgreSQL y revisión visual autenticada de 10.4 pendientes.
 
 
 Revisión del 23 de octubre de 2026: los tres fallos PostgreSQL comunicados en 9.4 se abordan en las pruebas, sin cambios del protocolo de bloqueo, endpoints, esquema ni dependencias. Las comparaciones POST/persistencia usan microsegundos y la barrera de reasignación se sitúa después del UPDATE, antes del commit explícito. Se cubren ambos órdenes con pg_blocking_pids y rechazo del antiguo técnico. Las correcciones quedaron validadas por las 281 pruebas PostgreSQL superadas que confirma el usuario al cierre; junto con las 257 sin PostgreSQL suman 538 superadas y 0 fallidas. Resultados en PROGRESS.md. No constituye una nueva decisión de arquitectura.
@@ -593,3 +593,19 @@ La presentación consulta el rol de sesión y la asignación del ticket: Admin g
 La asignación usa un ID explícito o null para desasignar, sin peticiones auxiliares ni nombres ficticios. La API permite destinos Technician y Admin. Se reutilizan validadores de texto y enums y estilos de página/formulario responsive. No se incorpora eliminación.
 
 Pendiente bloquea envíos duplicados; errores seguros 400/401/403/404/409 y resultados inciertos exigen recargar el detalle antes de reenviar. El interceptor sigue resolviendo 401. La cancelación al destruir no garantiza rollback. No hay versión/ETag ni protección contra última escritura concurrente porque el backend no la ofrece; cada operación es independiente. Pruebas con HTTP simulado y procedimiento manual en README; resultados en PROGRESS.
+
+### 044 — Consulta de asignaciones propias y panel Technician (fase 10.4)
+
+Estado: implementada; cierre automatizado sin PostgreSQL el 4 de noviembre de 2026. Integración PostgreSQL y revisión visual autenticada pendientes, según PROGRESS.md.
+
+Decisión: ampliar GET /api/tickets con assignedToMe opcional, exclusivamente true/false exactos y no repetidos. Solo Technician puede enviarlo, incluso false. true añade AssignedToUserId == CurrentAccount.Id al IQueryable después de VisibleTo y antes de los filtros, CountAsync y Skip/Take; false u omisión mantiene la visibilidad anterior. No se admite elegir el ID de otro técnico. No cambian DTO, ordenación, autenticación ni permisos de escritura. Contrato completo en README, sección «Filtrar y paginar tickets».
+
+La ruta lazy /my-tickets usa roleGuard('Technician') y los datos de ruta para reutilizar Tickets, sus filtros y paginación. TicketService añade assignedToMe=true solo cuando se solicita explícitamente; /tickets permanece compatible para los tres roles. Enlace lateral solo para Technician. El detalle admite el marcador from=my-tickets una sola vez y para Technician; el retorno conserva únicamente los filtros/página soportados. El marcador orienta navegación y no autoriza recursos.
+
+Los contadores usan forkJoin de tres consultas filtradas por Open/InProgress/Resolved y pageSize=1; muestran totalCount del servidor, sin descargar ni contar todas las filas localmente. Son independientes de los filtros del listado y tienen estado de error/reintento propio. No incluyen Closed. No son una instantánea transaccional: las tres consultas pueden observar cambios distintos. Se recargan al entrar al panel o reintentar el resumen, sin sondeo ni recarga al cambiar filtros. La gestión de estado reutiliza TicketManagement; al volver del detalle el panel vuelve a consultar.
+
+Motivo: separar las asignaciones propias del conjunto de tickets visibles sin duplicar listados ni introducir un endpoint de estadísticas. Se mantiene la estructura sencilla y la autorización efectiva en servidor.
+
+Consecuencias: cuatro peticiones al entrar al panel (tres de resumen y una de listado); no hay consistencia atómica entre contadores y filas. HTTP 401 conserva la limpieza/redirección del interceptor y 403 no destruye una sesión válida. Sin nuevas dependencias, modelos, migraciones ni acceso al directorio de usuarios.
+
+Validación: pruebas de contrato sin persistencia, ocho casos nuevos de integración PostgreSQL escritos pero no ejecutados y pruebas Angular con Router/HTTP simulado. La resolución por DI del contexto requiere configuración aun cuando un caso rechace parámetros antes de ejecutar SQL: el test de contrato aporta una conexión ficticia, no una conexión a desarrollo. Vitest ejecuta archivos en serie mediante runnerConfig y fileParallelism=false tras reproducir timeouts bajo paralelismo y comprobar la misma suite en serie; se conservan aislamiento, aserciones y timeouts predeterminados. No cambia el comportamiento de la aplicación. Resultados y límites en PROGRESS.md.

@@ -1,14 +1,14 @@
 # Progreso — HelpDesk.NET
 
-Última actualización: 2026-11-03.
+Última actualización: 2026-11-04.
 
-## Estado vigente — fase 10.3.3 implementada
+## Estado vigente — fase 10.4 implementada y validada sin PostgreSQL
 
-Angular permite gestionar tickets desde el detalle conforme a los contratos existentes: Admin edita textos, prioridad, categoría, asignación y estado; Technician solo estado de tickets asignados; User no edita. Se conservan listado, filtros, paginación, creación, detalle, sesión en memoria y diseño responsive. El backend mantiene la autorización efectiva.
+Angular incorpora el panel Technician `/my-tickets`, con filtro de backend `assignedToMe`, contadores y retorno desde detalle conservando filtros/página. Mantiene la gestión anterior: Admin edita textos, prioridad, categoría, asignación y estado; Technician solo estado de tickets asignados; User no edita. El backend mantiene la autorización efectiva.
 
-Formularios reactivos con validación de textos/enums, transiciones existentes y asignación por ID conocido (Technician o Admin) o null para desasignar. Envío duplicado bloqueado, confirmación y actualización desde la respuesta real. Errores seguros y recarga obligatoria del detalle después de un fallo; no hay reintentos automáticos de escritura. Sin cambios de backend, PostgreSQL, migraciones, dependencias o pruebas previas. Sin eliminación desde Angular.
+Se conservan formularios, validación, bloqueo de envíos duplicados y recarga obligatoria después de un fallo de escritura. Esta fase amplía únicamente el contrato de consulta del backend, sin cambiar modelos, esquema, dependencias ni permisos de edición. Sin eliminación desde Angular.
 
-Pruebas actuales: 243 Angular y 257 .NET sin PostgreSQL superadas; builds Angular y .NET correctos. Procedimiento manual de edición y limitaciones en README. La comprobación manual/visual autenticada está pendiente. Los apartados siguientes conservan el historial de fases previas.
+Pruebas actuales ejecutadas: 270 Angular y 265 .NET sin PostgreSQL superadas, cero fallidas; builds Angular y .NET correctos. Integración PostgreSQL de esta fase y comprobación manual/visual autenticada pendientes. Procedimiento y contrato en README. Los apartados siguientes conservan el historial de fases previas.
 
 ## Etapa 9.4 — completada (base del backend)
 
@@ -699,3 +699,29 @@ Validación ejecutada:
 - `git diff --check`: correcto. Backend, solución, proyectos .NET, dependencias y pruebas anteriores sin cambios. Archivos nuevos revisados para whitespace.
 
 Limitaciones: asignación por ID conocido, sin selector de directorio. Sin ETag/versionado ni guardado conjunto; el backend conserva última escritura para edición administrativa concurrente. Fallo de red, timeout, respuesta ilegible o cancelación no garantiza rollback; revisar mediante Actualizar detalle antes de repetir. La revisión visual y las escrituras manuales autenticadas quedan pendientes para el destino aislado autorizado descrito en README. Sin commit ni push.
+
+## Fase 10.4 — panel de técnicos y cierre de validación (4 de noviembre de 2026)
+
+Se retoma la implementación guardada tras el reinicio: nueve archivos modificados y tres nuevos sin seguimiento. Se revisaron AGENTS.md, documentación, diff y tests sin descartar cambios. Se conserva íntegro el código de producción recibido: filtro assignedToMe en GET /api/tickets, panel /my-tickets, contadores, navegación y gestión de estado reutilizada. No se reimplementa el panel ni se modifican las aserciones existentes.
+
+Diagnóstico de los fallos anteriores:
+
+- .NET: el registro anterior contiene 257 éxitos y ocho HTTP 500 en AssignedToMeContractTests, pero no conserva las excepciones internas. El archivo ya corregido configura una conexión ficticia no sensible para construir DbContext sin abrir PostgreSQL. La explicación compatible con esa corrección es la falta de ConnectionStrings:DefaultConnection: Minimal API resuelve el contexto por DI antes de ejecutar la validación del handler, y su registro lanza InvalidOperationException si falta la configuración. No se puede certificar retrospectivamente la excepción del proceso anterior; los ocho errores no se reproducen con el archivo guardado, que supera sus ocho casos. No se cambió producción para eludirlos.
+- Angular: los dos archivos que contienen los tres fallos anteriores pasan aislados (20 casos). La suite completa con paralelismo reproduce los timeouts del panel y de creación para User, y añade timeouts en listado y rutas existentes: 266 éxitos y cuatro fallos. Aparece también ApplicationRef destruida tras expirar una prueba, consistente con tareas pendientes durante el desmontaje. La petición ausente del resumen del registro anterior no se reproduce; pudo ser un efecto posterior al timeout, sin evidencia suficiente para asegurar su causa histórica exacta.
+- Comparación controlada: la misma suite de 270 casos pasa con archivos en serie en 4,50 segundos mediante configuración temporal. Se guarda únicamente `test.fileParallelism=false` en HelpDesk.Web/vitest.config.mjs y se registra con runnerConfig en angular.json. La ejecución normal vuelve a pasar los 270 casos en 4,11 segundos. La evidencia apunta a contención entre workers Angular/jsdom; no a un fallo funcional demostrado del panel. No se aumentan timeouts ni se desactiva el aislamiento ni se reducen casos o aserciones.
+
+Validación realmente ejecutada:
+
+| Comando | Resultado |
+| --- | --- |
+| `dotnet test HelpDesk.Tests/HelpDesk.Tests.csproj --no-restore --filter FullyQualifiedName~AssignedToMeContractTests --nologo` | 8 superadas, 0 fallidas/omitidas |
+| Desde HelpDesk.Web: `npm test -- --watch=false --include=src/app/features/tickets/technician-panel.spec.ts --include=src/app/features/tickets/ticket-create-detail-routing.spec.ts` | 20 superadas, 0 fallidas |
+| `dotnet build HelpDesk.NET.slnx --no-restore --nologo` | Correcto, 0 errores y 0 advertencias |
+| `dotnet test HelpDesk.NET.slnx --no-build --no-restore --filter 'Category!=PostgreSQL' --nologo` | 265 superadas, 0 fallidas/omitidas |
+| Desde HelpDesk.Web: `npm run build` | Correcto, sin advertencias |
+| Desde HelpDesk.Web: `npm test -- --watch=false`, con configuración final | 270 superadas, 0 fallidas, 24 archivos |
+| `git diff --check` y comprobación de whitespace de archivos nuevos | Correctos |
+
+Los casos dirigidos están incluidos en sus suites: no se suman de nuevo. Total final de las dos suites: 535 pruebas superadas, cero fallidas. La primera ejecución .NET en sandbox no pudo arrancar por SocketException (permiso denegado al crear pipes de MSBuild); se completaron las comprobaciones .NET fuera del sandbox con autorización. No hubo bucles de reintentos.
+
+Limitaciones: HELPDESK_TEST_CONNECTION_STRING no está configurada, por lo que no se ejecutó integración PostgreSQL. Además, la fixture existente llama a MigrateAsync: no se invocó ni modificó ante la restricción de no ejecutar migraciones. Los ocho casos nuevos PostgreSQL están escritos y compilados, pero no validados contra la base de datos en este cierre. No se consultó ni modificó desarrollo ni datos reales. Comprobación visual/manual autenticada pendiente; instrucciones en README. No se ejecutaron migraciones, ni se añadieron dependencias, ni se hizo commit o push. Cierre de implementación y validación automatizada sin PostgreSQL, con estas limitaciones explícitas.

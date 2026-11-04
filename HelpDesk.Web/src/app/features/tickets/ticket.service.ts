@@ -67,11 +67,12 @@ export class TicketService {
     );
   }
 
-  list(query: TicketQuery): Observable<TicketPage> {
+  list(query: TicketQuery, assignedToMe = false): Observable<TicketPage> {
     let params = new HttpParams().set('page', query.page).set('pageSize', query.pageSize);
     for (const key of ['search', 'status', 'priority', 'category'] as const) {
       if (query[key]) params = params.set(key, query[key]);
     }
+    if (assignedToMe) params = params.set('assignedToMe', 'true');
     return this.http.get<unknown>('/api/tickets', { params, cache: 'no-store' }).pipe(
       timeout(15_000),
       map((response) => {

@@ -1,5 +1,5 @@
 <section class="ticket-page" aria-labelledby="detail-title">
-  <a class="back-link" routerLink="/tickets" [queryParams]="backQuery()">← Volver al listado</a>
+  <a class="back-link" [routerLink]="backPath()" [queryParams]="backQuery()">← Volver al listado</a>
   @if (created()) {
     <p class="feedback success" role="status">Ticket #{{ id() }} creado correctamente.</p>
   }
@@ -17,7 +17,7 @@
           <p class="eyebrow">INCIDENCIA NO DISPONIBLE</p>
           <h1 id="detail-title">No encontramos este ticket.</h1>
           <p>La incidencia no existe o no está disponible para tu cuenta.</p>
-          <a class="secondary" routerLink="/tickets" [queryParams]="backQuery()"
+          <a class="secondary" [routerLink]="backPath()" [queryParams]="backQuery()"
             >Volver al listado</a
           >
         </div>
