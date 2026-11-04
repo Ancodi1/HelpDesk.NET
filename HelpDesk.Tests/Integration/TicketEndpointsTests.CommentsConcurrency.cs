@@ -63,7 +63,7 @@ public partial class TicketEndpointsTests
         var other = await SeedHttpUserAsync(UserRole.Technician);
         var ticket = await CreateTicketAsync(assignedToUserId: actor.Id);
         var pause = new PauseCommentReadOrSave(ticket.Id);
-        var probe = new LockCommandProbe("UPDATE \"Tickets\"");
+        var probe = new LockCommandProbe("FOR UPDATE");
         using var firstFactory = fixture.Factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
             s.AddDbContext<HelpDeskDbContext>(o => o.AddInterceptors(pause))));
         using var secondFactory = fixture.Factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>

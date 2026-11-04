@@ -114,7 +114,7 @@ public partial class TicketEndpointsTests
         var other = await SeedHttpUserAsync(UserRole.Technician);
         var ticket = await CreateTicketAsync(assignedToUserId: technician.Id);
         var pause = new PauseTicketAfterSave(ticket.Id);
-        var probe = new LockCommandProbe("UPDATE \"Tickets\"");
+        var probe = new LockCommandProbe("FOR UPDATE");
         using var techFactory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             services.AddDbContext<HelpDeskDbContext>(options => options.AddInterceptors(pause))));
         using var adminFactory = fixture.Factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>

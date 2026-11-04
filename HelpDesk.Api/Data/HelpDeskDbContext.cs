@@ -14,9 +14,47 @@ public class HelpDeskDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<TicketComment> TicketComments => Set<TicketComment>();
 
+    public DbSet<TicketActivity> TicketActivities => Set<TicketActivity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        var activity = modelBuilder.Entity<TicketActivity>();
+        activity.ToTable("TicketActivities", table =>
+        {
+            table.HasCheckConstraint("CK_TicketActivities_Field",
+                "\"Field\" IN ('Status', 'Priority', 'Category', 'AssignedToUserId')");
+            table.HasCheckConstraint("CK_TicketActivities_Changed", "\"OldValue\" IS DISTINCT FROM \"NewValue\"");
+            table.HasCheckConstraint("CK_TicketActivities_Values", """
+                ("Field" = 'Status' AND "OldValue" IS NOT NULL AND "NewValue" IS NOT NULL
+                    AND "OldValue" IN ('Open','InProgress','Resolved','Closed') AND "NewValue" IN ('Open','InProgress','Resolved','Closed')) OR
+                ("Field" = 'Priority' AND "OldValue" IS NOT NULL AND "NewValue" IS NOT NULL
+                    AND "OldValue" IN ('Low','Medium','High','Critical') AND "NewValue" IN ('Low','Medium','High','Critical')) OR
+                ("Field" = 'Category' AND "OldValue" IS NOT NULL AND "NewValue" IS NOT NULL
+                    AND "OldValue" IN ('Hardware','Software','Network','Access','Other') AND "NewValue" IN ('Hardware','Software','Network','Access','Other')) OR
+                ("Field" = 'AssignedToUserId' AND ("OldValue" IS NULL OR "OldValue" ~ '^[1-9][0-9]{0,9}$')
+                    AND ("NewValue" IS NULL OR "NewValue" ~ '^[1-9][0-9]{0,9}$'))
+                """);
+            table.HasCheckConstraint("CK_TicketActivities_AssigneeNames", """
+                ("Field" = 'AssignedToUserId' AND
+                    ("OldValue" IS NULL) = ("OldAssigneeNameSnapshot" IS NULL) AND
+                    ("NewValue" IS NULL) = ("NewAssigneeNameSnapshot" IS NULL)) OR
+                ("Field" <> 'AssignedToUserId' AND "OldAssigneeNameSnapshot" IS NULL AND "NewAssigneeNameSnapshot" IS NULL)
+                """);
+        });
+        activity.HasKey(a => a.Id);
+        activity.Property(a => a.Id).UseIdentityByDefaultColumn();
+        activity.Property(a => a.ActorNameSnapshot).IsRequired().HasMaxLength(100);
+        activity.Property(a => a.Field).IsRequired().HasMaxLength(30);
+        activity.Property(a => a.OldValue).HasMaxLength(30);
+        activity.Property(a => a.NewValue).HasMaxLength(30);
+        activity.Property(a => a.OldAssigneeNameSnapshot).HasMaxLength(100);
+        activity.Property(a => a.NewAssigneeNameSnapshot).HasMaxLength(100);
+        activity.Property(a => a.CreatedAt).HasColumnType("timestamp with time zone");
+        activity.HasOne<Ticket>().WithMany().HasForeignKey(a => a.TicketId).OnDelete(DeleteBehavior.Restrict);
+        activity.HasOne<User>().WithMany().HasForeignKey(a => a.ActorUserId).OnDelete(DeleteBehavior.Restrict);
+        activity.HasIndex(a => new { a.TicketId, a.Id });
 
         var comment = modelBuilder.Entity<TicketComment>();
         comment.ToTable("TicketComments", table =>

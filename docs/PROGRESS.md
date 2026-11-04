@@ -2,13 +2,76 @@
 
 Última actualización: 2026-11-04.
 
-## Estado vigente — fase 10.6.2.1 comentarios implementados y validados
+## Estado vigente — fase 10.6.2.2 historial implementado y validado
 
-Comentarios de texto plano por ticket, con autor histórico sin correo, fecha UTC y cursor ID. Solo cuentas con visibilidad sobre el ticket pueden consultar/publicar, también en cerrados. Angular incorpora apertura bajo demanda, formulario y Cargar anteriores. El borrado de tickets con comentarios devuelve 409 y las relaciones son Restrict, sin cascada. Se conserva la protección del último Admin, paneles y gestión anterior.
+Historial automático de cambios efectivos de estado, prioridad, categoría y responsable. TicketActivity conserva actor y nombres históricos de responsables, valores anterior/nuevo y fecha UTC. GET autenticado con TicketAccess, 404 indistinguible y cursor ID descendente (20 por defecto, 100 máximo). Sin rutas públicas para crear/editar/eliminar actividades. El historial comienza con esta implementación, sin reconstrucción de cambios anteriores.
 
-AddTicketComments añade una tabla, índices y restricciones; aplicada solo en PostgreSQL Docker exclusivo. Sin cambios JWT/dependencias. Sin edición/eliminación individual, adjuntos o comentarios privados. TicketActivities y el registro de cambios quedan expresamente para el siguiente incremento.
+Cambio y actividad se guardan juntos con EF Core dentro de una transacción ReadCommitted y FOR UPDATE del ticket. Assignment bloquea usuarios anterior/nuevo por ID antes del ticket, también al desasignar; revalida la asignación observada y reintenta solo antes de escribir (máximo tres intentos). No genera actividad ante repetición, validación fallida, rechazo de permisos o rollback. DELETE conserva comentarios y actividades con 409/códigos ticket_has_comments y ticket_has_activities; sin ambos mantiene 204. Sin cambios JWT, permisos, dependencias ni protección del último Admin.
 
-Pruebas ejecutadas: 367 Angular, 280 .NET sin PostgreSQL y 338 PostgreSQL superadas, cero fallos/omitidas. Builds correctos sin advertencias. Concurrencia real verificada y limpieza sin comentarios/usuarios/tickets residuales ni interbloqueos/transacciones pendientes. Revisión visual autenticada pendiente. Procedimiento en README y POSTGRESQL_TESTS.md; los apartados siguientes conservan el historial.
+Angular incorpora Historial de actividad bajo demanda, carga/vacío/error/reintento, Cargar anteriores, fechas locales y valores traducidos con texto seguro. Lee independientemente del ticket/comentarios, cancela respuestas obsoletas y refresca el historial abierto después de una modificación confirmada. Sin directorio para nombres históricos, sondeo o WebSockets.
+
+### Validación de 10.6.2.2 — 4 de noviembre de 2026
+
+Se encontraron cambios pendientes de esta fase al comprobar Git; se conservaron y completaron, sin commit ni push. No hubo migraciones destructivas ni cambios importantes de arquitectura. Concepto trabajado: transacciones explícitas de EF Core, atomicidad entre dos entidades y bloqueos PostgreSQL coherentes para leer el valor anterior sin carreras.
+
+| Comprobación ejecutada | Resultado final |
+| --- | --- |
+| dotnet build HelpDesk.NET.slnx --no-restore | Correcto, 0 errores/advertencias |
+| dotnet test ... --no-build --filter 'Category!=PostgreSQL' | 285 superadas, 0 fallidas/omitidas |
+| Lanzador Docker exclusivo con filtro Category=PostgreSQL | 402 superadas, 0 fallidas/omitidas; 38 segundos |
+| npm run build | Correcto, sin advertencias |
+| npm test -- --watch=false | 396 superadas en 35 archivos, 0 fallidas/omitidas |
+| Auditoría Docker tras las suites | 0 usuarios/tickets/comentarios/actividades, 9 migraciones; 0 deadlocks, esperas o transacciones pendientes |
+| git diff --check | Correcto |
+
+Las primeras ejecuciones parciales pasaron: 34 PostgreSQL de actividades y 25 Angular del servicio/componente. La suite PostgreSQL intermedia pasó 389 casos antes de ampliar integridad y orden de bloqueo; la suite final de 402 es la vigente. Incluye 64 casos nuevos de actividad y las regresiones anteriores de comentarios, estados, asignaciones, roles, bootstrap y los doce casos de último Admin. Concurrencia nueva: 19 casos coordinados por interceptores y pg_blocking_pids, sin sleeps como sincronización. Comprueba cambios iguales/diferentes, borrado en ambos órdenes, visibilidad tras reasignar y bloqueo del usuario anterior antes del ticket. Se adaptan dos probes anteriores al FOR UPDATE explícito de assignment, sin eliminar sus aserciones.
+
+El primer build dentro del sandbox terminó con código 1 sin diagnóstico (0 errores/advertencias); repetido con acceso normal a las herramientas pasó. No se presenta ese primer intento como correcto. Docker también requirió ejecución fuera del sandbox por permisos del socket. Todas las comprobaciones finales anteriores se ejecutaron realmente.
+
+Migración **20261104211800_AddTicketActivities** revisada como aditiva y aplicada únicamente al nuevo Docker exclusivo `helpdesk-activities-pg-20261104`, publicado solo en 127.0.0.1:15437, con volumen/red propios y credenciales efímeras externas. Identidad Docker/TCP, montajes y rol limitado verificados antes de cualquier migración/suite y después de cada suite. El Docker previo con preparación manual de comentarios quedó intacto; no se reutilizaron sus datos. Detalles operativos en POSTGRESQL_TESTS.md.
+
+Archivos creados/modificados en esta fase (incluyen los cambios pendientes conservados):
+
+- API: HelpDesk.Api/Program.cs, Data/HelpDeskDbContext.cs, Models/TicketActivity.cs y DTOs/TicketActivityDto.cs.
+- Migraciones: HelpDesk.Api/Migrations/20261104211800_AddTicketActivities.cs, su Designer.cs y HelpDeskDbContextModelSnapshot.cs.
+- .NET: HelpDesk.Tests/AuthorizationEndpointTests.cs, TicketActivityTests.cs e Integration/TicketEndpointsTests.cs, TicketEndpointsTests.Activities.cs, TicketEndpointsTests.ActivitiesConcurrency.cs, TicketEndpointsTests.CommentsConcurrency.cs y TicketEndpointsTests.RoleConcurrency.cs.
+- Angular: HelpDesk.Web/src/app/features/tickets/detail/ticket-detail.ts y ticket-detail.html; activities/activity.service.ts, activity.service.spec.ts, activity.testing.ts, ticket-activities.ts, ticket-activities.html, ticket-activities.spec.ts y activities-routing.spec.ts.
+- Documentación: README.md, docs/PROGRESS.md, docs/ARCHITECTURE.md y docs/POSTGRESQL_TESTS.md.
+
+Limitaciones y siguiente paso: revisión visual autenticada pendiente en un destino manual aislado; procedimiento detallado en README, sección Historial de actividad. La base habitual no se ha migrado ni utilizado y necesitará un despliegue separado autorizado. El historial no audita SQL externo ni modificaciones anteriores. El entorno temporal depende de /tmp; no usarlo si faltan sus archivos ni sustituirlo por desarrollo. No hay commit/push. Los apartados siguientes conservan el registro histórico.
+
+## Preparación de validación manual del historial — 4 de noviembre de 2026
+
+Reutilizado el Docker manual `helpdesk-1061-pg-33937133`, volumen/red exclusivos,
+127.0.0.1:15436 y clúster 7704264910117584940. Se arrancó únicamente ese
+PostgreSQL y se verificaron identidad interna/TCP, montajes, red, bases y
+rol limitado antes de migrar/preparar. AddTicketComments estaba aplicada;
+AddTicketActivities se aplicó únicamente aquí: nueve migraciones confirmadas.
+No se utilizó la base habitual ni se ejecutaron suites automáticas sobre
+los datos manuales.
+
+Faltaban /tmp/helpdesk-manual.py y los secretos temporales. Se recuperó el
+lanzador usando credenciales de conexión y clave JWT solo en memoria,
+sin nuevos secretos persistidos; el archivo requerido por el montaje
+existente se recreó vacío. Las tres cuentas previas 899–901 se conservan,
+todavía sin credencial: el usuario debe establecerlas con passwords sin eco.
+Se conservaron los seis tickets 1160–1165 y los 25 comentarios de 1160.
+
+Nuevos tickets: 1166 cambios, 1167 paginación, 1168 vacío y 1169 solo Admin.
+1167 tiene 25 actividades generadas mediante PATCH autenticados reales,
+sin insertar historial por SQL. La API temporal se detuvo después de
+verificar HTTP 20+5, cursor final y autoría; JWT y credenciales solo en
+memoria. PostgreSQL queda arrancado para la sesión manual. API/Angular
+se inician con los comandos exactos de MANUAL_ACTIVITIES.md.
+
+Comprobaciones operativas: sintaxis Python, compilación del auxiliar .NET,
+identidad/roles/migraciones, conservación de datos anteriores y paginación
+HTTP real. No se cambiaron fuentes de aplicación ni arquitectura; las suites
+automatizadas anteriores no se repitieron contra esta base manual. Login
+con las contraseñas elegidas y revisión visual quedan pendientes del usuario.
+Documentación de comentarios actualizada al lanzador recuperado, nueva guía
+[MANUAL_ACTIVITIES.md](MANUAL_ACTIVITIES.md) y referencia en POSTGRESQL_TESTS.md.
+Sin commit ni push.
 
 ## Preparación de validación manual de comentarios — 4 de noviembre de 2026
 

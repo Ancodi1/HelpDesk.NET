@@ -75,6 +75,67 @@ namespace HelpDesk.Api.Migrations
                     b.ToTable("Tickets");
                 });
 
+            modelBuilder.Entity("HelpDesk.Api.Models.TicketActivity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ActorNameSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Field")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("NewAssigneeNameSnapshot")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("OldAssigneeNameSnapshot")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<int>("TicketId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("TicketId", "Id");
+
+                    b.ToTable("TicketActivities", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_TicketActivities_AssigneeNames", "(\"Field\" = 'AssignedToUserId' AND\n    (\"OldValue\" IS NULL) = (\"OldAssigneeNameSnapshot\" IS NULL) AND\n    (\"NewValue\" IS NULL) = (\"NewAssigneeNameSnapshot\" IS NULL)) OR\n(\"Field\" <> 'AssignedToUserId' AND \"OldAssigneeNameSnapshot\" IS NULL AND \"NewAssigneeNameSnapshot\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_TicketActivities_Changed", "\"OldValue\" IS DISTINCT FROM \"NewValue\"");
+
+                            t.HasCheckConstraint("CK_TicketActivities_Field", "\"Field\" IN ('Status', 'Priority', 'Category', 'AssignedToUserId')");
+
+                            t.HasCheckConstraint("CK_TicketActivities_Values", "(\"Field\" = 'Status' AND \"OldValue\" IS NOT NULL AND \"NewValue\" IS NOT NULL\n    AND \"OldValue\" IN ('Open','InProgress','Resolved','Closed') AND \"NewValue\" IN ('Open','InProgress','Resolved','Closed')) OR\n(\"Field\" = 'Priority' AND \"OldValue\" IS NOT NULL AND \"NewValue\" IS NOT NULL\n    AND \"OldValue\" IN ('Low','Medium','High','Critical') AND \"NewValue\" IN ('Low','Medium','High','Critical')) OR\n(\"Field\" = 'Category' AND \"OldValue\" IS NOT NULL AND \"NewValue\" IS NOT NULL\n    AND \"OldValue\" IN ('Hardware','Software','Network','Access','Other') AND \"NewValue\" IN ('Hardware','Software','Network','Access','Other')) OR\n(\"Field\" = 'AssignedToUserId' AND (\"OldValue\" IS NULL OR \"OldValue\" ~ '^[1-9][0-9]{0,9}$')\n    AND (\"NewValue\" IS NULL OR \"NewValue\" ~ '^[1-9][0-9]{0,9}$'))");
+                        });
+                });
+
             modelBuilder.Entity("HelpDesk.Api.Models.TicketComment", b =>
                 {
                     b.Property<int>("Id")
@@ -172,6 +233,21 @@ namespace HelpDesk.Api.Migrations
                     b.Navigation("AssignedToUser");
 
                     b.Navigation("CreatedByUser");
+                });
+
+            modelBuilder.Entity("HelpDesk.Api.Models.TicketActivity", b =>
+                {
+                    b.HasOne("HelpDesk.Api.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HelpDesk.Api.Models.Ticket", null)
+                        .WithMany()
+                        .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("HelpDesk.Api.Models.TicketComment", b =>

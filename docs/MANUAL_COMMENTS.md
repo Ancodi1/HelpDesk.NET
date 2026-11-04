@@ -1,22 +1,27 @@
 # Validación manual Angular — fase 10.6.2.1
 
+Actualización operativa: se conserva este entorno para validar también el historial.
+Consultar [MANUAL_ACTIVITIES.md](MANUAL_ACTIVITIES.md) para las nueve migraciones,
+los tickets 1166–1169 y el lanzador recuperado sin secretos persistidos.
+
 Entorno preparado el 4 de noviembre de 2026. Reutiliza exclusivamente
 `helpdesk-1061-pg-33937133`, volumen `helpdesk-1061-data-33937133`, red
 `helpdesk-1061-net-33937133`, PostgreSQL en `127.0.0.1:15436`.
 Base `helpdesk_test_db`, rol limitado `helpdesk_test_user`.
 Identificador del clúster: `7704264910117584940`.
 
-La comprobación interna y TCP confirmó las ocho migraciones, incluida
-`20261104110125_AddTicketComments`. No se aplicaron migraciones ni se
-conectó a la base habitual. El contenedor se deja arrancado.
+La preparación original confirmó ocho migraciones, incluida
+`20261104110125_AddTicketComments`. La ampliación de historial añade la novena,
+AddTicketActivities, solo aquí. No se conectó a la base habitual.
+El contenedor se deja arrancado.
 
-Los archivos temporales de la fase anterior habían desaparecido. Se recuperó
-el acceso al mismo volumen, renovando solo las credenciales de sus roles
-PostgreSQL. No se borraron datos. Las nuevas credenciales y clave JWT están
-en `/tmp/helpdesk-1061-isolated/` (0700, archivos 0600); el lanzador está en
-`/tmp/helpdesk-manual.py` (0700). No contienen contraseñas de cuentas de la
-aplicación en texto plano. Son temporales, no versionados: si desaparecen,
-no sustituirlos por conexiones habituales. Solicitar recuperación del entorno.
+El lanzador actual se ha recuperado en `/tmp/helpdesk-manual.py` (0700).
+Las nuevas credenciales PostgreSQL y la clave JWT se generan únicamente en
+memoria; no se guardan en archivos. El archivo de montaje requerido en
+`/tmp/helpdesk-1061-isolated/owner-password` está vacío. Las contraseñas de
+aplicación se eligen con entrada oculta y solo se conservan sus hashes.
+Los archivos de /tmp son temporales: si faltan, recuperar el entorno antes
+de continuar; nunca sustituirlo por la conexión habitual.
 
 ## Datos preparados
 
@@ -63,8 +68,8 @@ python3 /tmp/helpdesk-manual.py api
 ```
 
 El lanzador exige las tres credenciales establecidas, verifica nuevamente
-el destino y ejecuta `dotnet run --no-launch-profile --project
-/home/angel/Documents/GitHub/HelpDesk.NET/HelpDesk.Api/HelpDesk.Api.csproj`.
+el destino y ejecuta el DLL Debug ya compilado mediante `dotnet`, desde
+el directorio HelpDesk.Api.
 Solo el proceso hijo recibe la conexión aislada, la clave JWT exclusiva y
 `ASPNETCORE_ENVIRONMENT=ManualIsolated`, con URL `http://localhost:5085`.
 No carga User Secrets de Development ni modifica appsettings, perfiles o
@@ -134,7 +139,8 @@ docker stop helpdesk-1061-pg-33937133
 
 Para otra sesión: `docker start helpdesk-1061-pg-33937133`, esperar a que esté
 listo y ejecutar `python3 /tmp/helpdesk-manual.py verify` antes del lanzador.
-No usar `seed` de nuevo: exige tablas vacías y no elimina datos existentes.
+No ejecutar `prepare` ni `migrate` durante la API activa. El lanzador actual
+no contiene el antiguo comando `seed`.
 
 ## Validación realizada al preparar
 

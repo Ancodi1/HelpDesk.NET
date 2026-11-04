@@ -1,0 +1,42 @@
+<section class="card comments" aria-labelledby="activities-title">
+  <h2 id="activities-title">Historial de actividad</h2>
+  <p class="intro">
+    Cambios registrados desde la incorporación del historial. No incluye modificaciones anteriores.
+  </p>
+  @if (!opened()) {
+    <button class="secondary" type="button" (click)="open()">Abrir historial</button>
+  } @else {
+    <button class="secondary" type="button" [disabled]="reading()" (click)="load()">
+      Actualizar historial
+    </button>
+    @if (reading()) {
+      <p role="status">Cargando historial…</p>
+    }
+    @if (error()) {
+      <p class="feedback" role="alert">{{ error() }}</p>
+    }
+    @if (loaded() && items().length === 0) {
+      <p>No hay actividad registrada todavía.</p>
+    }
+    <ol class="thread" aria-label="Actividad más reciente primero">
+      @for (activity of items(); track activity.id) {
+        <li>
+          <div class="author">
+            <strong>{{ activity.actorName }}</strong>
+            <time [attr.datetime]="activity.createdAt">{{
+              activity.createdAt | date: 'dd/MM/yyyy, HH:mm'
+            }}</time>
+          </div>
+          <p class="content">
+            {{ fields[activity.field] }}: {{ value(activity, true) }} → {{ value(activity, false) }}
+          </p>
+        </li>
+      }
+    </ol>
+    @if (hasMore()) {
+      <button class="secondary" type="button" [disabled]="reading()" (click)="load(true)">
+        Cargar anteriores
+      </button>
+    }
+  }
+</section>

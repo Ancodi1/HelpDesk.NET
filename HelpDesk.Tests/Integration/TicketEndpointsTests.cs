@@ -353,6 +353,7 @@ public partial class TicketEndpointsTests(PostgreSqlFixture fixture) : IClassFix
         var titles = ownedTitles.Append(title).ToArray();
         // Restrict preserves comments in production; tests remove only their own dependent rows.
         var ownTickets = db.Tickets.Where(t => ids.Contains(t.Id) || titles.Contains(t.Title));
+        await db.TicketActivities.Where(a => ownTickets.Select(t => t.Id).Contains(a.TicketId)).ExecuteDeleteAsync();
         await db.TicketComments.Where(c => ownTickets.Select(t => t.Id).Contains(c.TicketId)).ExecuteDeleteAsync();
         await db.Tickets.Where(t => ids.Contains(t.Id) || titles.Contains(t.Title)).ExecuteDeleteAsync();
         Assert.False(await db.Tickets.AnyAsync(t => ids.Contains(t.Id) || titles.Contains(t.Title)));

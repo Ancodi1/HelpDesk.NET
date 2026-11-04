@@ -1,3 +1,4 @@
+import { TicketActivities } from '../activities/ticket-activities';
 import { AuthService } from '../../../core/auth/auth.service';
 import { TicketManagement } from './ticket-management';
 import { TicketComments } from '../comments/ticket-comments';
@@ -30,7 +31,7 @@ type DetailState =
 @Component({
   selector: 'app-ticket-detail',
   standalone: true,
-  imports: [RouterLink, DatePipe, TicketManagement, TicketComments],
+  imports: [RouterLink, DatePipe, TicketManagement, TicketComments, TicketActivities],
   templateUrl: './ticket-detail.html',
   styleUrls: ['../ticket-page.scss', './ticket-detail.scss'],
 })
@@ -83,7 +84,9 @@ export class TicketDetail implements OnInit {
       )
       .subscribe((state) => this.state.set(state));
   }
+  readonly activityRevision = signal(0);
   updated(ticket: Ticket): void {
+    this.activityRevision.update(value => value + 1);
     this.state.set({ kind: 'ready', ticket });
   }
   retry(): void {

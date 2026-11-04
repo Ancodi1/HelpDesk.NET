@@ -19,7 +19,7 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 | xUnit | Pruebas unitarias y de integración |
 | WebApplicationFactory / TestServer | Pruebas HTTP en memoria |
 
-## Frontend — fases 10.1 a 10.6.2.1
+## Frontend — fases 10.1 a 10.6.2.2
 
 `HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. Incluye formularios reactivos de login/registro y una sesión JWT solo en memoria, listado con filtros y paginación, creación y detalle de tickets. Incluye gestión en el detalle, panel de técnicos y panel administrativo con directorio, edición de usuarios y selección de responsables. No incluye eliminación desde Angular.
 
@@ -555,9 +555,9 @@ Si falta la cadena o no supera la validación del destino, los casos PostgreSQL 
 
 Previsión de evolución, pendiente de implementación:
 
-- Comentarios, historial y evolución de la gestión de usuarios.
+- Evolución adicional de la gestión de usuarios, cuando se solicite.
 - Recuperación/activación segura de cuentas existentes y evolución de la revocación de JWT, pendientes de solicitud.
-- Interfaz web para gestionar los tickets.
+- Ampliaciones de la interfaz web según las siguientes fases solicitadas.
 
 ## Documentación
 
@@ -664,7 +664,7 @@ Validación ejecutada: 328 pruebas Angular y 265 .NET sin PostgreSQL superadas, 
 
 ### Comentarios — fase 10.6.2.1
 
-El detalle incluye **Comentarios → Abrir comentarios**, con carga bajo demanda y paginación independiente. Cualquier cuenta autorizada a consultar el ticket puede leer y publicar, también si está cerrado: User creador, Technician creador o asignado y Admin. Cada petición comprueba visibilidad en servidor; conocer un ID no concede acceso. No hay comentarios privados, adjuntos, edición ni eliminación individual. El historial de cambios sigue pendiente: esta fase no crea TicketActivities ni registra cambios de estado, prioridad, categoría o responsable.
+El detalle incluye **Comentarios → Abrir comentarios**, con carga bajo demanda y paginación independiente. Cualquier cuenta autorizada a consultar el ticket puede leer y publicar, también si está cerrado: User creador, Technician creador o asignado y Admin. Cada petición comprueba visibilidad en servidor; conocer un ID no concede acceso. No hay comentarios privados, adjuntos, edición ni eliminación individual. El historial de cambios se incorpora en la fase 10.6.2.2 descrita a continuación.
 
 | Contrato nuevo | Comportamiento |
 | --- | --- |
@@ -677,7 +677,7 @@ Sin JWT válido: 401; sesión con cuenta/rol no válido: tratamiento 403 existen
 
 La lectura mantiene FOR SHARE del ticket durante la comprobación de visibilidad y materialización de la página. Publicar usa ReadCommitted y FOR UPDATE antes de comprobar visibilidad e insertar, coordinándose con reasignaciones y borrados. Si el técnico pierde visibilidad antes de adquirir el bloqueo, recibe 404 y no publica. Los cursores no se desplazan por nuevas publicaciones; no se calculan totales de toda la conversación. El último bloque sin más resultados devuelve nextBeforeId=null.
 
-**No se permite borrar un ticket con comentarios:** DELETE administrativo devuelve 409 con `code: "ticket_has_comments"`, conservando ticket y conversación. El DELETE toma FOR UPDATE y comprueba dependencias dentro de la misma transacción; las FK Restrict impiden también el borrado SQL referenciado, sin cascada. Un ticket sin comentarios conserva su borrado 204. La protección equivalente para actividad se añadirá cuando exista esa tabla, en el segundo incremento.
+**No se permite borrar un ticket con comentarios:** DELETE administrativo devuelve 409 con `code: "ticket_has_comments"`, conservando ticket y conversación. El DELETE toma FOR UPDATE y comprueba dependencias dentro de la misma transacción; las FK Restrict impiden también el borrado SQL referenciado, sin cascada. Un ticket sin comentarios ni actividades conserva su borrado 204. La fase 10.6.2.2 amplía esta protección al historial.
 
 El formulario bloquea duplicados y «Actualizar detalle» durante una publicación. Tras un fallo conserva el borrador, exige actualizar/revisar comentarios antes de reenviar y no refleja mensajes internos del servidor. Las denegaciones eliminan la conversación cargada. Cambiar de ticket cancela peticiones y limpia el contexto anterior. Cancelar o agotar un timeout no garantiza rollback: revisar los comentarios recientes antes de repetir el POST.
 
@@ -691,3 +691,27 @@ El formulario bloquea duplicados y «Actualizar detalle» durante una publicaci�
 6. Como Admin, intentar `DELETE /api/tickets/<ID_DE_PRUEBA_CON_COMENTARIOS>` desde un cliente local autenticado: esperar 409 y comprobar que ticket y comentarios permanecen. No hay botón de borrado en Angular ni endpoint para limpiar comentarios individuales. Preparar datos manuales solo en un destino exclusivo; no borrar globalmente registros para reiniciar las suites.
 
 Validación automatizada ejecutada: **280 .NET sin PostgreSQL, 338 PostgreSQL y 367 Angular superadas**, cero fallidas/omitidas. Incluye 37 casos nuevos PostgreSQL y seis órdenes/casos de concurrencia observados con pg_blocking_pids. Ambos builds correctos, sin advertencias. `AddTicketComments` es una migración aditiva generada y aplicada exclusivamente al Docker de pruebas (ocho migraciones totales), nunca a la base habitual. Procedimiento en POSTGRESQL_TESTS.md; revisión visual autenticada pendiente. Sin nuevas dependencias, cambios JWT, commit ni push.
+
+### Historial de actividad — fase 10.6.2.2
+
+El detalle incorpora **Historial de actividad → Abrir historial**, independiente de los comentarios. Registra automáticamente cambios efectivos de estado, prioridad, categoría y responsable (incluida la desasignación). Muestra autor histórico, fecha/hora local, campo y valores anterior/nuevo traducidos; las asignaciones conservan los nombres históricos sin consultar el directorio. Los textos se interpolan de forma segura y el diseño reutiliza el de comentarios.
+
+**El historial comienza desde esta implementación: no reconstruye cambios anteriores.** Crear tickets, editar título/descripción o publicar comentarios no genera actividades. No hay edición/eliminación de actividades, WebSockets ni sondeo. Repetir un valor, rechazar permisos/validación o revertir una operación no deja eventos.
+
+`GET /api/tickets/{id}/activities?beforeId=<ID>&pageSize=20` requiere autenticación y usa `TicketAccess`: User creador, Technician creador o asignado, Admin todos. Devuelve 404 vacío tanto para tickets inexistentes como invisibles. Cursor positivo exclusivo, orden por ID descendente, tamaño por defecto 20/máximo 100; parámetros conocidos inválidos o repetidos devuelven 400. Respuesta `{items,hasMore,nextBeforeId,pageSize}`; cursor null al terminar. Cada elemento contiene `{id,ticketId,actorUserId,actorName,field,oldValue,newValue,oldAssigneeName,newAssigneeName,createdAt}`, sin correo, rol, credenciales ni navegaciones. `field` es `Status`, `Priority`, `Category` o `AssignedToUserId`; los valores de asignación son IDs en texto o null, acompañados por instantáneas de nombres. No hay endpoints de escritura de historial.
+
+La migración aditiva **20261104211800_AddTicketActivities** crea tabla, restricciones y FK Restrict hacia ticket/actor, con índice `(TicketId,Id)`. Cambio y evento comparten transacción ReadCommitted y bloqueo FOR UPDATE del ticket hasta commit. Las asignaciones bloquean primero los usuarios anterior/nuevo con FOR SHARE, por ID ascendente, y después el ticket; si la asignación observada cambió durante la espera, liberan bloqueos y reintentan antes de escribir (máximo tres intentos, después 409). Esto conserva los nombres confirmados y el orden usuario → ticket también al desasignar. GET mantiene FOR SHARE del ticket mientras verifica visibilidad y lee la página.
+
+DELETE impide borrar tickets con comentarios (`409`, `code: "ticket_has_comments"`) o actividades (`409`, `code: "ticket_has_activities"`). Si hay ambos, prevalece el código de comentarios. Comprobación y borrado se realizan bajo el mismo bloqueo del ticket; las FK impiden cascadas. Sin ambas dependencias, mantiene 204. Los permisos JWT y la protección del último Admin permanecen vigentes.
+
+Angular ofrece carga, vacío, error seguro, reintento y **Cargar anteriores**. Al cambiar de ticket o destruir el componente cancela la lectura y limpia el contexto; una modificación confirmada actualiza el historial abierto desde la primera página y cancela una lectura anterior pendiente. Un error del historial no inutiliza el detalle ni los comentarios. Las pruebas Angular simulan HTTP; la revisión visual autenticada sigue pendiente.
+
+#### Validación manual del historial desde Angular
+
+1. Usar únicamente una API conectada externamente a un **Docker exclusivo verificado**, con AddTicketActivities aplicada y cuentas/datos de prueba de User, Technician y Admin. No usar la conexión habitual ni mezclar datos manuales con suites automáticas. Las migraciones de esta implementación se aplicaron solo al Docker automático descrito en [POSTGRESQL_TESTS.md](docs/POSTGRESQL_TESTS.md); la base habitual no está actualizada.
+2. Arrancar esa API en el destino del proxy y Angular con `cd HelpDesk.Web` y `npm start`. Con User, abrir un ticket propio y **Abrir historial**: un ticket sin cambios nuevos debe mostrar el estado vacío, aunque hubiera modificaciones anteriores a esta fase.
+3. Con Admin, abrir el historial y cambiar prioridad, categoría y responsable; reasignar y desasignar. Comprobar actualización tras cada éxito, autor, fecha y pares anterior → nuevo. Repetir el valor no debe añadir actividad. Renombrar posteriormente al usuario desde administración no debe reescribir los nombres de actividades anteriores.
+4. Con el técnico asignado, cambiar Open → InProgress → Resolved y comprobar su autoría; un técnico ajeno y un User no deben adquirir permisos de gestión. Tras reasignar, el antiguo técnico sin otra visibilidad debe recibir el mismo 404 que para un ticket inexistente.
+5. Preparar más de 20 cambios válidos solo en ese destino manual: **Cargar anteriores** debe añadir páginas sin duplicados. Cambiar de ticket durante una carga no debe mostrar actividad del anterior. Comprobar distribución en escritorio/móvil y que nombres con caracteres HTML aparecen como texto.
+6. Interrumpir temporalmente la API: debe aparecer un error recuperable del historial conservando el detalle ya mostrado. Restablecer y pulsar **Actualizar historial**. Comprobar también que los comentarios siguen cargándose/publicándose de forma independiente.
+7. El borrado no tiene interfaz Angular: su 409 con comentarios/actividad y el 204 sin dependencias se verifican en las pruebas HTTP aisladas. No hace falta añadir un control de eliminación al frontend.

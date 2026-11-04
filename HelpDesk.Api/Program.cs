@@ -278,6 +278,7 @@ app.MapPatch("/api/tickets/{id}/status", async (int id, UpdateTicketStatusDto up
         });
     }
 
+    await AddActivityAsync(dbContext, account, ticket, "Status", ticket.Status.ToString(), requestedStatus.ToString());
     ticket.Status = requestedStatus;
     await dbContext.SaveChangesAsync();
     await transaction.CommitAsync();
@@ -285,9 +286,10 @@ app.MapPatch("/api/tickets/{id}/status", async (int id, UpdateTicketStatusDto up
     return Results.Ok(ticket);
 }).RequireAuthorization(AccessPolicies.ChangeStatus);
 
-app.MapPatch("/api/tickets/{id}/priority", async (int id, UpdateTicketPriorityDto updateTicketPriorityDto, HelpDeskDbContext dbContext) =>
+app.MapPatch("/api/tickets/{id}/priority", async (int id, UpdateTicketPriorityDto updateTicketPriorityDto, HelpDeskDbContext dbContext, CurrentAccount account) =>
 {
-    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+    var ticket = await dbContext.Tickets.FromSqlInterpolated($"SELECT * FROM \"Tickets\" WHERE \"Id\" = {id} FOR UPDATE").SingleOrDefaultAsync();
 
     if (ticket is null)
     {
@@ -304,15 +306,18 @@ app.MapPatch("/api/tickets/{id}/priority", async (int id, UpdateTicketPriorityDt
         return Results.Ok(ticket);
     }
 
+    await AddActivityAsync(dbContext, account, ticket, "Priority", ticket.Priority.ToString(), priority.ToString());
     ticket.Priority = priority;
     await dbContext.SaveChangesAsync();
+    await transaction.CommitAsync();
 
     return Results.Ok(ticket);
 }).RequireAuthorization(AccessPolicies.Admin);
 
-app.MapPatch("/api/tickets/{id}/category", async (int id, UpdateTicketCategoryDto updateTicketCategoryDto, HelpDeskDbContext dbContext) =>
+app.MapPatch("/api/tickets/{id}/category", async (int id, UpdateTicketCategoryDto updateTicketCategoryDto, HelpDeskDbContext dbContext, CurrentAccount account) =>
 {
-    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+    var ticket = await dbContext.Tickets.FromSqlInterpolated($"SELECT * FROM \"Tickets\" WHERE \"Id\" = {id} FOR UPDATE").SingleOrDefaultAsync();
 
     if (ticket is null)
     {
@@ -329,50 +334,100 @@ app.MapPatch("/api/tickets/{id}/category", async (int id, UpdateTicketCategoryDt
         return Results.Ok(ticket);
     }
 
+    await AddActivityAsync(dbContext, account, ticket, "Category", ticket.Category.ToString(), category.ToString());
     ticket.Category = category;
     await dbContext.SaveChangesAsync();
+    await transaction.CommitAsync();
 
     return Results.Ok(ticket);
 }).RequireAuthorization(AccessPolicies.Admin);
 
-app.MapPatch("/api/tickets/{id}/assignment", async (int id, UpdateTicketAssignmentDto dto, HelpDeskDbContext dbContext) =>
+app.MapPatch("/api/tickets/{id}/assignment", async (int id, UpdateTicketAssignmentDto dto, HelpDeskDbContext dbContext, CurrentAccount account) =>
 {
-    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
-    if (ticket is null)
-        return Results.NotFound();
-
-    // Desasignar no requiere proteger ningún rol; la escritura de EF ya es atómica.
-    await using var transaction = dto.AssignedToUserId.HasValue
-        ? await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted)
-        : null;
-    if (dto.AssignedToUserId is int userId)
+    // Reintentar solo antes de escribir: la asignación puede cambiar mientras se bloquean los usuarios.
+    for (var attempt = 0; attempt < 3; attempt++)
     {
-        // SHARE permite asignaciones simultáneas, pero impide cambiar el rol hasta el commit.
-        var assignee = await dbContext.Users
-            .FromSqlInterpolated($"SELECT * FROM \"Users\" WHERE \"Id\" = {userId} FOR SHARE")
-            .AsNoTracking().SingleOrDefaultAsync();
-        if (assignee is null)
-            return Results.BadRequest(new { error = "El usuario asignado no existe." });
-        if (assignee.Role is not (UserRole.Technician or UserRole.Admin))
-            return Results.BadRequest(new { error = "Solo se puede asignar un ticket a Technician o Admin." });
-    }
-
-    if (ticket.AssignedToUserId == dto.AssignedToUserId)
-        return Results.Ok(ticket);
-
-    ticket.AssignedToUserId = dto.AssignedToUserId;
-    try
-    {
-        await dbContext.SaveChangesAsync();
-        if (transaction is not null)
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+        var observed = await dbContext.Tickets.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id);
+        if (observed is null) return Results.NotFound();
+        var userIds = new[] { observed.AssignedToUserId, dto.AssignedToUserId }
+            .Where(value => value.HasValue).Select(value => value!.Value).Distinct().Order().ToArray();
+        var users = new Dictionary<int, User>();
+        // Bloquear responsable anterior y nuevo por ID, antes del ticket, también al desasignar.
+        foreach (var userId in userIds)
+        {
+            var user = await dbContext.Users
+                .FromSqlInterpolated($"SELECT * FROM \"Users\" WHERE \"Id\" = {userId} FOR SHARE")
+                .AsNoTracking().SingleOrDefaultAsync();
+            if (user is not null) users.Add(user.Id, user);
+        }
+        var ticket = await dbContext.Tickets
+            .FromSqlInterpolated($"SELECT * FROM \"Tickets\" WHERE \"Id\" = {id} FOR UPDATE")
+            .SingleOrDefaultAsync();
+        if (ticket is null) return Results.NotFound();
+        if (ticket.AssignedToUserId != observed.AssignedToUserId)
+        {
+            await transaction.RollbackAsync();
+            dbContext.Entry(ticket).State = EntityState.Detached;
+            continue;
+        }
+        if (dto.AssignedToUserId is int target)
+        {
+            if (!users.TryGetValue(target, out var assignee))
+                return Results.BadRequest(new { error = "El usuario asignado no existe." });
+            if (assignee.Role is not (UserRole.Technician or UserRole.Admin))
+                return Results.BadRequest(new { error = "Solo se puede asignar un ticket a Technician o Admin." });
+        }
+        if (ticket.AssignedToUserId == dto.AssignedToUserId) return Results.Ok(ticket);
+        await AddActivityAsync(dbContext, account, ticket, "AssignedToUserId",
+            ticket.AssignedToUserId?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            dto.AssignedToUserId?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ticket.AssignedToUserId is int oldId ? users[oldId].Name : null,
+            dto.AssignedToUserId is int newId ? users[newId].Name : null);
+        ticket.AssignedToUserId = dto.AssignedToUserId;
+        try
+        {
+            await dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
+        }
+        catch (DbUpdateException exception) when (IsTicketUserForeignKeyViolation(exception))
+        {
+            return Results.Conflict(new { error = "El usuario relacionado ya no está disponible. Revisa el ticket y vuelve a intentarlo." });
+        }
+        return Results.Ok(ticket);
     }
-    catch (DbUpdateException exception) when (IsTicketUserForeignKeyViolation(exception))
-    {
-        return Results.Conflict(new { error = "El usuario relacionado ya no está disponible. Revisa el ticket y vuelve a intentarlo." });
-    }
-    return Results.Ok(ticket);
+    return Results.Conflict(new { error = "La asignación ha cambiado. Actualiza el ticket antes de continuar." });
 }).RequireAuthorization(AccessPolicies.Admin);
+
+app.MapGet("/api/tickets/{id}/activities", async (int id, HttpRequest request, HelpDeskDbContext dbContext, CurrentAccount account) =>
+{
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+    var ticket = await dbContext.Tickets.FromSqlInterpolated($"SELECT * FROM \"Tickets\" WHERE \"Id\" = {id} FOR SHARE")
+        .AsNoTracking().VisibleTo(account).SingleOrDefaultAsync();
+    if (ticket is null) return Results.NotFound();
+    var parameters = request.Query;
+    if (parameters["beforeId"].Count > 1 || parameters["pageSize"].Count > 1)
+        return Results.BadRequest(new { error = "Los parámetros de paginación no pueden repetirse." });
+    var size = 20;
+    if (parameters.TryGetValue("pageSize", out var sizeText) &&
+        (!int.TryParse(sizeText, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out size) || size is < 1 or > 100))
+        return Results.BadRequest(new { error = "pageSize debe ser un entero entre 1 y 100." });
+    int? before = null;
+    if (parameters.TryGetValue("beforeId", out var beforeText))
+    {
+        if (!int.TryParse(beforeText, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var cursor) || cursor <= 0)
+            return Results.BadRequest(new { error = "beforeId debe ser un entero positivo." });
+        before = cursor;
+    }
+    var query = dbContext.TicketActivities.AsNoTracking().Where(c => c.TicketId == id);
+    if (before is int beforeId) query = query.Where(c => c.Id < beforeId);
+    var items = await query.OrderByDescending(c => c.Id).Take(size + 1)
+        .Select(c => new TicketActivityDto(c.Id, c.TicketId, c.ActorUserId, c.ActorNameSnapshot, c.Field, c.OldValue, c.NewValue, c.OldAssigneeNameSnapshot, c.NewAssigneeNameSnapshot, c.CreatedAt)).ToListAsync();
+    var more = items.Count > size;
+    if (more) items.RemoveAt(items.Count - 1);
+    await transaction.CommitAsync();
+    return Results.Ok(new TicketActivityPageDto(items, more, more ? items[^1].Id : null, size));
+}).RequireAuthorization();
 
 app.MapGet("/api/tickets/{id}/comments", async (int id, HttpRequest request, HelpDeskDbContext dbContext, CurrentAccount account) =>
 {
@@ -446,6 +501,8 @@ app.MapDelete("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =
 
     if (await dbContext.TicketComments.AnyAsync(c => c.TicketId == id))
         return Results.Conflict(new { error = "No se puede eliminar un ticket con comentarios.", code = "ticket_has_comments" });
+    if (await dbContext.TicketActivities.AnyAsync(a => a.TicketId == id))
+        return Results.Conflict(new { error = "No se puede eliminar un ticket con historial de actividad.", code = "ticket_has_activities" });
     dbContext.Tickets.Remove(ticket);
     await dbContext.SaveChangesAsync();
     await transaction.CommitAsync();
@@ -580,6 +637,19 @@ app.MapPost("/api/auth/login", async (LoginDto dto, HelpDeskDbContext dbContext,
 }).AllowAnonymous();
 
 app.Run();
+
+// Solo se llama con el ticket bloqueado; SaveChanges y commit guardan cambio y actividad juntos.
+static async Task AddActivityAsync(HelpDeskDbContext db, CurrentAccount account, Ticket ticket,
+    string field, string? oldValue, string? newValue, string? oldName = null, string? newName = null)
+{
+    var actorName = await db.Users.Where(u => u.Id == account.Id).Select(u => u.Name).SingleAsync();
+    db.TicketActivities.Add(new TicketActivity
+    {
+        TicketId = ticket.Id, ActorUserId = account.Id, ActorNameSnapshot = actorName,
+        Field = field, OldValue = oldValue, NewValue = newValue,
+        OldAssigneeNameSnapshot = oldName, NewAssigneeNameSnapshot = newName, CreatedAt = DateTime.UtcNow
+    });
+}
 
 static string? ValidateTicket(string? title, string? description)
 {

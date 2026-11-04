@@ -99,6 +99,7 @@
           Actualizar detalle
         </button>
         <app-ticket-comments #comments [ticketId]="result.ticket.id" />
+        <app-ticket-activities [ticketId]="result.ticket.id" [revision]="activityRevision()" />
       }
     }
   </div>

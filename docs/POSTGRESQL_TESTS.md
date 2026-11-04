@@ -1,6 +1,56 @@
 # Pruebas de persistencia con PostgreSQL aislado
 
-## Cierre vigente — fase 10.6.2.1, 4 de noviembre de 2026
+## Entorno manual de historial preparado
+
+Para revisión autenticada Angular se reutiliza `helpdesk-1061-pg-33937133`
+(127.0.0.1:15436), conservando cuentas y datos previos. AddTicketComments y
+AddTicketActivities verificadas, nueve migraciones. Preparados 1166–1169;
+1167 contiene 25 cambios de prioridad por API, con paginación 20+5 comprobada.
+El lanzador manual recuperado no guarda nuevas credenciales ni JWT; las
+contraseñas de las tres cuentas siguen pendientes de entrada local oculta.
+Guía y comandos exactos en [MANUAL_ACTIVITIES.md](MANUAL_ACTIVITIES.md).
+No ejecutar suites automáticas contra este entorno con datos manuales;
+el Docker automático de 15437 permanece separado y detenido. El contenedor
+manual se deja arrancado para el usuario. Base habitual intacta.
+
+## Cierre vigente — fase 10.6.2.2, 4 de noviembre de 2026
+
+**402 PostgreSQL superadas, 0 fallidas/omitidas**, incluidas 64 nuevas de actividades y las regresiones completas de comentarios, asignaciones, roles, bootstrap y último Admin. Build .NET con 0 errores/advertencias, 285 pruebas .NET sin base y 396 Angular superadas; build Angular correcto. Suite final PostgreSQL: 38 segundos. Hubo una primera ejecución dirigida de 34 casos y otra completa de 389 antes de la ampliación final; los recuentos anteriores son históricos.
+
+Migración aditiva **20261104211800_AddTicketActivities**, aplicada mediante la fixture solamente en un nuevo Docker exclusivo. Contiene tabla, dos FK Restrict, cuatro checks e índices de actor y (TicketId,Id), sin cambios de filas anteriores. El historial comienza desde esta implementación y no incluye modificaciones anteriores. Fixtures y PostgreSqlTestSettings permanecen intactos; no hay fallback a desarrollo.
+
+Se creó otro entorno para conservar el Docker anterior y sus datos preparados para revisión manual de comentarios:
+
+| Recurso exclusivo de 10.6.2.2 | Valor no sensible |
+| --- | --- |
+| Contenedor | helpdesk-activities-pg-20261104 |
+| Imagen | postgres:16 |
+| Volumen | helpdesk-activities-pg-20261104-data |
+| Red bridge, único miembro | helpdesk-activities-pg-20261104-net |
+| Publicación | 127.0.0.1:15437 → 5432 |
+| Base / rol de tests | helpdesk_test_db / helpdesk_test_user |
+| Estado final | Detenido; volumen conservado |
+
+Contraseñas nuevas aleatorias solo en archivos privados 0600 dentro de /tmp/helpdesk-activities-isolated/ (0700), fuera de Git y sin imprimir. No se leen secretos habituales. Dos únicos montajes: volumen nuevo y archivo de contraseña de aprovisionamiento de solo lectura. Antes de pruebas/migraciones se comparan ID exacto del contenedor, montajes, red exclusiva y puerto loopback; por TCP se contrastan system_identifier y pg_postmaster_start_time con los obtenidos dentro del contenedor. El clúster contiene solo postgres/template0/template1/helpdesk_test_db. Se verifican identidad de base/rol de pruebas, ausencia de superusuario/CREATEDB/CREATEROLE y membresías; se revoca CONNECT público a postgres/template1. La fixture vuelve a comprobar identidad y privilegios antes de MigrateAsync.
+
+El lanzador temporal /tmp/helpdesk-activities-isolated.py verifica el entorno antes y después de cada suite, construye únicamente su conexión exclusiva en el entorno hijo y elimina variables heredadas de conexión. Límite de 240 segundos por suite; coordinación de concurrencia por interceptores y pg_blocking_pids, no sleeps. Los 19 casos nuevos de concurrencia cubren los cuatro PATCH con valores iguales/diferentes, los cuatro cambios frente a DELETE en ambos órdenes, lectura tras reasignación y usuario anterior antes del ticket en reasignación/desasignación. Las pruebas de atomicidad fuerzan una excepción después de SaveChanges y antes de commit y verifican que no persiste ninguna de las dos escrituras.
+
+Mientras existan los archivos privados, desde una terminal con acceso Docker, después de compilar:
+
+```bash
+docker start helpdesk-activities-pg-20261104
+python3 /tmp/helpdesk-activities-isolated.py verify
+python3 /tmp/helpdesk-activities-isolated.py test 'Category=PostgreSQL&FullyQualifiedName~Activities_'
+python3 /tmp/helpdesk-activities-isolated.py test 'Category=PostgreSQL'
+python3 /tmp/helpdesk-activities-isolated.py audit
+python3 /tmp/helpdesk-activities-isolated.py stop
+```
+
+Esperar a PostgreSQL listo antes de verify. Si falta el script/estado privado, preparar otro Docker exclusivo con credenciales nuevas; no reconstruir una conexión a desarrollo ni utilizar el Docker manual para suites automáticas. No publicar ni versionar esos archivos temporales.
+
+Auditoría final: **0 usuarios, 0 tickets, 0 comentarios, 0 actividades, 9 migraciones**; **0 deadlocks**, sesiones bloqueadas/idle-in-transaction y transacciones preparadas. La limpieza de tests elimina solo actividades de sus tickets propios, después comentarios, tickets y usuarios; mantiene Restrict y no reinicia secuencias ni borra conjuntos globales. Se detuvo únicamente el nuevo contenedor; volumen conservado. No hubo acceso a la base habitual ni cambios a otros contenedores, JWT, dependencias, commit o push. Revisión visual autenticada pendiente; pasos en README.
+
+## Cierre anterior — fase 10.6.2.1, 4 de noviembre de 2026
 
 **338 pruebas PostgreSQL superadas, 0 fallidas/omitidas**, en el mismo clúster Docker exclusivo descrito debajo. Se ejecutaron primero las 37 nuevas de comentarios, incluidas seis carreras reales con reasignación/borrado. Después pasó la suite completa, incluidas las regresiones de último Admin, estados, roles, asignaciones y bootstrap. Además: 280 pruebas .NET sin base y 367 Angular superadas; ambos builds correctos sin advertencias.
 
