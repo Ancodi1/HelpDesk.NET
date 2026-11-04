@@ -19,7 +19,7 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 | xUnit | Pruebas unitarias y de integración |
 | WebApplicationFactory / TestServer | Pruebas HTTP en memoria |
 
-## Frontend — fases 10.1 a 10.5
+## Frontend — fases 10.1 a 10.6.2.1
 
 `HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. Incluye formularios reactivos de login/registro y una sesión JWT solo en memoria, listado con filtros y paginación, creación y detalle de tickets. Incluye gestión en el detalle, panel de técnicos y panel administrativo con directorio, edición de usuarios y selección de responsables. No incluye eliminación desde Angular.
 
@@ -245,13 +245,15 @@ URL del perfil HTTP local: `http://localhost:5085`. Salvo health, registro y log
 | GET | `/api/health` | `200` con `{"status":"ok"}` |
 | GET | `/api/tickets` | `200` con `items` y metadatos de paginación |
 | GET | `/api/tickets/{id}` | `200` con el ticket, o `404` |
+| GET | `/api/tickets/{id}/comments` | Usuario autorizado a ver el ticket; paginación por cursor |
+| POST | `/api/tickets/{id}/comments` | Usuario autorizado a ver el ticket; `201`, `400`, `401`, `403`, `404` o `409` |
 | POST | `/api/tickets` | `201` con ticket y Location, `400` o `409` por conflicto de referencia concurrente |
 | PUT | `/api/tickets/{id}` | Actualiza título y descripción; `200`, `400` o `404` |
 | PATCH | `/api/tickets/{id}/status` | Cambia el estado; `200`, `400`, `404` o `409` |
 | PATCH | `/api/tickets/{id}/priority` | Cambia la prioridad; `200`, `400` o `404` |
 | PATCH | `/api/tickets/{id}/category` | Cambia la categoría; `200`, `400` o `404` |
 | PATCH | `/api/tickets/{id}/assignment` | Asigna, reasigna o desasigna; `200`, `400`, `404` o `409` |
-| DELETE | `/api/tickets/{id}` | `204` sin cuerpo al eliminar, o `404` |
+| DELETE | `/api/tickets/{id}` | Solo Admin; `204`, `404` o `409` si contiene comentarios |
 
 ### Permisos de tickets
 
@@ -659,3 +661,33 @@ El alcance es conservar al menos una fila con rol Admin mediante la API, no aseg
 5. Comprobar que User/Technician siguen sin poder administrar usuarios y que asignación, estados y consultas de tickets mantienen sus permisos. Los casos de carrera se preparan en `TicketEndpointsTests.LastAdmin.cs` y observan `pg_blocking_pids`; una prueba manual de clics simultáneos no sustituye esa validación.
 
 Validación ejecutada: 328 pruebas Angular y 265 .NET sin PostgreSQL superadas, más **301 pruebas PostgreSQL superadas en Docker exclusivo**, incluidas las doce nuevas y la concurrencia real. Cero fallos/omitidas, interbloqueos o transacciones pendientes. Ambos builds repetidos correctamente y diff sin errores de whitespace. Las siete migraciones se aplicaron únicamente a la base aislada autorizada; ningún acceso a datos habituales. Contenedor de pruebas detenido, volumen conservado. Procedimiento e identidad del entorno en [POSTGRESQL_TESTS.md](docs/POSTGRESQL_TESTS.md). Revisión visual autenticada pendiente; sin commit ni push.
+
+### Comentarios — fase 10.6.2.1
+
+El detalle incluye **Comentarios → Abrir comentarios**, con carga bajo demanda y paginación independiente. Cualquier cuenta autorizada a consultar el ticket puede leer y publicar, también si está cerrado: User creador, Technician creador o asignado y Admin. Cada petición comprueba visibilidad en servidor; conocer un ID no concede acceso. No hay comentarios privados, adjuntos, edición ni eliminación individual. El historial de cambios sigue pendiente: esta fase no crea TicketActivities ni registra cambios de estado, prioridad, categoría o responsable.
+
+| Contrato nuevo | Comportamiento |
+| --- | --- |
+| `GET /api/tickets/{id}/comments?pageSize=20&beforeId=<ID>` | `200` con `{items,hasMore,nextBeforeId,pageSize}`. Orden ID descendente, límite por defecto 20 y máximo 100. Cursor opcional positivo; solo devuelve IDs menores que beforeId y del ticket autorizado. Parámetros conocidos repetidos/vacíos/incorrectos: 400. |
+| `POST /api/tickets/{id}/comments` | Cuerpo `{content}`; `201` con el comentario confirmado. ID, autor, nombre histórico y fecha los decide el servidor. Sin reintento automático ni idempotencia adicional. |
+
+DTO de comentario: `{id,ticketId,authorUserId,authorName,content,createdAt}`. El nombre es una instantánea del perfil al publicar, sin correo ni rol; un cambio posterior del nombre no reescribe comentarios. Fecha UTC presentada en hora local. El contenido se conserva sin recortar, se muestra como texto escapado con saltos de línea y exige texto no blanco de hasta **4.000 unidades UTF-16**, sin caracteres nulos (PostgreSQL no los admite en text). Hay validación de aplicación y restricciones de no blanco/longitud UTF-16 en base de datos, incluidas las parejas de sustitutos de emojis.
+
+Sin JWT válido: 401; sesión con cuenta/rol no válido: tratamiento 403 existente. Ticket invisible e inexistente comparten 404 sin datos. Validación: 400; conflictos de persistencia: 409 seguro. Las respuestas no incorporan correos, hashes, tokens ni navegaciones de entidades.
+
+La lectura mantiene FOR SHARE del ticket durante la comprobación de visibilidad y materialización de la página. Publicar usa ReadCommitted y FOR UPDATE antes de comprobar visibilidad e insertar, coordinándose con reasignaciones y borrados. Si el técnico pierde visibilidad antes de adquirir el bloqueo, recibe 404 y no publica. Los cursores no se desplazan por nuevas publicaciones; no se calculan totales de toda la conversación. El último bloque sin más resultados devuelve nextBeforeId=null.
+
+**No se permite borrar un ticket con comentarios:** DELETE administrativo devuelve 409 con `code: "ticket_has_comments"`, conservando ticket y conversación. El DELETE toma FOR UPDATE y comprueba dependencias dentro de la misma transacción; las FK Restrict impiden también el borrado SQL referenciado, sin cascada. Un ticket sin comentarios conserva su borrado 204. La protección equivalente para actividad se añadirá cuando exista esa tabla, en el segundo incremento.
+
+El formulario bloquea duplicados y «Actualizar detalle» durante una publicación. Tras un fallo conserva el borrador, exige actualizar/revisar comentarios antes de reenviar y no refleja mensajes internos del servidor. Las denegaciones eliminan la conversación cargada. Cambiar de ticket cancela peticiones y limpia el contexto anterior. Cancelar o agotar un timeout no garantiza rollback: revisar los comentarios recientes antes de repetir el POST.
+
+#### Validación manual de comentarios
+
+1. Utilizar una API configurada externamente **solo para el PostgreSQL aislado** con AddTicketComments aplicada y cuentas de prueba; arrancar Angular con `npm start`. La base habitual no se ha migrado. No apuntar una comprobación de escrituras al perfil habitual por omisión ni mezclar datos manuales con una suite en ejecución.
+2. Entrar con una cuenta de prueba y abrir un ticket visible. Pulsar **Abrir comentarios**: comprobar carga, estado vacío o listado con autor histórico, fecha local y contenido. La apertura del detalle por sí sola no solicita la conversación.
+3. Probar espacios, más de 4.000 unidades UTF-16 y emojis que superen ese límite: no debe publicarse. Escribir texto con saltos de línea y marcas como `<b>texto</b>`: debe verse literalmente, nunca como HTML. Publicar una vez y comprobar confirmación y formulario limpio; un doble envío pendiente no debe duplicar el POST.
+4. Con más de 20 comentarios de prueba, usar **Cargar anteriores** y comprobar orden, cursor y ausencia de duplicados. Publicar otro desde una segunda sesión y comprobar que actualizar muestra las entradas nuevas. Si se pierde la conexión al publicar, actualizar antes de reenviar.
+5. Con Technician asignado y otro Admin de prueba, reasignar a otro técnico: la siguiente lectura/publicación del anterior debe dar 404 si tampoco es creador. User ajeno tampoco debe consultar/publicar; un ticket cerrado visible sí permite comentarios.
+6. Como Admin, intentar `DELETE /api/tickets/<ID_DE_PRUEBA_CON_COMENTARIOS>` desde un cliente local autenticado: esperar 409 y comprobar que ticket y comentarios permanecen. No hay botón de borrado en Angular ni endpoint para limpiar comentarios individuales. Preparar datos manuales solo en un destino exclusivo; no borrar globalmente registros para reiniciar las suites.
+
+Validación automatizada ejecutada: **280 .NET sin PostgreSQL, 338 PostgreSQL y 367 Angular superadas**, cero fallidas/omitidas. Incluye 37 casos nuevos PostgreSQL y seis órdenes/casos de concurrencia observados con pg_blocking_pids. Ambos builds correctos, sin advertencias. `AddTicketComments` es una migración aditiva generada y aplicada exclusivamente al Docker de pruebas (ocho migraciones totales), nunca a la base habitual. Procedimiento en POSTGRESQL_TESTS.md; revisión visual autenticada pendiente. Sin nuevas dependencias, cambios JWT, commit ni push.

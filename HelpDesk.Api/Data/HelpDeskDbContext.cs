@@ -12,10 +12,29 @@ public class HelpDeskDbContext : DbContext
 
     public DbSet<Ticket> Tickets => Set<Ticket>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<TicketComment> TicketComments => Set<TicketComment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        var comment = modelBuilder.Entity<TicketComment>();
+        comment.ToTable("TicketComments", table =>
+        {
+            table.HasCheckConstraint("CK_TicketComments_Content_NotBlank",
+                "length(btrim(\"Content\", U&'\\0009\\000A\\000B\\000C\\000D\\0020\\0085\\00A0\\1680\\2000\\2001\\2002\\2003\\2004\\2005\\2006\\2007\\2008\\2009\\200A\\2028\\2029\\202F\\205F\\3000')) > 0");
+            // PostgreSQL counts code points; add the supplementary characters to count UTF-16 units.
+            table.HasCheckConstraint("CK_TicketComments_Content_Utf16Length",
+                "char_length(\"Content\") + char_length(regexp_replace(\"Content\", U&'[^\\+010000-\\+10FFFF]', '', 'g')) <= 4000");
+        });
+        comment.HasKey(c => c.Id);
+        comment.Property(c => c.Id).UseIdentityByDefaultColumn();
+        comment.Property(c => c.Content).IsRequired().HasMaxLength(4000);
+        comment.Property(c => c.AuthorNameSnapshot).IsRequired().HasMaxLength(100);
+        comment.Property(c => c.CreatedAt).HasColumnType("timestamp with time zone");
+        comment.HasOne<Ticket>().WithMany().HasForeignKey(c => c.TicketId).OnDelete(DeleteBehavior.Restrict);
+        comment.HasOne<User>().WithMany().HasForeignKey(c => c.AuthorUserId).OnDelete(DeleteBehavior.Restrict);
+        comment.HasIndex(c => new { c.TicketId, c.Id });
 
         var user = modelBuilder.Entity<User>();
         user.ToTable("Users", table => table.HasCheckConstraint(

@@ -1,5 +1,6 @@
 import { AuthService } from '../../../core/auth/auth.service';
 import { TicketManagement } from './ticket-management';
+import { TicketComments } from '../comments/ticket-comments';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, OnInit, signal, computed } from '@angular/core';
@@ -29,7 +30,7 @@ type DetailState =
 @Component({
   selector: 'app-ticket-detail',
   standalone: true,
-  imports: [RouterLink, DatePipe, TicketManagement],
+  imports: [RouterLink, DatePipe, TicketManagement, TicketComments],
   templateUrl: './ticket-detail.html',
   styleUrls: ['../ticket-page.scss', './ticket-detail.scss'],
 })

@@ -1,6 +1,16 @@
 # Pruebas de persistencia con PostgreSQL aislado
 
-## Cierre vigente — fase 10.6.1, 4 de noviembre de 2026
+## Cierre vigente — fase 10.6.2.1, 4 de noviembre de 2026
+
+**338 pruebas PostgreSQL superadas, 0 fallidas/omitidas**, en el mismo clúster Docker exclusivo descrito debajo. Se ejecutaron primero las 37 nuevas de comentarios, incluidas seis carreras reales con reasignación/borrado. Después pasó la suite completa, incluidas las regresiones de último Admin, estados, roles, asignaciones y bootstrap. Además: 280 pruebas .NET sin base y 367 Angular superadas; ambos builds correctos sin advertencias.
+
+Se verificó identidad TCP/volumen/red/rol antes de cualquier operación y se aplicó exclusivamente allí **20261104110125_AddTicketComments** mediante la fixture autorizada: ocho migraciones totales. No se migró la base habitual. La nueva tabla usa FK Restrict y checks Unicode/UTF-16; se revisó la migración como aditiva antes de aplicarla.
+
+El lanzador temporal incorpora `python3 /tmp/helpdesk-1061-isolated.py comments` para el filtro `Category=PostgreSQL&FullyQualifiedName~Comments_`. `all` sigue ejecutando la suite completa. La identidad/credenciales permanecen en los mismos archivos privados temporales, sin cambios de fixtures/validador ni fallback a desarrollo. El código de limpieza de tests elimina únicamente comentarios pertenecientes a sus propios tickets antes de esos tickets/usuarios, conservando Restrict en producción.
+
+Resultado: 37/37 dirigidas en 4 segundos y 338/338 completas en 26 segundos (las 37 están incluidas en 338). Después: cero comentarios/usuarios/tickets, ocho migraciones; auditoría de cero deadlocks, sesiones bloqueadas/idle-in-transaction y transacciones preparadas. Contenedor detenido al finalizar, volumen conservado. Sin datos reales, dependencias, commit ni push. Las instrucciones de reutilización y la caducidad de /tmp siguen siendo las del entorno descrito a continuación; no mezclar datos manuales con suites automáticas.
+
+## Cierre anterior — fase 10.6.1, 4 de noviembre de 2026
 
 **301 pruebas PostgreSQL superadas, 0 fallidas y 0 omitidas** en un clúster Docker exclusivo. Antes se ejecutaron por separado los **12 casos nuevos LastAdmin**, todos superados; están incluidos en los 301, no son casos adicionales. Se han ejecutado las comprobaciones reales de bloqueo/concurrencia del último Admin, unicidad de PUT, rol/asignación/estado y procesos bootstrap. Build .NET correcto sin errores/advertencias y build Angular correcto sin advertencias.
 

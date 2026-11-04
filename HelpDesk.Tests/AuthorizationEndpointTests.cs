@@ -24,7 +24,8 @@ public class AuthorizationEndpointTests
             ("PUT", "/api/tickets/1"), ("DELETE", "/api/tickets/1"),
             ("PATCH", "/api/tickets/1/status"), ("PATCH", "/api/tickets/1/priority"),
             ("PATCH", "/api/tickets/1/category"), ("PATCH", "/api/tickets/1/assignment"),
-            ("GET", "/api/users"), ("GET", "/api/users/1"), ("POST", "/api/users"), ("PUT", "/api/users/1")
+            ("GET", "/api/users"), ("GET", "/api/users/1"), ("POST", "/api/users"), ("PUT", "/api/users/1"),
+            ("GET", "/api/tickets/1/comments"), ("POST", "/api/tickets/1/comments")
         };
         foreach (var (method, route) in routes)
             foreach (var token in new[] { "missing", "invalid", "expired", "tampered" })
@@ -73,7 +74,7 @@ public class AuthorizationEndpointTests
         var anonymous = routes.Where(endpoint => endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null)
             .Select(endpoint => endpoint.RoutePattern.RawText).OrderBy(path => path);
         Assert.Equal(new[] { "/api/auth/login", "/api/auth/register", "/api/health" }, anonymous);
-        Assert.Equal(16, routes.Length);
+        Assert.Equal(18, routes.Length);
         Assert.All(routes.Where(endpoint => endpoint.Metadata.GetMetadata<IAllowAnonymous>() is null),
             endpoint => Assert.NotEmpty(endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>()));
         var options = factory.Services.GetRequiredService<IOptions<AuthorizationOptions>>().Value;

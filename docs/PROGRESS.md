@@ -2,13 +2,13 @@
 
 Última actualización: 2026-11-04.
 
-## Estado vigente — fase 10.6.1 validada con PostgreSQL aislado
+## Estado vigente — fase 10.6.2.1 comentarios implementados y validados
 
-El backend rechaza degradar al último Admin mediante PUT de usuarios, con 409 y código last_admin, comprobación bajo bloqueo de tabla y fila en la misma transacción. Angular muestra un mensaje seguro, conserva sesión/formulario y exige recarga antes de reenviar. Se mantienen Administración, selector de responsables, panel Technician y las operaciones/permisos anteriores.
+Comentarios de texto plano por ticket, con autor histórico sin correo, fecha UTC y cursor ID. Solo cuentas con visibilidad sobre el ticket pueden consultar/publicar, también en cerrados. Angular incorpora apertura bajo demanda, formulario y Cargar anteriores. El borrado de tickets con comentarios devuelve 409 y las relaciones son Restrict, sin cascada. Se conserva la protección del último Admin, paneles y gestión anterior.
 
-Se conservan validaciones, confirmaciones y bloqueo de duplicados. No cambian esquema, autenticación JWT, dependencias ni políticas de acceso. No hay creación administrativa con activación ni eliminación/desactivación de usuarios. La protección conserva cuentas con rol Admin; no garantiza que dispongan de credenciales operativas ni impide SQL externo.
+AddTicketComments añade una tabla, índices y restricciones; aplicada solo en PostgreSQL Docker exclusivo. Sin cambios JWT/dependencias. Sin edición/eliminación individual, adjuntos o comentarios privados. TicketActivities y el registro de cambios quedan expresamente para el siguiente incremento.
 
-Pruebas ejecutadas: 328 Angular y 265 .NET sin PostgreSQL superadas en la implementación; cierre posterior con los 12 casos nuevos PostgreSQL y la suite completa de 301 PostgreSQL superados, cero fallos/omitidas. Builds Angular y .NET repetidos correctamente. Concurrencia real verificada; cero interbloqueos o transacciones pendientes. Revisión visual autenticada pendiente. Procedimiento aislado en POSTGRESQL_TESTS.md. Los apartados siguientes conservan el historial y sus limitaciones en cada momento.
+Pruebas ejecutadas: 367 Angular, 280 .NET sin PostgreSQL y 338 PostgreSQL superadas, cero fallos/omitidas. Builds correctos sin advertencias. Concurrencia real verificada y limpieza sin comentarios/usuarios/tickets residuales ni interbloqueos/transacciones pendientes. Revisión visual autenticada pendiente. Procedimiento en README y POSTGRESQL_TESTS.md; los apartados siguientes conservan el historial.
 
 ## Etapa 9.4 — completada (base del backend)
 
@@ -813,3 +813,37 @@ Ejecuciones reales, con límites de inactividad de 90 segundos y máximo global 
 Los 12 casos están incluidos en los 301 de la suite completa: 301 casos PostgreSQL distintos, 313 ejecuciones contando la pasada dirigida. Se verifica concurrencia real con pg_blocking_pids en los dos órdenes de degradación del último Admin y en las regresiones de rol/asignación/estado; pasa también la carrera de bootstrap mediante procesos CLI reales. No hay fallos ni bloqueos indefinidos. Auditoría final de PostgreSQL: cero deadlocks, cero sesiones activas/bloqueadas/idle-in-transaction de pruebas y cero transacciones preparadas; limpieza con cero usuarios y cero tickets, siete migraciones aplicadas.
 
 Contenedor exclusivo detenido al finalizar; volumen y archivos privados temporales conservados para reutilización controlada. Procedimiento y advertencia de caducidad de /tmp en POSTGRESQL_TESTS.md. No fue necesario cambiar código funcional, tests, fixtures ni configuraciones versionadas. Solo se actualiza documentación del procedimiento y los resultados. No se modificaron bases/datos habituales, ni se ejecutaron migraciones fuera de la instancia exclusiva. Sin commit ni push. Queda pendiente únicamente la comprobación visual autenticada, no la validación PostgreSQL ni la concurrencia.
+
+## Fase 10.6.2.1 — comentarios de tickets (4 de noviembre de 2026)
+
+Inicio con Git limpio, revisión de AGENTS/modelos/contratos/permisos/migraciones/detalle y guía de aislamiento. Decisiones aprobadas: comentario público dentro de la visibilidad del ticket, incluso cerrado; texto plano máximo 4.000 unidades UTF-16; nombre histórico sin correo; cursor ID 20/100; sin edición/eliminación individual, privados o adjuntos. El usuario exige impedir borrado físico con comentarios o futura actividad, sin cascada. Este incremento implementa solo comentarios; no existe TicketActivities ni se registran cambios de propiedades.
+
+Implementación:
+
+- TicketComment con IDs, AuthorNameSnapshot, Content y CreatedAt UTC. DTOs públicos explícitos sin correo/rol/hash. Autor/fecha/ticket se derivan del servidor, ignorando campos adicionales de identidad del cliente.
+- AddTicketComments aditiva: tabla, índices de autor y (TicketId, Id), FK Restrict hacia ticket/autor y checks de contenido no blanco Unicode y longitud UTF-16. PostgreSQL cuenta code points: el check suma los caracteres suplementarios para imponer el mismo límite que .NET. Caracteres nulos rechazados con 400 antes de persistir.
+- GET/POST /api/tickets/{id}/comments reutilizan RequireAuthorization, CurrentAccount y VisibleTo. GET toma FOR SHARE en ReadCommitted antes de validar visibilidad y materializar la página; POST toma FOR UPDATE antes de visibilidad/validación/inserción. Se conserva la autorización por petición existente y se evita publicar con una asignación anterior al bloqueo. Paginación descendente por ID con Take(pageSize+1), hasMore y nextBeforeId; sin conteos completos ni offset.
+- DELETE Admin toma FOR UPDATE, comprueba comentarios y devuelve 409 con code=ticket_has_comments sin modificar filas. FK Restrict protege también contra borrado SQL referenciado; no hay cascada ni endpoint de borrado de comentarios. Si el borrado confirma antes, la publicación concurrente termina en 404; si publica primero, borrar termina en 409.
+- Angular añade CommentService y TicketComments en el detalle. Apertura explícita bajo demanda, listado/formulario, fechas locales, Cargar anteriores y estados independientes. Contenido/nombre escapados; validación Unicode/UTF-16/NUL, bloqueo duplicado y de Actualizar detalle durante POST. Un fallo conserva borrador y exige revisar mediante recarga, sin reintentar escritura. Denegaciones limpian comentarios; cambios de ID cancelan lecturas/POST y limpian el contexto, sin asumir rollback del servidor.
+
+Validación ejecutada:
+
+| Comando | Resultado |
+| --- | --- |
+| Generación EF `migrations add AddTicketComments` con entorno Testing y conexión de diseño exclusiva sin contraseña | Generada, sin conexión/aplicación a base habitual |
+| `dotnet build HelpDesk.NET.slnx --no-restore --nologo` | Correcto, 0 errores y 0 advertencias |
+| `dotnet test HelpDesk.NET.slnx --no-build --no-restore --filter 'Category!=PostgreSQL' --nologo` | 280 superadas, 0 fallidas/omitidas |
+| Lanzador aislado `comments` | 37 PostgreSQL nuevas superadas, 0 fallidas/omitidas |
+| Lanzador aislado `all` | 338 PostgreSQL superadas, 0 fallidas/omitidas; 26 segundos |
+| Desde HelpDesk.Web: `npm test -- --watch=false --include=src/app/features/tickets/comments/*.spec.ts` | 39 superadas, 0 fallidas |
+| Desde HelpDesk.Web: `npm test -- --watch=false` | 367 superadas, 0 fallidas; 32 archivos |
+| Desde HelpDesk.Web: `npm run build` | Correcto, sin advertencias; repetido tras bloquear actualización durante publicación |
+| `git diff --check` y whitespace de archivos nuevos | Correctos |
+
+Total final: 985 casos superados, sin sumar otra vez las ejecuciones dirigidas. Se añaden siete casos unitarios .NET y ocho casos de JWT inválido para las dos rutas nuevas, 37 PostgreSQL y 39 Angular. La expectativa de rutas protegidas se actualiza de 16 a 18 manteniendo las comprobaciones de anonimato/autorización. La limpieza de integración elimina dependencias solo de tickets propios antes de borrar esos tickets y sus usuarios; ninguna limpieza global.
+
+Pruebas PostgreSQL cubren roles/visibilidad/cerrados, 400/401/403/404, identidad/fecha no falsificables, nombre histórico tras renombrado, persistencia/precisión UTC, límites ASCII/emojis/espacios Unicode, cursor con nuevas inserciones sin cruces ni duplicados, 409 de borrado y FK directa sin cascada. Seis casos de carrera observan espera real mediante pg_blocking_pids e interceptores: lectura/publicación antes y después de reasignación; publicación/borrado en ambos órdenes, sin sleeps de coordinación. Pasan también todas las regresiones anteriores, incluida la protección del último Admin.
+
+Antes de cualquier operación de base se arranca únicamente helpdesk-1061-pg-33937133 y se verifica identidad TCP, ID de contenedor/volumen/red, puerto 127.0.0.1:15436 y rol limitado mediante el lanzador privado. La fixture aplica exclusivamente allí 20261104110125_AddTicketComments: ocho migraciones totales, ninguna sobre desarrollo. Auditoría posterior: cero usuarios, tickets y comentarios; cero deadlocks/sesiones bloqueadas o idle-in-transaction/transacciones preparadas. Contenedor detenido al finalizar y volumen conservado. Credenciales fuera del repositorio, no expuestas.
+
+Limitaciones: revisión visual/autenticada manual pendiente; procedimiento en README. Sin idempotencia del POST ni garantía de rollback por cancelación/timeout. Se conserva el nombre histórico de autores, pero no se registra actividad de cambios de ticket; ese segundo incremento requerirá su propia implementación y migración. No se migró la base habitual ni se modificaron datos reales, JWT o dependencias. Sin commit ni push.

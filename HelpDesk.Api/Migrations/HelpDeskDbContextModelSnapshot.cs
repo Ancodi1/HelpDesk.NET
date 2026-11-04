@@ -75,6 +75,47 @@ namespace HelpDesk.Api.Migrations
                     b.ToTable("Tickets");
                 });
 
+            modelBuilder.Entity("HelpDesk.Api.Models.TicketComment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AuthorNameSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("AuthorUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("TicketId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorUserId");
+
+                    b.HasIndex("TicketId", "Id");
+
+                    b.ToTable("TicketComments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_TicketComments_Content_NotBlank", "length(btrim(\"Content\", U&'\\0009\\000A\\000B\\000C\\000D\\0020\\0085\\00A0\\1680\\2000\\2001\\2002\\2003\\2004\\2005\\2006\\2007\\2008\\2009\\200A\\2028\\2029\\202F\\205F\\3000')) > 0");
+
+                            t.HasCheckConstraint("CK_TicketComments_Content_Utf16Length", "char_length(\"Content\") + char_length(regexp_replace(\"Content\", U&'[^\\+010000-\\+10FFFF]', '', 'g')) <= 4000");
+                        });
+                });
+
             modelBuilder.Entity("HelpDesk.Api.Models.User", b =>
                 {
                     b.Property<int>("Id")
@@ -131,6 +172,21 @@ namespace HelpDesk.Api.Migrations
                     b.Navigation("AssignedToUser");
 
                     b.Navigation("CreatedByUser");
+                });
+
+            modelBuilder.Entity("HelpDesk.Api.Models.TicketComment", b =>
+                {
+                    b.HasOne("HelpDesk.Api.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HelpDesk.Api.Models.Ticket", null)
+                        .WithMany()
+                        .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

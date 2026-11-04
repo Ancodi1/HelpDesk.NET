@@ -374,17 +374,81 @@ app.MapPatch("/api/tickets/{id}/assignment", async (int id, UpdateTicketAssignme
     return Results.Ok(ticket);
 }).RequireAuthorization(AccessPolicies.Admin);
 
+app.MapGet("/api/tickets/{id}/comments", async (int id, HttpRequest request, HelpDeskDbContext dbContext, CurrentAccount account) =>
+{
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+    var ticket = await dbContext.Tickets.FromSqlInterpolated($"SELECT * FROM \"Tickets\" WHERE \"Id\" = {id} FOR SHARE")
+        .AsNoTracking().VisibleTo(account).SingleOrDefaultAsync();
+    if (ticket is null) return Results.NotFound();
+    var parameters = request.Query;
+    if (parameters["beforeId"].Count > 1 || parameters["pageSize"].Count > 1)
+        return Results.BadRequest(new { error = "Los parámetros de paginación no pueden repetirse." });
+    var size = 20;
+    if (parameters.TryGetValue("pageSize", out var sizeText) &&
+        (!int.TryParse(sizeText, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out size) || size is < 1 or > 100))
+        return Results.BadRequest(new { error = "pageSize debe ser un entero entre 1 y 100." });
+    int? before = null;
+    if (parameters.TryGetValue("beforeId", out var beforeText))
+    {
+        if (!int.TryParse(beforeText, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var cursor) || cursor <= 0)
+            return Results.BadRequest(new { error = "beforeId debe ser un entero positivo." });
+        before = cursor;
+    }
+    var query = dbContext.TicketComments.AsNoTracking().Where(c => c.TicketId == id);
+    if (before is int beforeId) query = query.Where(c => c.Id < beforeId);
+    var items = await query.OrderByDescending(c => c.Id).Take(size + 1)
+        .Select(c => new TicketCommentDto(c.Id, c.TicketId, c.AuthorUserId, c.AuthorNameSnapshot, c.Content, c.CreatedAt)).ToListAsync();
+    var more = items.Count > size;
+    if (more) items.RemoveAt(items.Count - 1);
+    await transaction.CommitAsync();
+    return Results.Ok(new TicketCommentPageDto(items, more, more ? items[^1].Id : null, size));
+}).RequireAuthorization();
+
+app.MapPost("/api/tickets/{id}/comments", async (int id, CreateTicketCommentDto dto, HelpDeskDbContext dbContext, CurrentAccount account) =>
+{
+    // Serializar publicación, reasignación y borrado antes de comprobar la visibilidad.
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+    var ticket = await dbContext.Tickets.FromSqlInterpolated($"SELECT * FROM \"Tickets\" WHERE \"Id\" = {id} FOR UPDATE")
+        .VisibleTo(account).SingleOrDefaultAsync();
+    if (ticket is null) return Results.NotFound();
+    var error = TicketCommentValidation.Validate(dto.Content);
+    if (error is not null) return Results.BadRequest(new { error });
+    var authorName = await dbContext.Users.Where(u => u.Id == account.Id).Select(u => u.Name).SingleOrDefaultAsync();
+    if (authorName is null) return Results.Forbid();
+    var comment = new TicketComment
+    {
+        TicketId = id, AuthorUserId = account.Id, AuthorNameSnapshot = authorName,
+        Content = dto.Content!, CreatedAt = DateTime.UtcNow
+    };
+    dbContext.TicketComments.Add(comment);
+    try
+    {
+        await dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+    }
+    catch (DbUpdateException exception) when (exception.InnerException is PostgresException
+        { SqlState: PostgresErrorCodes.ForeignKeyViolation, ConstraintName: "FK_TicketComments_Users_AuthorUserId" })
+    {
+        return Results.Conflict(new { error = "La cuenta ya no está disponible. Revisa tu sesión antes de continuar." });
+    }
+    return Results.Json(new TicketCommentDto(comment.Id, id, comment.AuthorUserId, comment.AuthorNameSnapshot, comment.Content, comment.CreatedAt), statusCode: 201);
+}).RequireAuthorization();
+
 app.MapDelete("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =>
 {
-    var ticket = await dbContext.Tickets.FirstOrDefaultAsync(ticket => ticket.Id == id);
+    await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+    var ticket = await dbContext.Tickets.FromSqlInterpolated($"SELECT * FROM \"Tickets\" WHERE \"Id\" = {id} FOR UPDATE").SingleOrDefaultAsync();
 
     if (ticket is null)
     {
         return Results.NotFound();
     }
 
+    if (await dbContext.TicketComments.AnyAsync(c => c.TicketId == id))
+        return Results.Conflict(new { error = "No se puede eliminar un ticket con comentarios.", code = "ticket_has_comments" });
     dbContext.Tickets.Remove(ticket);
     await dbContext.SaveChangesAsync();
+    await transaction.CommitAsync();
 
     return Results.NoContent();
 }).RequireAuthorization(AccessPolicies.Admin);

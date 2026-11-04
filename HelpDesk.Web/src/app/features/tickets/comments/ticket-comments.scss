@@ -1,0 +1,32 @@
+.comments {
+  margin-top: 24px;
+}
+.thread {
+  list-style: none;
+  padding: 0;
+  margin-block: 20px;
+}
+.thread li {
+  border-top: 1px solid var(--border);
+  padding-block: 20px;
+}
+.author {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+time {
+  color: var(--muted);
+  font-size: 12px;
+}
+.content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+  font-size: 14px;
+}
+form {
+  margin-top: 24px;
+}

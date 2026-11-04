@@ -1,0 +1,82 @@
+<section class="card comments" aria-labelledby="comments-title">
+  <h2 id="comments-title">Comentarios</h2>
+  @if (!opened()) {
+    <p class="intro">
+      Consulta la conversación y publica comentarios de texto plano, también en incidencias
+      cerradas.
+    </p>
+    <button class="secondary" type="button" (click)="open()">Abrir comentarios</button>
+  } @else {
+    <button class="secondary" type="button" [disabled]="reading() || pending()" (click)="load()">
+      Actualizar comentarios
+    </button>
+    @if (reading()) {
+      <p role="status">Cargando comentarios…</p>
+    }
+    @if (readError()) {
+      <p class="feedback" role="alert">{{ readError() }}</p>
+    }
+    @if (loaded() && items().length === 0) {
+      <p>No hay comentarios todavía.</p>
+    }
+    <ol class="thread" aria-label="Comentarios más recientes primero">
+      @for (comment of items(); track comment.id) {
+        <li>
+          <div class="author">
+            <strong>{{ comment.authorName }}</strong>
+            <time [attr.datetime]="comment.createdAt">{{
+              comment.createdAt | date: 'dd/MM/yyyy, HH:mm'
+            }}</time>
+          </div>
+          <p class="content">{{ comment.content }}</p>
+        </li>
+      }
+    </ol>
+    @if (hasMore()) {
+      <button
+        class="secondary"
+        type="button"
+        [disabled]="reading() || pending()"
+        (click)="load(true)"
+      >
+        Cargar anteriores
+      </button>
+    }
+    @if (message()) {
+      <p class="feedback" [class.success]="success()" role="status">{{ message() }}</p>
+    }
+    @if (reviewRequired()) {
+      <p role="alert">
+        Actualiza y revisa los comentarios antes de reenviar. Un fallo de conexión no garantiza que
+        la publicación se haya cancelado.
+      </p>
+    }
+    <form [formGroup]="form" (ngSubmit)="publish()">
+      <fieldset [disabled]="pending() || reading() || !loaded() || reviewRequired()">
+        <div class="field">
+          <label for="comment-content">Nuevo comentario (máximo 4.000 unidades UTF-16)</label>
+          <textarea
+            id="comment-content"
+            rows="4"
+            maxlength="4000"
+            [formControl]="content"
+            [attr.aria-invalid]="content.touched && content.invalid"
+            aria-describedby="comment-hint"
+          ></textarea>
+          <p id="comment-hint" class="hint">
+            Texto plano. No incluyas contraseñas, tokens ni otros secretos.
+            {{ content.value.length }} / 4000
+          </p>
+          @if (content.touched && content.invalid) {
+            <p class="field-error">
+              Escribe texto no vacío de hasta 4.000 unidades UTF-16, sin caracteres nulos.
+            </p>
+          }
+        </div>
+        <button class="primary" type="submit">
+          {{ pending() ? 'Publicando…' : 'Publicar comentario' }}
+        </button>
+      </fieldset>
+    </form>
+  }
+</section>
