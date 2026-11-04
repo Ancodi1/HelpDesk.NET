@@ -38,7 +38,9 @@ describe('Session navigation', () => {
       f.detectChanges();
       expect(f.nativeElement.textContent).toContain(roleNavigation[role]);
       expect(f.nativeElement.querySelector('a[href="/session"]')).not.toBeNull();
-      expect(f.nativeElement.querySelector('a[href="/admin"]')).toBeNull();
+      const adminLink = f.nativeElement.querySelector('a[href="/admin"]');
+      if (role === 'Admin') expect(adminLink).not.toBeNull();
+      else expect(adminLink).toBeNull();
       expect(f.nativeElement.querySelector('a[href="/tickets"]')).not.toBeNull();
     },
   );

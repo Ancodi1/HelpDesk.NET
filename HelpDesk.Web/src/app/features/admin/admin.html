@@ -1,0 +1,185 @@
+<section class="ticket-page" aria-labelledby="admin-title">
+  <header>
+    <p class="eyebrow">GESTIÓN DEL SERVICIO</p>
+    <h1 id="admin-title">Administración</h1>
+    <p class="intro">Incidencias del equipo y directorio de usuarios.</p>
+  </header>
+  <section aria-labelledby="overview-title">
+    <div class="heading">
+      <h2 id="overview-title">Vista general de incidencias</h2>
+      <button class="secondary" type="button" (click)="reloadSummary()">Actualizar resumen</button>
+    </div>
+    @let stats = summary();
+    @if (stats.kind === 'loading') {
+      <p role="status">Cargando resumen…</p>
+    } @else if (stats.kind === 'error') {
+      <p class="feedback" role="alert">
+        No se pudo cargar el resumen. Comprueba tu acceso y vuelve a intentarlo.
+      </p>
+    } @else {
+      <div class="stats">
+        @for (status of statuses; track status; let i = $index) {
+          <a class="card" routerLink="/tickets" [queryParams]="{ status: status }">
+            <span>{{ statusNames[status] }}</span
+            ><strong>{{ stats.counts[i] }}</strong>
+            <small>Ver incidencias →</small>
+          </a>
+        }
+      </div>
+    }
+    <p class="intro">
+      Totales de todas las páginas por estado. Las consultas son independientes y pueden variar
+      mientras el equipo trabaja.
+    </p>
+  </section>
+  <section aria-labelledby="directory-title">
+    <div class="heading">
+      <h2 id="directory-title">Directorio de usuarios</h2>
+      <button class="secondary" type="button" [disabled]="pending()" (click)="reloadUsers()">
+        Actualizar directorio
+      </button>
+    </div>
+    <p class="intro">
+      No se crean cuentas sin credenciales. Las cuentas nuevas usan el registro público; aquí puedes
+      cambiar su rol. La API no informa de activación ni de disponibilidad para iniciar sesión.
+    </p>
+    @if (message()) {
+      <p class="feedback" [class.success]="success()" role="status">{{ message() }}</p>
+    }
+    @if (reviewRequired()) {
+      <p role="alert">Actualiza el directorio y revisa el resultado antes de volver a guardar.</p>
+    }
+    @let state = directory();
+    @if (state.kind === 'loading') {
+      <p role="status">Cargando usuarios…</p>
+    } @else if (state.kind === 'error') {
+      <p class="feedback" role="alert">{{ state.message }}</p>
+    } @else {
+      <div class="form-row">
+        <div class="field">
+          <label for="user-search">Buscar por nombre, correo o ID</label
+          ><input id="user-search" type="search" [formControl]="search" />
+        </div>
+        <div class="field">
+          <label for="user-role-filter">Filtrar por rol</label
+          ><select id="user-role-filter" [formControl]="roleFilter">
+            <option value="">Todos los roles</option>
+            @for (role of roles; track role) {
+              <option [value]="role">{{ roleNames[role] }}</option>
+            }
+          </select>
+        </div>
+      </div>
+      <p role="status">{{ filtered().length }} de {{ state.users.length }} usuarios</p>
+      @if (state.users.length === 0) {
+        <p>No hay usuarios disponibles.</p>
+      } @else if (filtered().length === 0) {
+        <p>No hay coincidencias para estos filtros.</p>
+      } @else {
+        <ul class="users" aria-label="Usuarios">
+          @for (user of filtered(); track user.id) {
+            <li class="card">
+              <div class="identity">
+                <strong>{{ user.name }}</strong
+                ><span>{{ user.email }}</span>
+                <small
+                  >ID {{ user.id }} · {{ roleNames[user.role] }} · Alta
+                  {{ user.createdAt | date: 'mediumDate' }}</small
+                >
+              </div>
+              <button
+                class="secondary"
+                type="button"
+                [disabled]="pending() || reviewRequired()"
+                (click)="edit(user)"
+                [attr.aria-label]="'Editar usuario ' + user.name"
+              >
+                Editar
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    }
+    @if (selected(); as user) {
+      <section class="card editor" aria-labelledby="edit-user-title">
+        <h3 id="edit-user-title">Editar {{ user.name }}</h3>
+        <form [formGroup]="form" (ngSubmit)="save()">
+          <fieldset [disabled]="pending() || reviewRequired()">
+            <div class="field">
+              <label for="user-name">Nombre (obligatorio, máximo 100 caracteres)</label>
+              <input
+                id="user-name"
+                formControlName="name"
+                maxlength="100"
+                [attr.aria-invalid]="form.controls.name.touched && form.controls.name.invalid"
+              />
+              @if (form.controls.name.touched && form.controls.name.invalid) {
+                <p class="field-error">Introduce un nombre no vacío de hasta 100 caracteres.</p>
+              }
+            </div>
+            <div class="field">
+              <label for="user-email">Correo electrónico</label
+              ><input
+                id="user-email"
+                type="email"
+                formControlName="email"
+                [attr.aria-invalid]="form.controls.email.touched && form.controls.email.invalid"
+              />
+              @if (form.controls.email.touched && form.controls.email.invalid) {
+                <p class="field-error">
+                  Introduce un correo válido con dominio completo (máximo 254 caracteres).
+                </p>
+              }
+            </div>
+            <div class="field">
+              <label for="user-role">Rol</label
+              ><select id="user-role" formControlName="role">
+                @for (role of roles; track role) {
+                  <option [value]="role">{{ roleNames[role] }}</option>
+                }
+              </select>
+            </div>
+            <p class="hint">
+              Pasar a Usuario requiere no tener tickets asignados. No existe protección del último
+              administrador en la API.
+            </p>
+            @if (confirming()) {
+              <div class="confirmation" role="alert">
+                <p>
+                  ¿Confirmas cambiar el rol de {{ roleNames[user.role] }} a
+                  {{ roleNames[form.controls.role.value] }}?
+                </p>
+                @if (user.role === 'Admin' && form.controls.role.value !== 'Admin') {
+                  <p>
+                    Esta cuenta perderá acceso administrativo. Si es el último administrador
+                    operativo, la administración podría quedar inaccesible.
+                  </p>
+                }
+                @if (selfChange()) {
+                  <p>
+                    Estás cambiando tu propio rol. Tras guardar se cerrará tu sesión y tendrás que
+                    iniciar sesión de nuevo.
+                  </p>
+                }
+                <button class="primary" type="button" (click)="save(true)">
+                  Confirmar cambio de rol
+                </button>
+                <button class="secondary" type="button" (click)="confirming.set(false)">
+                  Seguir editando
+                </button>
+              </div>
+            } @else {
+              <button class="primary" type="submit">
+                {{ pending() ? 'Guardando…' : 'Guardar usuario' }}
+              </button>
+            }
+          </fieldset>
+        </form>
+        <button class="secondary cancel" type="button" [disabled]="pending()" (click)="cancel()">
+          Cancelar edición
+        </button>
+      </section>
+    }
+  </section>
+</section>

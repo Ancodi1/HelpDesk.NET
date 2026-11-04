@@ -27,6 +27,13 @@ export const routes: Routes = [
         loadComponent: () => import('./features/auth/register/register').then((m) => m.Register),
       },
       {
+        path: 'admin',
+        title: 'Administración | HelpDesk.NET',
+        data: { label: 'Administración' },
+        canActivate: [roleGuard('Admin')],
+        loadComponent: () => import('./features/admin/admin').then(m => m.Admin),
+      },
+      {
         path: 'my-tickets',
         title: 'Mis incidencias | HelpDesk.NET',
         data: { label: 'Mis incidencias', assignedToMe: true },

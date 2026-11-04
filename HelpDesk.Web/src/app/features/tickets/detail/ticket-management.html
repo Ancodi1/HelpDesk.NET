@@ -62,21 +62,7 @@
             </div>
           }
           @case ('assignment') {
-            <div class="field">
-              <label for="edit-assignment">ID de Technician o Admin</label
-              ><input
-                id="edit-assignment"
-                type="number"
-                min="1"
-                max="2147483647"
-                step="1"
-                [formControl]="assignment"
-              />
-              <p class="hint">
-                Introduce un ID conocido. Deja vacío para desasignar. La API comprueba la existencia
-                y el rol.
-              </p>
-            </div>
+            <app-assignment-picker [control]="assignment" />
           }
         }
         <button class="primary" type="submit">

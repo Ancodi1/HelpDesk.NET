@@ -19,9 +19,9 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 | xUnit | Pruebas unitarias y de integración |
 | WebApplicationFactory / TestServer | Pruebas HTTP en memoria |
 
-## Frontend — fases 10.1 a 10.3.3
+## Frontend — fases 10.1 a 10.5
 
-`HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. Incluye formularios reactivos de login/registro y una sesión JWT solo en memoria, listado con filtros y paginación, creación y detalle de tickets. Incluye edición y asignación en el detalle según permisos; no incluye eliminación ni panel administrativo.
+`HelpDesk.Web` es un proyecto Angular independiente de la solución .NET. Incluye navegación básica, página de inicio responsive y un panel que consulta `GET /api/health`, con estados de carga, conexión correcta y error y un botón para volver a comprobar. Incluye formularios reactivos de login/registro y una sesión JWT solo en memoria, listado con filtros y paginación, creación y detalle de tickets. Incluye gestión en el detalle, panel de técnicos y panel administrativo con directorio, edición de usuarios y selección de responsables. No incluye eliminación desde Angular.
 
 Requisitos: Node.js compatible con Angular 22 (desarrollo validado con Node 24.15.0 y npm 11.12.1). No hace falta instalar Angular CLI globalmente: los scripts utilizan la versión local. `package-lock.json` está versionado; en una copia nueva, ejecutar:
 
@@ -584,7 +584,7 @@ User no puede editar. Technician puede leer un ticket propio sin estar asignado,
 
 Título y descripción conservan la validación del POST: textos no blancos, título máximo 100 unidades UTF-16. Prioridad y categoría usan los enums existentes. Transiciones: Open → InProgress; InProgress → Open/Resolved; Resolved → Open/InProgress/Closed; Closed → Open. Reenviar el mismo estado está permitido. Una transición incompatible devuelve 409.
 
-Asignación por ID conocido, sin inventar nombres ni cargar el directorio de usuarios. Solo Technician o Admin existentes son destinos válidos; vacío envía null y desasigna. El servidor devuelve 400 si el destino no existe o no tiene rol compatible, y 409 si deja de estar disponible durante el guardado. Todas las escrituras devuelven 200 con el Ticket actualizado; también pueden devolver 400/401/403/404 según validación, autenticación y acceso.
+Desde la fase 10.5, Asignación carga el directorio administrativo y ofrece un selector con nombre y correo de Technician y Admin. El ID real se utiliza como valor interno; «Sin asignar» envía null. Se conserva la asignación actual al cargar. Si no está en el conjunto elegible, se muestra como no disponible y se exige elegir otra o desasignar, sin cambiarla silenciosamente. Un error de carga bloquea el envío de asignación y ofrece reintentar la lectura; no bloquea las otras operaciones. La API no informa de actividad ni activación de cuentas. El servidor devuelve 400 si el destino ya no existe o no tiene rol compatible, y 409 si deja de estar disponible durante el guardado. Todas las escrituras devuelven 200 con el Ticket actualizado; también pueden devolver 400/401/403/404 según validación, autenticación y acceso.
 
 El formulario bloquea envíos simultáneos, confirma el éxito y actualiza el detalle con la respuesta validada. Tras un error exige «Actualizar detalle» antes de reenviar. No hay reintentos automáticos; un fallo de conexión, timeout o respuesta ilegible puede ocurrir después de guardar. No hay control de versión: las modificaciones administrativas concurrentes conservan la política del backend de última escritura. Los filtros y la página siguen en la URL al volver al listado.
 
@@ -596,9 +596,39 @@ Estas comprobaciones escriben datos: usar únicamente una API conectada a un des
 2. Abrir `/tickets`, aplicar filtros/página y entrar en un ticket de prueba. Anotar su ID y valores iniciales. En «Gestionar ticket», elegir «Título y descripción». Probar vacío/solo espacios: no debe salir PUT. Guardar textos válidos: comprobar un único PUT, confirmación y cabecera/descripción actualizadas.
 3. Elegir Prioridad y después Categoría; guardar cada una. Comprobar PATCH independiente con un solo campo y respuesta 200, badges/datos actualizados y persistencia al pulsar «Actualizar detalle».
 4. Elegir Estado. Recorrer Open → InProgress → Resolved → Closed → Open, guardando cada paso. Solo deben aparecer el actual y los destinos permitidos. Para comprobar 409 con datos de prueba, cambiar el estado desde otra sesión Admin después de cargar el detalle y enviar una transición que haya dejado de ser válida; actualizar el detalle tras el conflicto.
-5. Elegir Asignación. Introducir el ID conocido de una cuenta Technician activa, guardar y verificar el ID devuelto. Probar un ID de User: debe mostrar el 400 sin cambiar la asignación. Actualizar el detalle, vaciar el campo y guardar: debe enviar null y mostrar «Sin asignar». Repetir con un Admin como destino válido.
+5. Elegir Asignación. Seleccionar una cuenta Technician de prueba por nombre y correo, guardar y verificar el responsable devuelto. No deben ofrecerse cuentas User. Actualizar el detalle y comprobar la selección conservada; elegir «Sin asignar» y guardar: debe enviar null. Repetir con un Admin de prueba como destino válido. Ante una lista vacía o un responsable que ya no sea elegible, comprobar el aviso y la posibilidad de desasignar explícitamente. Los rechazos por elegibilidad obsoleta están cubiertos con HTTP simulado; no modificar usuarios reales para provocarlos.
 6. Asignar el ticket al Technician de prueba. Cerrar sesión e iniciar como ese Technician: debe aparecer solo la gestión del estado. Como Technician creador pero no asignado, no debe aparecer gestión. Como User propietario, debe verse el detalle sin edición. Los tickets ajenos no visibles deben responder 404.
 7. Durante un guardado, comprobar campos/botón desactivados y un solo envío incluso con doble clic. En herramientas del navegador, simular desconexión para comprobar el mensaje de resultado incierto y ausencia de reintentos; reconectar y pulsar «Actualizar detalle» antes de operar.
 8. Volver al listado mediante el enlace y comprobar filtros/página. Revisar el detalle en móvil (por ejemplo 390 px), etiquetas, controles y navegación. No copiar JWT ni credenciales a informes.
 
 La revisión visual autenticada y estas escrituras manuales quedan pendientes de ejecución por el usuario; las pruebas automatizadas simulan HTTP y no modifican tickets reales.
+
+### Administración — fase 10.5
+
+La ruta `/admin` y el enlace **Administración** están disponibles solo para Admin. User y Technician se redirigen a `/session`; sin sesión se vuelve a `/login` antes de cargar datos. Los guards son controles de navegación: la API sigue comprobando JWT, cuenta y rol actuales en cada petición.
+
+El resumen muestra todos los estados, incluido Closed, con cuatro consultas a `GET /api/tickets?status=<estado>&page=1&pageSize=1`, leyendo `totalCount`. Cada tarjeta abre el listado existente filtrado por estado. No cuenta las filas de una página ni usa assignedToMe. Son consultas independientes, sin instantánea global atómica; pueden reflejar cambios concurrentes. Resumen y directorio tienen carga, error y actualización independientes.
+
+| Contrato utilizado | Datos y alcance |
+| --- | --- |
+| `GET /api/users` | Directorio completo ordenado por ID, reservado a Admin: id, name, email, role, createdAt. Sin paginación ni filtros de servidor; la búsqueda por nombre/correo/ID y el filtro por rol se aplican al conjunto completo en memoria. |
+| `PUT /api/users/{id}` | Envía exclusivamente name/email/role; normaliza solo el correo. Devuelve el DTO público confirmado. Nombre no blanco de hasta 100 unidades UTF-16, correo con dominio completo de hasta 254 y rol User/Technician/Admin. El servidor conserva la validación definitiva. |
+| `PATCH /api/tickets/{id}/assignment` | Reutilizado sin cambios: assignedToUserId real de Technician/Admin o null para desasignar. Directorio solicitado solo al abrir Asignación como Admin. |
+
+Cambiar el rol requiere confirmación explícita. Pasar a User con tickets asignados produce 409; el correo duplicado también produce 409. El mensaje indica ambas causas posibles sin exponer cuerpos del servidor. **La API no impide degradar al último Admin**: la interfaz lo advierte al quitar ese rol, pero no inventa una restricción de seguridad. Cambiar el propio rol con éxito cierra deliberadamente la sesión y vuelve al login; cualquier cambio de rol exige un nuevo login del usuario afectado. Cambiar nombre/correo o editar otra cuenta no provoca logout. No se alteran las reglas JWT existentes.
+
+Los formularios bloquean envíos duplicados. Errores 400/401/403/404/409 o resultados inciertos muestran mensajes seguros; 401 lo resuelve el interceptor, 403 conserva la sesión. Tras un fallo de escritura se exige actualizar el directorio antes de editar de nuevo, sin reintentos automáticos. Recargar cancela lecturas obsoletas; cancelar una petición no garantiza rollback. No hay ETag ni protección frente a última escritura administrativa concurrente.
+
+No hay creación ni eliminación de usuarios en este panel, edición de contraseñas ni activación. `POST /api/users` crea sin credencial y no existe activación segura; se conserva el registro público (`/register`, siempre User) y la posterior edición de rol por Admin. El DTO público no permite saber si una cuenta puede iniciar sesión: no se deduce ese estado ni se solicitan hashes. El directorio completo limita la escalabilidad; paginarlo requeriría un contrato de backend autorizado por separado.
+
+#### Comprobación manual con Admin
+
+1. Usar una API configurada externamente para una base aislada ya preparada y autorizada, una cuenta Admin existente con credenciales conocidas y usuarios/tickets exclusivos de prueba. No ejecutar migraciones ni usar datos reales para probar escrituras. Arrancar API y Angular como se indica al inicio.
+2. Iniciar sesión en `/login`, abrir **Administración** y comprobar sus cuatro contadores. En la pestaña de red deben verse cuatro GET de tickets con pageSize=1 y un GET de usuarios. Abrir una tarjeta y comprobar el filtro de estado en Tickets.
+3. Volver a Administración, buscar por nombre/correo y filtrar por rol. Comparar con el directorio completo. Comprobar estados vacío/sin coincidencias y presentación móvil a 390 px, sin compartir credenciales ni JWT.
+4. Editar una cuenta de prueba: primero nombre vacío o demasiado largo/correo incorrecto (sin PUT), después valores válidos. Verificar un solo PUT, confirmación y datos devueltos por el servidor. Cambiar su rol, cancelar la confirmación y comprobar que no escribe; después confirmar un cambio autorizado y comprobar la actualización. No degradar al último Admin operativo para probar esta advertencia.
+5. Con una cuenta de prueba que tenga asignaciones, intentar pasar a User: esperar 409 y actualizar el directorio antes de continuar. Esta prueba requiere autorización para ese entorno y esa cuenta. Si necesitas una cuenta con credencial, usar el registro público y después su cambio de rol; no POST /api/users como sustituto de activación.
+6. Desde Tickets, abrir un ticket de prueba y seleccionar Asignación. Comprobar nombres/correos, selección actual, Technician/Admin y Sin asignar. Verificar PATCH de un único campo y detalle actualizado. Probar las otras operaciones del detalle para comprobar que siguen disponibles.
+7. Cerrar sesión y entrar como User/Technician: el enlace administrativo debe desaparecer y `/admin` debe volver a `/session`. Technician conserva su panel y la edición de estado de tickets asignados. La suite automatizada cubre además 401/403, confirmación de cambio del propio rol y errores de escritura sin utilizar datos reales.
+
+Validación de 10.5: builds Angular y .NET correctos; 320 pruebas Angular y 265 .NET sin PostgreSQL superadas, cero fallidas. Comprobación visual autenticada pendiente. Sin cambios de backend, dependencias, migraciones ni datos reales.

@@ -2,13 +2,13 @@
 
 Última actualización: 2026-11-04.
 
-## Estado vigente — fase 10.4 implementada y validada sin PostgreSQL
+## Estado vigente — fase 10.5 implementada y validada sin PostgreSQL
 
-Angular incorpora el panel Technician `/my-tickets`, con filtro de backend `assignedToMe`, contadores y retorno desde detalle conservando filtros/página. Mantiene la gestión anterior: Admin edita textos, prioridad, categoría, asignación y estado; Technician solo estado de tickets asignados; User no edita. El backend mantiene la autorización efectiva.
+Angular incorpora Administración `/admin` para Admin: resumen global por estado, directorio completo con búsqueda/filtro y edición de nombre, correo y rol con confirmación. Asignación en detalle usa un selector de Technician/Admin por nombre y correo. Se conservan el panel Technician `/my-tickets`, sus filtros/retorno y toda la gestión anterior de tickets. El backend mantiene la autorización efectiva.
 
-Se conservan formularios, validación, bloqueo de envíos duplicados y recarga obligatoria después de un fallo de escritura. Esta fase amplía únicamente el contrato de consulta del backend, sin cambiar modelos, esquema, dependencias ni permisos de edición. Sin eliminación desde Angular.
+Se conservan validación, bloqueo de envíos duplicados y recarga obligatoria después de un fallo de escritura. La fase 10.5 reutiliza los contratos existentes, sin cambiar backend, esquema, autenticación, dependencias ni permisos. Sin creación administrativa sin credencial ni eliminación desde Angular.
 
-Pruebas actuales ejecutadas: 270 Angular y 265 .NET sin PostgreSQL superadas, cero fallidas; builds Angular y .NET correctos. Integración PostgreSQL de esta fase y comprobación manual/visual autenticada pendientes. Procedimiento y contrato en README. Los apartados siguientes conservan el historial de fases previas.
+Pruebas actuales ejecutadas: 320 Angular y 265 .NET sin PostgreSQL superadas, cero fallidas; builds Angular y .NET correctos. Sin ejecución PostgreSQL en 10.5; revisión manual/visual autenticada pendiente. Procedimientos y contratos en README. Los apartados siguientes conservan el historial de fases previas.
 
 ## Etapa 9.4 — completada (base del backend)
 
@@ -725,3 +725,38 @@ Validación realmente ejecutada:
 Los casos dirigidos están incluidos en sus suites: no se suman de nuevo. Total final de las dos suites: 535 pruebas superadas, cero fallidas. La primera ejecución .NET en sandbox no pudo arrancar por SocketException (permiso denegado al crear pipes de MSBuild); se completaron las comprobaciones .NET fuera del sandbox con autorización. No hubo bucles de reintentos.
 
 Limitaciones: HELPDESK_TEST_CONNECTION_STRING no está configurada, por lo que no se ejecutó integración PostgreSQL. Además, la fixture existente llama a MigrateAsync: no se invocó ni modificó ante la restricción de no ejecutar migraciones. Los ocho casos nuevos PostgreSQL están escritos y compilados, pero no validados contra la base de datos en este cierre. No se consultó ni modificó desarrollo ni datos reales. Comprobación visual/manual autenticada pendiente; instrucciones en README. No se ejecutaron migraciones, ni se añadieron dependencias, ni se hizo commit o push. Cierre de implementación y validación automatizada sin PostgreSQL, con estas limitaciones explícitas.
+
+## Fase 10.5 — administración Angular (4 de noviembre de 2026)
+
+Revisión previa con Git limpio y lectura de AGENTS, README, PROGRESS, ARCHITECTURE, AUTHENTICATION, endpoints/DTOs, validación de usuarios, políticas, guards, servicios y gestión existente de tickets. Los contratos disponibles permiten completar la fase sin modificar backend. Se aplica la guía Sites en modalidad local, sin publicación ni sincronización remota.
+
+Implementado:
+
+- Ruta lazy `/admin` con roleGuard('Admin') y enlace exclusivo con estado activo/aria-current. User/Technician vuelven a /session y las visitas anónimas al login antes de solicitar datos.
+- Resumen de los cuatro estados mediante totalCount de cuatro GET paginados con pageSize=1, sin assignedToMe; enlaces al listado filtrado. Lecturas independientes, sin prometer una instantánea atómica.
+- UserService consume únicamente GET /api/users y PUT /api/users/{id}. Valida el DTO público, IDs únicos y el ID de respuesta de escritura; conserva solo los cinco campos públicos. Construye el cuerpo de PUT explícitamente y normaliza el correo, sin caché ni reintentos de escritura.
+- Directorio completo con búsqueda local por nombre/correo/ID y filtro de rol; se muestran ID, nombre, correo, rol y fecha de alta. Estados de carga, errores, vacío, sin coincidencias y actualización independiente del resumen.
+- Edición con formularios reactivos: nombre según espacios Unicode de .NET y máximo 100 unidades UTF-16, correo máximo 254/dominio completo y enums reales. Confirmación explícita de cualquier cambio de rol, anulada si vuelve a editarse el formulario. Advertencias sobre el último Admin y cambio del propio rol. Una respuesta exitosa que cambia el rol propio cierra la sesión para renovar los claims mediante login; otras ediciones no cierran sesión.
+- Bloqueo de duplicados y edición mientras guarda; mensajes propios para 400/401/403/404/409/red/respuesta inválida. Fallos de escritura exigen recargar el directorio antes de reenviar. No hay reintentos automáticos ni garantía de rollback por cancelación.
+- AssignmentPicker sustituye el campo numérico solo al abrir Asignación como Admin. Carga GET /api/users y ofrece Technician/Admin por nombre y correo con ID interno, conservando selección y opción null. Si el responsable ya no aparece elegible se mantiene el valor y se exige una elección explícita. Carga fallida bloquea el envío de asignación y permite reintentar lectura. Se conserva la comprobación final de rol/existencia y concurrencia en API; las otras operaciones de TicketManagement permanecen iguales.
+
+No se añade creación administrativa: POST /api/users no establece credenciales y no hay activación. Se conserva registro público con User y posterior cambio de rol por Admin. Tampoco hay eliminación de usuarios ni estados de actividad inventados. PUT puede degradar al último Admin y rechaza pasar a User con asignaciones; son reglas del backend existente, no se cambian permisos ni se implementa una protección exclusivamente cliente.
+
+Pruebas y comprobaciones ejecutadas:
+
+| Comando | Resultado final |
+| --- | --- |
+| Desde HelpDesk.Web: `npm test -- --watch=false` | 320 superadas, 0 fallidas; 28 archivos |
+| Desde HelpDesk.Web: `npm run build` | Correcto, sin advertencias |
+| `dotnet build HelpDesk.NET.slnx --no-restore --nologo` | Correcto, 0 errores y 0 advertencias |
+| `dotnet test HelpDesk.NET.slnx --no-build --no-restore --filter 'Category!=PostgreSQL' --nologo` | 265 superadas, 0 fallidas/omitidas |
+| `git diff --check` y whitespace de archivos nuevos | Correctos |
+| Diff de API, consola, tests .NET, solución, dependencias y autenticación Angular | Sin cambios |
+
+Se añaden 50 casos Angular en cuatro archivos: servicio de usuarios, panel/directorio, navegación con guards/interceptor y selector integrado. Cubren validación, DTO inválido, cancelación, timeout de lectura, confirmaciones, roles, 401/403, errores de escritura, asignación/desasignación, elegibilidad obsoleta, bloqueo duplicado, sesión y contadores mayores que una página. Las fixtures solo se usan en tests con HTTP simulado.
+
+Se adaptan únicamente dos tests previos por incompatibilidades demostradas: ticket-submit-regression responde al GET de usuarios y selecciona opciones en lugar de escribir en el antiguo input (mantiene aserciones de cuerpo, duplicados, sesión y navegación); session-menu exige el nuevo enlace para Admin y conserva su ausencia para los otros roles. La primera ejecución falló por esas expectativas y dejó TestBed con peticiones pendientes, provocando fallos en cascada; tras adaptar el selector y corregir la preparación de un nuevo caso Technician, los 65 casos dirigidos pasaron. La siguiente suite completa tuvo solo la expectativa antigua del enlace (319 éxitos/1 fallo). Tras corregirla, la suite final pasa sin aumentar timeouts ni alterar configuración de ejecución.
+
+El primer build .NET restringido falló sin diagnóstico de código; build y tests se completaron fuera del sandbox con autorización. Total final de ambas suites, sin sumar ejecuciones dirigidas de nuevo: 585 superadas y cero fallidas.
+
+Limitaciones: no se ejecutó suite PostgreSQL ni migraciones, ni se accedió a datos reales para estas pruebas. La revisión visual autenticada con Admin y datos de prueba queda pendiente; instrucciones completas en README. El directorio es completo y no paginado por contrato, sin información de activación; los contadores y la elegibilidad pueden cambiar entre lecturas. Se conserva última escritura administrativa, sin ETag. Sin cambios de backend/dependencias, publicación, commit o push.

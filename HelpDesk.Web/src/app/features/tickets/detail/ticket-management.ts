@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, computed, inject, input, output, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, input, output, signal, viewChild } from '@angular/core';
+import { AssignmentPicker } from './assignment-picker';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AuthService } from '../../../core/auth/auth.service';
@@ -24,11 +25,12 @@ export const nextStatuses: Record<TicketStatus, readonly TicketStatus[]> = {
 @Component({
   selector: 'app-ticket-management',
   standalone: true,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, AssignmentPicker],
   templateUrl: './ticket-management.html',
   styleUrls: ['../ticket-page.scss', '../create/ticket-create.scss'],
 })
 export class TicketManagement {
+  readonly assignmentPicker = viewChild(AssignmentPicker);
   readonly ticket = input.required<Ticket>();
   readonly updated = output<Ticket>();
   private readonly auth = inject(AuthService);
@@ -106,6 +108,11 @@ export class TicketManagement {
       this.message.set(
         'Revisa los datos: título obligatorio de hasta 100 caracteres, descripción obligatoria y selección o ID válidos.',
       );
+      return;
+    }
+    if (op === 'assignment' && !this.assignmentPicker()?.selectionAvailable()) {
+      this.success.set(false);
+      this.message.set('Carga los usuarios y selecciona un responsable elegible o Sin asignar.');
       return;
     }
     this.pending.set(true);

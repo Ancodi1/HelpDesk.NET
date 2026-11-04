@@ -77,6 +77,10 @@
             <a class="nav-link" routerLink="/my-tickets" routerLinkActive="active"
               ariaCurrentWhenActive="page">Mis incidencias</a>
           }
+          @if (user.role === 'Admin') {
+            <a class="nav-link" routerLink="/admin" routerLinkActive="active"
+              ariaCurrentWhenActive="page">Administración</a>
+          }
           <a
             class="nav-link"
             routerLink="/session"

@@ -8,6 +8,7 @@ import { AuthService } from '../../../core/auth/auth.service';
 import { authInterceptor } from '../../../core/auth/auth.interceptor';
 import { loginResponse, signIn } from '../../../core/auth/auth.testing';
 import { ticketFixture } from '../ticket.testing';
+import { userFixture } from '../../admin/user.testing';
 
 describe('Ticket DOM submission with real session, interceptor and routes', () => {
   let f: ComponentFixture<App>;
@@ -86,7 +87,17 @@ describe('Ticket DOM submission with real session, interceptor and routes', () =
     'submits %s through the form without losing the session (%s=%s)',
     async (op, selector, value, url, body) => {
       edit('#operation', op, 'change');
-      edit(selector, value, op === 'text' || op === 'assignment' ? 'input' : 'change');
+      if (op === 'assignment') {
+        http.expectOne('/api/users').flush([userFixture({ id: 7 })]);
+        f.detectChanges();
+        const select = f.nativeElement.querySelector(selector) as HTMLSelectElement;
+        const label = value === '' ? 'Sin asignar' : 'Fixture technician';
+        const option = Array.from(select.options).find(o => o.textContent?.includes(label));
+        expect(option).toBeDefined();
+        edit(selector, option!.value, 'change');
+      } else {
+        edit(selector, value, op === 'text' ? 'input' : 'change');
+      }
       submit();
       submit(); // duplicate native events must still issue only one request
       const request = http.expectOne(url);

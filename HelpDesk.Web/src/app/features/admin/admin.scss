@@ -1,0 +1,76 @@
+.heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-block: 24px 18px;
+  flex-wrap: wrap;
+}
+h2 {
+  font-size: 20px;
+  margin: 0;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 16px;
+}
+.stats a {
+  text-decoration: none;
+  color: var(--ink);
+  padding: 24px;
+}
+.stats strong {
+  display: block;
+  color: var(--accent);
+  font-size: 32px;
+  margin: 12px 0;
+}
+.stats small {
+  color: var(--accent);
+}
+.users {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.users li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px;
+}
+.identity {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.identity span,
+.identity small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+}
+.editor {
+  margin-top: 24px;
+}
+.confirmation {
+  padding: 18px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  margin-bottom: 18px;
+}
+.confirmation button {
+  margin: 6px 8px 0 0;
+}
+.cancel {
+  margin-top: 18px;
+}
+@media (max-width: 600px) {
+  .users li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
