@@ -751,3 +751,10 @@ Imagen multi-stage con Angular/API en un origen, usuario sin privilegios y secre
 externos. Construcción: `docker build -t helpdesk:local .`. Migraciones separadas,
 roles PostgreSQL, configuración de proxy/HTTPS y sondas en [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 No se ha publicado la aplicación. Consultar PROGRESS para las validaciones ejecutadas.
+
+### CI y recuperación (10.7.5)
+
+El workflow [CI](.github/workflows/ci.yml) valida .NET, Angular, imagen Docker e
+integración PostgreSQL efímera con ensayo de backup/restauración. No despliega.
+Comandos, guardias, permisos, recuperación y verificación remota pendiente en
+[CI_RECOVERY.md](docs/CI_RECOVERY.md).

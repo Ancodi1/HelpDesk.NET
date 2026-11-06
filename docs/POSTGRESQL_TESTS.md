@@ -441,3 +441,11 @@ dotnet test HelpDesk.NET.slnx --no-build --filter 'Category=PostgreSQL&FullyQual
 ```
 
 Listar con --list-tests no ejecuta fixture ni valida persistencia/concurrencia. Los ejemplos manuales que sí crean el primer Admin real están en AUTHENTICATION.md y requieren autorización específica para el destino; el primer Admin de desarrollo ya fue creado y verificado y no debe recrearse.
+
+## Lanzador versionado desde fase 10.7.5
+
+Los lanzadores /tmp anteriores son registros históricos. Para validación nueva usar
+`python3 scripts/ci_postgres.py` desde la raíz tras build Release. Aprovisiona un clúster
+nuevo, verifica identidad Docker/TCP, usa las guardias existentes y elimina recursos
+propios al salir. Incluye ensayo real de backup/restauración en un segundo clúster nuevo.
+No conectar manualmente las fixtures a una base habitual. Guía: [CI_RECOVERY.md](CI_RECOVERY.md).

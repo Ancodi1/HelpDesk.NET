@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Build, tests and isolated recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      CI: 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Setup .NET
+        uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
+        with:
+          dotnet-version: '10.0.114'
+          cache: false
+      - name: Setup Node
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: '24.15.0'
+          package-manager-cache: false
+      - name: Pin npm
+        run: npm install --global npm@11.12.1 --no-audit --no-fund
+      - name: Check diff and recovery guards
+        run: |
+          git diff --check
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Restore locked .NET dependencies
+        run: dotnet restore HelpDesk.NET.slnx --locked-mode
+      - name: Build .NET
+        run: dotnet build HelpDesk.NET.slnx -c Release --no-restore
+      - name: Unit tests .NET
+        run: dotnet test HelpDesk.NET.slnx -c Release --no-build --no-restore --filter 'Category!=PostgreSQL'
+      - name: PostgreSQL integration and recovery drill
+        # Creates unique container, exclusive network, volume and fresh credentials.
+        # Verifies Docker/TCP identity before fixtures apply existing migrations.
+        run: python3 scripts/ci_postgres.py
+      - name: Install Angular dependencies
+        working-directory: HelpDesk.Web
+        run: npm ci --no-audit --no-fund
+      - name: Angular tests
+        working-directory: HelpDesk.Web
+        run: npm test -- --watch=false
+      - name: Angular production build
+        working-directory: HelpDesk.Web
+        run: npm run build -- --configuration production
+      - name: Build production image (no push)
+        run: docker build --tag helpdesk:ci .

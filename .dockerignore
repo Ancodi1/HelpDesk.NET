@@ -1,4 +1,5 @@
 **
+!Directory.Build.props
 !HelpDesk.Api/
 !HelpDesk.Api/**
 !HelpDesk.Web/

@@ -432,3 +432,8 @@ FodyWeavers.xsd
 /HelpDesk.Web/dist/
 /HelpDesk.Web/.angular/
 /HelpDesk.Web/coverage/
+
+# Database archives must stay outside version control.
+*.dump
+*.backup
+*.sql.gz
