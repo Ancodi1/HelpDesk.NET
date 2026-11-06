@@ -180,7 +180,7 @@ PY
 - Un JWT emitido no se revoca automáticamente al cambiar el rol, contraseña o deshabilitar una cuenta. El modelo actual aún no incorpora deshabilitación. La estrategia de revocación y comprobación de estado corresponde al diseño futuro de autorización.
 - Los endpoints de tickets y los GET de usuarios conservan acceso público; un Bearer inválido no los restringe. POST/PUT de usuarios siguen devolviendo 403 incluso con JWT válido. No hay endpoint nuevo de perfil privado.
 - No hay refresh tokens, cierre de sesión con revocación, recuperación, frontend ni activación de cuentas anteriores. Etapa 9.3 pendiente de revisión y solicitud.
-- El error de credenciales es uniforme, pero no se igualan tiempos entre cuenta inexistente y verificación PBKDF2. No se añaden todavía limitación de intentos ni bloqueo: evaluar abuso y enumeración temporal antes de exponer el servicio.
+- El error de credenciales es uniforme, pero no se igualan tiempos entre cuenta inexistente y verificación PBKDF2. La fase 10.7.2 incorpora límites por IP (login 10/minuto, registro 5/10 minutos), sin bloqueo por cuenta. Login rechaza contraseñas mayores de 128 unidades UTF-16 y NUL antes de SQL/hash. La diferencia temporal sigue pendiente; detalles y límites de proxy en [SECURITY.md](SECURITY.md).
 - No registrar cuerpos, contraseñas, hashes ni cabeceras Authorization en aplicación, proxy o herramientas de observabilidad. El manejador global responde 500 genérico también en Development para evitar reflejar headers sensibles en la página de excepciones; conserva el diagnóstico interno estándar, sin habilitar logging sensible de EF.
 
 ## Etapa 9.3: permisos vigentes

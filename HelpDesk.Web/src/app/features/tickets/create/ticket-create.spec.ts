@@ -62,7 +62,7 @@ describe('Ticket creation form', () => {
       http.expectNone('/api/tickets');
     },
   );
-  it('enforces title length in UTF-16 without limiting description or trimming text', () => {
+  it('enforces title length in UTF-16 and description length without trimming text', () => {
     const form = f.componentInstance.form;
     form.setValue({ ...valid, title: '😀'.repeat(50), description: 'd'.repeat(5000) });
     expect(form.valid).toBe(true);
@@ -72,6 +72,16 @@ describe('Ticket creation form', () => {
     expect(form.valid).toBe(true);
     form.controls.title.setValue('t'.repeat(101));
     expect(form.invalid).toBe(true);
+  });
+  it.each(['x'.repeat(10001), 'a\0b'])('rejects unsafe descriptions', (description) => {
+    f.componentInstance.form.setValue({ ...valid, description });
+    expect(f.componentInstance.form.invalid).toBe(true);
+    f.componentInstance.submit();
+    http.expectNone('/api/tickets');
+  });
+  it('accepts the description boundary measured in UTF-16', () => {
+    f.componentInstance.form.setValue({ ...valid, description: '😀'.repeat(5000) });
+    expect(f.componentInstance.form.valid).toBe(true);
   });
   it('rejects invalid enum values before submission', () => {
     const form = f.componentInstance.form;

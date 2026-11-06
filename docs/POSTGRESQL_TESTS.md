@@ -1,5 +1,54 @@
 # Pruebas de persistencia con PostgreSQL aislado
 
+## Validación vigente — fase 10.7.2, 6 de noviembre de 2026
+
+404 pruebas PostgreSQL superadas (33 segundos), cero fallidas/omitidas. Incluye los
+dos casos nuevos de validación/persistencia, más todas las regresiones anteriores.
+Solo se aplican las nueve migraciones existentes a un Docker recién creado; no hay
+migración nueva ni conexión a la base habitual o a los datos manuales anteriores.
+
+| Recurso exclusivo | Identidad |
+| --- | --- |
+| Contenedor | helpdesk-1072-5af3583c |
+| Volumen | helpdesk-1072-data-5af3583c |
+| Red bridge, único contenedor | helpdesk-1072-net-5af3583c |
+| Imagen | postgres:16 |
+| Publicación | 127.0.0.1:15438 → 5432 |
+| Base / rol | helpdesk_test_db / helpdesk_test_user |
+| Estado final | Contenedor detenido; volumen/red conservados |
+
+El lanzador `/tmp/helpdesk-1072-isolated.py` guarda su estado y secretos nuevos en
+`/tmp/helpdesk-1072-isolated/` con permisos privados. No imprime credenciales. Compara
+ID exacto de Docker, volumen, red/miembros y puerto loopback; identifica el clúster por
+`pg_control_system()` tanto dentro como por TCP y compara hora de arranque. Comprueba
+base/rol efectivos sin superusuario, CREATEDB o CREATEROLE, ausencia de helpdesk_db y
+revoca CONNECT público a postgres/template1. Todo antes de ejecutar la fixture que
+migra. El entorno hijo elimina conexiones heredadas y recibe únicamente el destino
+exclusivo validado. Repite verificación tras suite. Auditoría final: 0 usuarios,
+0 tickets, 0 comentarios, 0 actividades y 9 migraciones; parada verificada por Docker.
+
+El primer pase obtuvo 379 correctas/23 fallidas porque TestServer compartía una IP
+anónima y los tests consumían el mismo cupo de login/registro. TicketApiFactory ahora
+simula una IP por cliente mediante IStartupFilter y una cabecera exclusiva de tests;
+producción nunca la interpreta. Conserva las cuotas reales y las aserciones existentes.
+Después de recompilar, pasan las 404. Los tests de cuotas sin PostgreSQL mantienen
+clientes/IP compartidos cuando deben comprobar abuso, recuperación e independencia.
+
+Para repetir, solo mientras existan los archivos temporales privados y desde una
+terminal con acceso Docker:
+
+```bash
+python3 /tmp/helpdesk-1072-isolated.py
+```
+
+Arranca exclusivamente el contenedor identificado, verifica antes/después, ejecuta
+`dotnet test HelpDesk.NET.slnx --no-build --filter 'Category=PostgreSQL'` con timeout
+240 segundos y detiene el contenedor. Requiere compilar previamente. Registro temporal
+`/tmp/helpdesk-1072-isolated/tests.log`. No usar el comando dotnet aislado sin el
+lanzador ni reemplazar archivos desaparecidos con conexiones habituales; si /tmp se
+pierde, aprovisionar un destino nuevo y repetir todas las comprobaciones de identidad.
+
+
 ## Entorno manual de historial preparado
 
 Para revisión autenticada Angular se reutiliza `helpdesk-1061-pg-33937133`

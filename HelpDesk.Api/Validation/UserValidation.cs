@@ -12,6 +12,8 @@ public static class UserValidation
         role = UserRole.User;
         if (string.IsNullOrWhiteSpace(name))
             return "El nombre es obligatorio y no puede contener solamente espacios.";
+        if (name.Contains('\0') || normalizedEmail.Contains('\0'))
+            return "El nombre y el correo no pueden contener caracteres nulos.";
         if (name.Length > 100)
             return "El nombre debe tener como máximo 100 caracteres.";
         if (normalizedEmail.Length == 0)

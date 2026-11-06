@@ -6,6 +6,19 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 
 [Repositorio en GitHub](https://github.com/Ancodi1/HelpDeskt.NET)
 
+## Refuerzo de seguridad — fase 10.7.2
+
+Login: 10 intentos/minuto por IP de conexión; registro: 5/10 minutos por IP.
+Creación de tickets: 10/minuto por cuenta; comentarios: 30/minuto por cuenta.
+Ventanas fijas, sin cola, HTTP 429 con Retry-After; lecturas sin cuota.
+Descripciones hasta 10.000 unidades UTF-16, búsquedas hasta 200 y login hasta 128;
+rechazo de NUL en textos de entrada. Builder Angular 22.2.5 con Vite 8.3.5.
+No hay cambios de esquema, JWT o roles ni despliegue.
+
+Consulta [seguridad, límites, proxy inverso y validación manual](docs/SECURITY.md).
+Los contadores son locales por instancia; tras un proxy las rutas anónimas comparten
+su IP hasta configurar explícitamente proxies confiables. La publicación queda pendiente.
+
 ## Tecnologías
 
 | Tecnología | Uso |
@@ -66,7 +79,7 @@ La respuesta esperada es `{"status":"ok"}`. Los servidores se detienen con Ctrl+
 
 Rutas públicas `/login` y `/register`; ruta privada `/session`. Los formularios usan los contratos existentes: login envía `email` y `password` y recibe `accessToken`, `tokenType` y `expiresIn`; registro envía `name`, `email` y `password` y recibe el usuario público con HTTP 201. El rol lo fija la API en User: no se envía ningún campo de rol. Tras registrar, se vuelve al login sin autenticar automáticamente.
 
-El correo se normaliza; la contraseña nunca se recorta ni transforma. Registro exige nombre no vacío de hasta 100 unidades UTF-16, correo con dominio completo de hasta 254 y contraseña de 15–128 unidades UTF-16, sin controles ni solo espacios. Login exige correo y contraseña no vacíos, sin imponerle la política de longitud del registro. La validación del servidor sigue siendo la autoridad final.
+El correo se normaliza; la contraseña nunca se recorta ni transforma. Registro exige nombre no vacío de hasta 100 unidades UTF-16, correo con dominio completo de hasta 254 y contraseña de 15–128 unidades UTF-16, sin controles ni solo espacios. Login exige correo y contraseña no vacíos, contraseña de hasta 128 unidades UTF-16 y ausencia de NUL; no aplica el mínimo del registro. La validación del servidor sigue siendo la autoridad final.
 
 El JWT, el usuario y la caducidad solo viven en memoria. Recargar o cerrar la pestaña pierde la sesión; cada pestaña mantiene su propia sesión. No hay localStorage, sessionStorage, cookies JWT, refresh tokens ni claves de firma en el cliente. El cierre de sesión es local y no revoca copias del JWT: el backend actual no ofrece revocación.
 

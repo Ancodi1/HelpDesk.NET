@@ -13,6 +13,8 @@ export function ticketError(error: unknown, action: 'create' | 'detail'): string
     );
   if (error instanceof HttpErrorResponse) {
     switch (error.status) {
+      case 429:
+        return 'Demasiadas peticiones. Espera antes de volver a intentarlo.';
       case 0:
         return (
           'No se pudo conectar con el servidor.' +

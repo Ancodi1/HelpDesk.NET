@@ -1,6 +1,6 @@
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
@@ -22,7 +22,7 @@ export class Login {
   readonly registered = inject(ActivatedRoute).snapshot.queryParamMap.get('registered') === '1';
   readonly pending = signal(false);
   readonly error = signal<string | null>(null);
-  readonly form = this.builder.group({ email: ['', emailAddress], password: ['', nonBlank] });
+  readonly form = this.builder.group({ email: ['', emailAddress], password: ['', [nonBlank, Validators.maxLength(128)]] });
 
   constructor() {
     this.destroyRef.onDestroy(() => this.form.controls.password.reset(''));

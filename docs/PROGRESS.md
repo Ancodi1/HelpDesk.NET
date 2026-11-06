@@ -1,8 +1,81 @@
 # Progreso — HelpDesk.NET
 
-Última actualización: 2026-11-04.
+Última actualización: 2026-11-06.
 
-## Estado vigente — fase 10.6.2.2 historial implementado y validado
+## Estado vigente — fase 10.7.2 implementada y validada
+
+6 de noviembre de 2026. Refuerzo previo al despliegue público, sin despliegue,
+cambios JWT/roles, arquitectura, migraciones nuevas, datos reales, commit o push.
+La auditoría 10.7.1 no aparece versionada; se parte de los hallazgos comunicados
+por el usuario y de la auditoría npm reproducida en esta fase.
+
+- Rate limiter integrado: login 10/minuto e IP, registro 5/10 minutos e IP,
+  tickets 10/minuto y comentarios 30/minuto por cuenta autorizada. Ventanas fijas,
+  sin cola, 429 con error seguro/Retry-After; lecturas sin cuota. Solo IP de conexión,
+  sin confiar en encabezados del cliente. Contadores locales por instancia.
+- Descripciones hasta 10.000 UTF-16, búsquedas hasta 200, login hasta 128; NUL
+  rechazado en título, descripción, nombre, correo, login y búsqueda. Se conserva
+  la validación de registro/comentarios y el esquema existente. Formularios/URL
+  Angular alineados, mensajes locales para 429 y sin reintentos de escrituras.
+- Builder 22.2.4 → 22.2.5, Vite transitivo 8.3.2 → 8.3.5 (deduplicado con la copia
+  ya existente del runner). Framework/compiler 22.2.3 → 22.2.5 para resolver los
+  pares, CLI 22.2.4 intacta. Sin cambio mayor, force, legacy-peer-deps u overrides.
+  Árbol completo y auditoría incluyen dependencias de desarrollo.
+- README, AUTHENTICATION, ARCHITECTURE, POSTGRESQL_TESTS y nueva SECURITY.md
+  documentan valores, motivos, pruebas, operación con proxy y validación manual.
+
+Conceptos .NET: orden del middleware, políticas y particiones del rate limiter,
+DI para probar recuperación con ventanas breves, validación UTF-16 antes de SQL/hash.
+RequestLimits configura políticas; Program las aplica solo a los cuatro POST;
+UserValidation evita NUL antes de persistencia/snapshots. No se añade una capa.
+
+| Comprobación ejecutada | Resultado final |
+| --- | --- |
+| `dotnet build HelpDesk.NET.slnx --no-restore` | Correcto; 0 errores/advertencias |
+| `dotnet test HelpDesk.NET.slnx --no-build --filter 'Category!=PostgreSQL'` | 295 superadas, 0 fallidas/omitidas |
+| Suite `Category=PostgreSQL` mediante lanzador exclusivo | 404 superadas, 0 fallidas/omitidas; 33 segundos |
+| `npm run build` en HelpDesk.Web | Correcto, sin advertencias |
+| `npm test -- --watch=false` en HelpDesk.Web | 404 superadas en 35 archivos |
+| `npm ls --all` | Correcto, sin pares inválidos |
+| `npm audit --json` completo | 0 vulnerabilidades conocidas |
+| `git diff --check` | Correcto |
+
+Diez casos .NET nuevos sin base: límites/rechazo/recuperación de las cuatro políticas,
+cabeceras falsificadas, presupuestos independientes, cuenta compartida entre clientes,
+lecturas disponibles, rechazo de textos/login/búsqueda antes de SQL. Dos casos nuevos
+PostgreSQL: descripción de 10.000 UTF-16 (emojis), rechazo de PUT inválido conservando
+contenido, búsqueda de 200 aceptada y nombre NUL rechazado sin insertar usuario. Se amplían
+además los casos existentes de registro para comprobar login con correo normalizado
+de 254 caracteres y contraseñas de 15/128, conservando los espacios permitidos.
+Ocho casos Angular nuevos: descripción inválida/frontera, NUL, login y búsqueda URL.
+
+Incidencias resueltas durante la validación: build inicial del sandbox falló sin
+diagnóstico; compilación con acceso normal detectó un using equivocado en el archivo
+nuevo, corregido. Los builds finales pasan. Instalaciones npm solo de builder dieron
+ERESOLVE por pares; se resolvió con parches Angular coherentes, sin forzar. Primer pase
+PostgreSQL: 379 correctas y 23 rechazos por compartir IP de TestServer. La fábrica
+simula ahora una IP por HttpClient exclusivamente en tests; se conservan cuotas reales
+y aserciones. La suite final completa de 404 pasa. Auditoría npm inicial sin red falló;
+se repitió con acceso al registro. Ninguno de esos intentos se considera validación
+superada. Un comando build Angular se lanzó desde la raíz sin package.json y se repitió
+correctamente desde HelpDesk.Web.
+
+PostgreSQL: nuevo Docker `helpdesk-1072-5af3583c`, volumen/red exclusivos y puerto
+127.0.0.1:15438. Identidad exacta del contenedor, red, volumen, clúster TCP/interno,
+hora de arranque, base y rol limitado verificados antes de migrar y después de cada
+suite. Se aplicaron solo las nueve migraciones existentes en esta instancia nueva;
+ninguna en la base habitual. Auditoría final: cero usuarios/tickets/comentarios/
+actividades y nueve migraciones. Contenedor detenido; recursos conservados.
+Lanzador/estado/credenciales efímeros en /tmp, fuera de Git; detalles en POSTGRESQL_TESTS.
+
+Pendiente: revisión visual/manual y topología del despliegue. Tras proxy se comparte
+cupo anónimo hasta configurar una lista explícita de proxies confiables. Múltiples
+instancias necesitan cuota común en gateway si se requiere un límite compartido;
+los límites locales no resuelven DDoS ni ataques distribuidos. La diferencia temporal
+del login sigue existente. Matriz manual y garantías exactas en [SECURITY.md](SECURITY.md).
+Los apartados siguientes conservan el registro histórico.
+
+## Cierre anterior — fase 10.6.2.2 historial implementado y validado
 
 Historial automático de cambios efectivos de estado, prioridad, categoría y responsable. TicketActivity conserva actor y nombres históricos de responsables, valores anterior/nuevo y fecha UTC. GET autenticado con TicketAccess, 404 indistinguible y cursor ID descendente (20 por defecto, 100 máximo). Sin rutas públicas para crear/editar/eliminar actividades. El historial comienza con esta implementación, sin reconstrucción de cambios anteriores.
 

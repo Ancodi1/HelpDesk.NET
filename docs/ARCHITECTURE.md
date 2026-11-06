@@ -1,8 +1,10 @@
 # Arquitectura — HelpDesk.NET
 
-Última actualización: 2026-11-04.
+Última actualización: 2026-11-06.
 
 ## Estado actual
+
+Fase 10.7.2: refuerzo de validación y rate limiter integrado por endpoint, sin cambio de arquitectura, esquema, JWT o roles. Decisión 049 y guía SECURITY.md.
 
 Fases 10.1 a 10.6.2.2: Angular con sesión en memoria, gestión de tickets, paneles, comentarios e historial automático. TicketActivities conserva valores y nombres históricos; cambio y actividad comparten transacción y bloqueo del ticket. Decisiones 039–048 al final. Migraciones solo en Docker exclusivo; resultados vigentes en PROGRESS.md. Revisión visual autenticada pendiente.
 
@@ -681,3 +683,30 @@ DELETE conserva su FOR UPDATE y comprueba comentarios antes de actividades. Devu
 Angular reutiliza estilos de comentarios en activities/ con servicio de validación del contrato y componente standalone. Carga independiente bajo demanda, estados vacío/error/carga, páginas anteriores, traducción de enums y nombres históricos interpolados como texto. Cambiar ticket/destruir/recargar cancela lecturas anteriores. El detalle incrementa una revisión tras una escritura confirmada, que refresca el historial abierto; errores de esa lectura no afectan al ticket/comentarios. No hay consultas del directorio, sondeo, WebSockets ni almacenamiento persistente.
 
 Validación: pruebas de permisos, snapshots, persistencia/FK/checks, ausencia de eventos ante errores/repeticiones, rollback después de SaveChanges y concurrencia real con pg_blocking_pids. Carreras de cambios iguales/diferentes, cambio/borrado en ambos órdenes, lectura/reasignación y orden usuario anterior → ticket. Se adaptan los probes previos de comentarios/estado al nuevo FOR UPDATE de assignment. Limpieza limitada a actividades de tickets propios antes de comentarios, tickets y usuarios. Resultados y aislamiento Docker en PROGRESS.md y POSTGRESQL_TESTS.md; no se aplica esta migración a la base habitual.
+
+### 049 — Validación de entrada y cuotas por endpoint (fase 10.7.2)
+
+Estado: implementado el 6 de noviembre de 2026. Sin nuevas capas, paquetes .NET,
+migraciones ni cambios de contratos de éxito. Se restringen entradas inválidas con
+400 y se incorpora 429 para abuso, conforme al alcance solicitado.
+
+Decisión: RequestLimits registra políticas de ventana fija mediante AddRateLimiter;
+Program explicita routing → authentication → authorization → rate limiter. Login y
+registro particionan por RemoteIpAddress; tickets/comentarios por CurrentAccount.Id.
+Sin cola ni limitador global para lecturas. Configuración de duraciones por DI permite
+probar recuperación con ventanas cortas conservando los cupos reales. No se interpretan
+cabeceras de IP. Las condiciones para proxy/múltiples instancias quedan pendientes de
+la topología concreta; no se habilita confianza global en forwarded headers.
+
+Validación compartida existente conserva su ubicación: Program para tickets/login,
+UserValidation para nombres/correos y validadores Angular para formularios. Máximos
+10.000 descripción, 200 búsqueda y 128 login, medidos UTF-16; rechazo de NUL. PostgreSQL
+mantiene text en descripción y varchar/checks existentes en otros campos. Los límites
+de aplicación caben en el esquema, pero no añaden restricciones a SQL externo ni
+modifican datos previos. No se altera el snapshot EF ni ninguna migración.
+
+Builder pasa a 22.2.5 con Vite 8.3.5 y paquetes framework/compiler al parche coherente
+22.2.5, sin major ni overrides. TestServer simula direcciones por cliente solo en la
+fábrica PostgreSQL para conservar independencia de casos sin desactivar las cuotas.
+Motivos, valores, garantías y limitaciones completas en SECURITY.md; resultados en
+PROGRESS.md.

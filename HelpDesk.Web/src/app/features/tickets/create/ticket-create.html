@@ -38,6 +38,7 @@
         <textarea
           id="ticket-description"
           formControlName="description"
+          maxlength="10000"
           rows="7"
           required
           aria-describedby="description-hint description-error"
@@ -51,7 +52,7 @@
         </p>
         @if (form.controls.description.touched && form.controls.description.invalid) {
           <p class="field-error" id="description-error">
-            La descripción es obligatoria y no puede contener solamente espacios.
+            La descripción es obligatoria, admite hasta 10000 unidades UTF-16 y no admite caracteres nulos.
           </p>
         }
       </div>

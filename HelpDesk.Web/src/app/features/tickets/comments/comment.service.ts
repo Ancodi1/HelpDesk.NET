@@ -90,6 +90,7 @@ function readComment(value: unknown, ticketId: number): TicketComment {
 export function commentError(error: unknown, writing = false): string {
   const code = error instanceof HttpErrorResponse ? error.status : 0;
   const messages: Record<number, string> = {
+    429: 'Demasiadas peticiones. Espera antes de volver a intentarlo.',
     400: 'Revisa el comentario (texto obligatorio de hasta 4.000 unidades UTF-16) o la paginación.',
     401: 'Tu sesión ya no es válida. Inicia sesión de nuevo.',
     403: 'No tienes permiso para acceder a estos comentarios.',

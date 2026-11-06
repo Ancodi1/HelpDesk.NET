@@ -8,6 +8,8 @@ using HelpDesk.Api.DTOs;
 using HelpDesk.Api.Models;
 using HelpDesk.Api.Validation;
 using Npgsql;
+using HelpDesk.Api.Security;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
@@ -25,6 +27,9 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 builder.Services.AddHelpDeskPasswordHashing();
+builder.Services.AddSingleton<RequestLimits>();
+builder.Services.AddRateLimiter();
+builder.Services.AddOptions<RateLimiterOptions>().Configure<RequestLimits>(RequestLimits.Configure);
 
 builder.Services.AddSingleton<IValidateOptions<JwtSettings>, JwtSettingsValidator>();
 builder.Services.AddOptions<JwtSettings>().BindConfiguration("Jwt").ValidateOnStart();
@@ -83,8 +88,10 @@ app.UseStatusCodePages(async context =>
     }
 });
 
+app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapGet("/api/health", () => new { status = "ok" }).AllowAnonymous();
 
@@ -144,6 +151,8 @@ app.MapGet("/api/tickets", async (HttpRequest request, HelpDeskDbContext dbConte
         return Results.BadRequest(new { error = "La combinación de page y pageSize supera el desplazamiento máximo permitido." });
 
     var search = parameters["search"].ToString();
+    if (search.Length > 200 || search.Contains('\0'))
+        return Results.BadRequest(new { error = "La búsqueda admite hasta 200 unidades UTF-16 y no admite caracteres nulos." });
     if (search.Length > 0)
     {
         // ILIKE ignora mayúsculas; escapar sus comodines conserva una búsqueda literal.
@@ -214,7 +223,7 @@ app.MapPost("/api/tickets", async (CreateTicketDto createTicketDto, HelpDeskDbCo
     }
 
     return Results.Created($"/api/tickets/{ticket.Id}", ticket);
-}).RequireAuthorization();
+}).RequireAuthorization().RequireRateLimiting("ticket-create");
 
 app.MapPut("/api/tickets/{id}", async (int id, UpdateTicketDto updateTicketDto, HelpDeskDbContext dbContext) =>
 {
@@ -487,7 +496,7 @@ app.MapPost("/api/tickets/{id}/comments", async (int id, CreateTicketCommentDto 
         return Results.Conflict(new { error = "La cuenta ya no está disponible. Revisa tu sesión antes de continuar." });
     }
     return Results.Json(new TicketCommentDto(comment.Id, id, comment.AuthorUserId, comment.AuthorNameSnapshot, comment.Content, comment.CreatedAt), statusCode: 201);
-}).RequireAuthorization();
+}).RequireAuthorization().RequireRateLimiting("comment-create");
 
 app.MapDelete("/api/tickets/{id}", async (int id, HelpDeskDbContext dbContext) =>
 {
@@ -610,7 +619,7 @@ app.MapPost("/api/auth/register", async (RegisterUserDto dto, HelpDeskDbContext 
         return Results.Conflict(new { error = "Ya existe un usuario con ese correo electrónico." });
     }
     return Results.Created($"/api/users/{user.Id}", ToUserResponse(user));
-}).AllowAnonymous();
+}).AllowAnonymous().RequireRateLimiting("register");
 
 app.MapPost("/api/auth/login", async (LoginDto dto, HelpDeskDbContext dbContext,
     IPasswordHasher<User> passwordHasher, JwtTokenIssuer tokens, HttpResponse response) =>
@@ -621,6 +630,9 @@ app.MapPost("/api/auth/login", async (LoginDto dto, HelpDeskDbContext dbContext,
         return Results.BadRequest(new { error = "El email y la contraseña son obligatorios." });
 
     var email = dto.Email.Trim().ToLowerInvariant();
+    if (dto.Password.Length > 128 || dto.Password.Contains('\0') || email.Length > 254 || email.Contains('\0'))
+        return Results.BadRequest(new { error = "El email o la contraseña no son válidos." });
+
     var user = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(user => user.Email == email);
     var verified = PasswordVerificationResult.Failed;
     if (!string.IsNullOrEmpty(user?.PasswordHash))
@@ -634,7 +646,7 @@ app.MapPost("/api/auth/login", async (LoginDto dto, HelpDeskDbContext dbContext,
 
     // SuccessRehashNeeded también acredita la contraseña; no escribimos datos en este login.
     return Results.Ok(tokens.Issue(user));
-}).AllowAnonymous();
+}).AllowAnonymous().RequireRateLimiting("login");
 
 app.Run();
 
@@ -667,6 +679,11 @@ static string? ValidateTicket(string? title, string? description)
     {
         return "La descripción es obligatoria y no puede contener solamente espacios.";
     }
+
+    if (description.Length > 10000)
+        return "La descripción debe tener como máximo 10000 unidades UTF-16.";
+    if (title.Contains('\0') || description.Contains('\0'))
+        return "Los textos del ticket no pueden contener caracteres nulos.";
 
     return null;
 }

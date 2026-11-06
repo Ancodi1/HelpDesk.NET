@@ -43,7 +43,7 @@ export class TicketCreate {
   readonly error = signal<string | null>(null);
   readonly form = this.builder.group({
     title: ['', [requiredTicketText, Validators.maxLength(100)]],
-    description: ['', requiredTicketText],
+    description: ['', [requiredTicketText, Validators.maxLength(10000)]],
     priority: this.builder.control<TicketPriority>('Medium', enumSelection(ticketPriorities)),
     category: this.builder.control<TicketCategory>('Other', enumSelection(ticketCategories)),
   });

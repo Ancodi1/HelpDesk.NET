@@ -5,6 +5,8 @@ export function authError(error: unknown, action: 'login' | 'register'): string 
   if (error instanceof TimeoutError) return 'El servidor tarda en responder. Inténtalo de nuevo.';
   if (error instanceof HttpErrorResponse) {
     switch (error.status) {
+      case 429:
+        return 'Demasiadas peticiones. Espera antes de volver a intentarlo.';
       case 0:
         return 'No se pudo conectar con el servidor. Comprueba la conexión e inténtalo de nuevo.';
       case 400:

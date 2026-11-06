@@ -38,6 +38,13 @@ describe('Authentication pages', () => {
     );
     http.expectNone('/api/auth/login');
   });
+  it.each(['x'.repeat(129), 'a\0b'])('rejects unsafe login passwords before HTTP', (password) => {
+    const f = TestBed.createComponent(Login);
+    f.componentInstance.form.setValue({ email: 'person@example.invalid', password });
+    f.componentInstance.submit();
+    expect(f.componentInstance.form.invalid).toBe(true);
+    http.expectNone('/api/auth/login');
+  });
   it('submits once, clears the password and navigates after login', () => {
     const f = TestBed.createComponent(Login);
     const page = f.componentInstance;

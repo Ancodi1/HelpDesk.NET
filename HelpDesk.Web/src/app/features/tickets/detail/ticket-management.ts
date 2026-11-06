@@ -59,7 +59,7 @@ export class TicketManagement {
       nonNullable: true,
       validators: [requiredTicketText, Validators.maxLength(100)],
     }),
-    description: new FormControl('', { nonNullable: true, validators: [requiredTicketText] }),
+    description: new FormControl('', { nonNullable: true, validators: [requiredTicketText, Validators.maxLength(10000)] }),
   });
   readonly status = new FormControl<TicketStatus>('Open', { nonNullable: true });
   readonly priority = new FormControl<Ticket['priority']>('Medium', {

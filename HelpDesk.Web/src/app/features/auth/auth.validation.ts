@@ -1,7 +1,7 @@
 import { AbstractControl, FormControl, ValidationErrors, Validators } from '@angular/forms';
 
 export function nonBlank(control: AbstractControl): ValidationErrors | null {
-  return typeof control.value === 'string' && control.value.trim().length > 0
+  return typeof control.value === 'string' && control.value.trim().length > 0 && !control.value.includes('\0')
     ? null
     : { required: true };
 }
@@ -12,7 +12,7 @@ export function emailAddress(control: AbstractControl): ValidationErrors | null 
   const domain = value.split('@')[1] ?? '';
   const labels = domain.split('.');
   if (
-    value.length > 254 ||
+    value.length > 254 || value.includes('\0') ||
     Validators.email(new FormControl(value)) ||
     labels.length < 2 ||
     labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))

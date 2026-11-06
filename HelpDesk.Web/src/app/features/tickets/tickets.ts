@@ -232,6 +232,8 @@ export class Tickets implements OnInit {
     );
   }
   private load(query: TicketQuery): Observable<ListState> {
+    if (query.search.length > 200 || query.search.includes('\0'))
+      return of({ kind: 'error', message: 'La búsqueda admite hasta 200 unidades UTF-16 y no admite caracteres nulos.' });
     return (this.personal ? this.service.list(query, true) : this.service.list(query)).pipe(
       map((data): ListState => ({ kind: 'ready', data })),
       catchError((error: unknown) => of<ListState>({ kind: 'error', message: listError(error) })),

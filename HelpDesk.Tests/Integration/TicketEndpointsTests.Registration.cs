@@ -130,6 +130,9 @@ public partial class TicketEndpointsTests
         var stored = await db.Users.AsNoTracking().SingleAsync(u => u.Id == returned.Id);
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<User>>();
         Assert.True(hasher.VerifyHashedPassword(stored, stored.PasswordHash!, password) == PasswordVerificationResult.Success);
+        // Login conserva normalización y espacios del correo incluso en el límite de 254.
+        using var login = await client.PostAsJsonAsync("/api/auth/login", new { email = " " + email + " ", password });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
     }
 
     [Fact]

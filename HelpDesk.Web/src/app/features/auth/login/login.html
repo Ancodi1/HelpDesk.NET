@@ -43,13 +43,14 @@
           id="login-password"
           type="password"
           formControlName="password"
+          maxlength="128"
           autocomplete="current-password"
           required
           [attr.aria-invalid]="form.controls.password.touched && form.controls.password.invalid"
           aria-describedby="login-password-error"
         />
         @if (form.controls.password.touched && form.controls.password.invalid) {
-          <p id="login-password-error" class="field-error">Introduce tu contraseña.</p>
+          <p id="login-password-error" class="field-error">Introduce tu contraseña (máximo 128 unidades UTF-16, sin caracteres nulos).</p>
         }
       </div>
       <button type="submit" [disabled]="pending()">

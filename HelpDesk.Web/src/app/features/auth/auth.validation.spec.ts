@@ -2,7 +2,7 @@ import { FormControl } from '@angular/forms';
 import { emailAddress, nonBlank, registrationPassword } from './auth.validation';
 
 describe('Authentication form validation', () => {
-  it.each(['', '   ', '\n'])('rejects blank required inputs', (value) =>
+  it.each(['', '   ', '\n', 'a\0b'])('rejects blank required inputs', (value) =>
     expect(nonBlank(new FormControl(value))).not.toBeNull(),
   );
   it.each(['a'.repeat(15), 'a'.repeat(128), '😀'.repeat(8), ' leading and trailing '])(

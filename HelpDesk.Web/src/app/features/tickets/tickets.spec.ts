@@ -65,6 +65,13 @@ describe('Ticket listing interactions', () => {
     expect(fixture.nativeElement.textContent).toContain('Incidencias creadas por ti.');
     expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(1);
   });
+  it.each(['x'.repeat(201), 'a\0b'])('rejects unsafe search from the URL before HTTP', (search) => {
+    request().flush(pageFixture());
+    params.next(convertToParamMap({ search }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.state().kind).toBe('error');
+    http.expectNone((r) => r.url === '/api/tickets');
+  });
   it('cancels immediately on typing, debounces search and preserves literal text in the URL', async () => {
     const old = request();
     fixture.componentInstance.form.controls.search.setValue('first');
