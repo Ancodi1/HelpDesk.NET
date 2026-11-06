@@ -2,7 +2,69 @@
 
 Última actualización: 2026-11-06.
 
-## Estado vigente — fase 10.7.3 implementada y validada
+## Estado vigente — fase 10.7.4 preparada y validada localmente
+
+6 de noviembre de 2026. Sin publicación, contratación, commit o push. Sin cambios
+JWT/roles/esquema ni migraciones en bases habituales. Operación pública pendiente.
+
+Archivos nuevos: Dockerfile, .dockerignore, appsettings.Production.json,
+Deployment/ProductionHosting.cs, ProductionHostingTests.cs, deploy/runtime-grants.sql
+y DEPLOYMENT.md. Program integra hosting; dos fixtures existentes se adaptan a hosts
+Production explícitos y sondas nuevas. README y ARCHITECTURE actualizados.
+
+Conceptos .NET: orden del pipeline, middleware de proxy con confianza explícita,
+configuración KeyPerFile y separación de disponibilidad de proceso/dependencias.
+Angular compilado vive en wwwroot; SDK y Node solo en etapas de construcción.
+La imagen se ejecuta con UID 1654. Production exige hosts explícitos; secretos externos,
+API con no-store, cabeceras compatibles con Angular y errores HTTP genéricos.
+Migraciones separadas y permisos mínimos documentados, sin migración automática.
+
+| Comprobación ejecutada | Resultado |
+| --- | --- |
+| dotnet build --no-restore -m:1 -nr:false | 0 errores y advertencias |
+| dotnet test sin PostgreSQL | 316 superadas, 0 fallidas/omitidas |
+| dotnet test Category=PostgreSQL | 421 superadas, 0 fallidas/omitidas |
+| npm test -- --watch=false | 419 superadas en 37 archivos |
+| docker build helpdesk:1074 | Correcto; Angular production y API Release |
+| Imagen final 8ba5c02abe39 | UID 1654; sin Node ni SDK |
+| Contenedor read-only, tmpfs /tmp, cap-drop ALL y no-new-privileges | Arranque correcto |
+| HTTP mismo origen /, /login, /tickets/1 repetido | HTML SPA idéntico, 200; API desconocida 404 |
+| Registro/login y autorización con rol runtime | 201/200, tickets 200 con JWT, anónimo 401, directorio 403 |
+| Demo normal y rate limiting login | enabled=false y 429 tras agotar cuota |
+| Sondas con PostgreSQL detenido | live 200, ready 503 genérico |
+| Export filesystem y metadatos imagen | Sin secretos temporales usados, Node ni SDK; env sin claves/contraseñas |
+| Privilegios runtime | Sin CREATE base/esquema, lectura historial EF ni privilegios elevados |
+| git diff --check | Correcto |
+
+PostgreSQL: instancias nuevas helpdesk-1074-01b6597a y helpdesk-1074b-04319f59,
+redes/volúmenes exclusivos, puerto 127.0.0.1:15440. Identidad Docker/TCP verificada
+antes de migrar con fixtures. Solo nueve migraciones existentes en bases aisladas
+helpdesk_test_db y helpdesk_demo_db. Suite final: 0/0/0/0 filas ordinarias y
+5/8/14/27 demo, nueve migraciones en ambas. Prueba de imagen sobre la primera base
+con rol helpdesk_runtime separado; añade una cuenta ficticia exclusivamente allí.
+Contenedores API/PostgreSQL detenidos; recursos conservados para inspección. Secretos
+y lanzadores temporales bajo /tmp, fuera de Git; no reutilizar en un entorno real.
+
+Incidencias resueltas: sandbox bloqueó Docker e IPC MSBuild; se ejecutaron con permisos
+ampliados y compilación de un nodo. Una revisión automática de tests expiró, reintento
+correcto. Primer pase sin base detectó fixtures Production sin hosts y orden esperado
+de endpoints. Primer pase PostgreSQL: 420/421; catch-all genérico ocultaba 405, corregido
+para GET/HEAD y repetido completo en otra instancia nueva. Primer intento de prueba de
+imagen chocó con puerto ocupado por esa suite; un enlace de red perdido tras ese fallo
+causó ready 503. Se verificaron permisos SELECT, se restauró únicamente la red exclusiva
+y se completó la matriz. Auditoría SQL adicional se repitió tras esperar arranque de
+PostgreSQL. Ningún intento fallido se cuenta como validación superada. Docker advierte
+builder legacy; npm de imagen advierte scripts no aprobados, build Angular correcto.
+
+Pendiente: prueba visual de refresco/navegación en navegador, HTTPS y proxy de proveedor
+real (IPs y cabeceras efectivas), digests de imágenes para release, backups/restauración
+y revisión de CSP más estricta con nonces/hashes. La validación HTTP repetida de rutas
+no equivale a ejecutar Angular en navegador. Demo activada se cubre por sus tests
+PostgreSQL/Angular existentes; la imagen se valida con demo desactivada. Cuotas locales
+por instancia; gateway requerido para cuota común. No se considera listo un proveedor
+concreto ni se ha hecho despliegue público. Guía: DEPLOYMENT.md.
+
+## Cierre anterior — fase 10.7.3 implementada y validada
 
 6 de noviembre de 2026. Preparación de demo de portfolio **desactivada por defecto**.
 Solo se inicializaron datos ficticios en Docker de tests; no se han creado credenciales

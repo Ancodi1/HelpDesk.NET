@@ -97,5 +97,5 @@ public class RegistrationSecurityTests
     }
 
     private static WebApplicationFactory<Program> Factory(string environment = "Testing") =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder => { builder.UseEnvironment(environment); builder.ConfigureTestServices(services => services.AddJwtTestSettings()); });
+        new WebApplicationFactory<Program>().WithWebHostBuilder(builder => { builder.UseEnvironment(environment); builder.UseSetting("AllowedHosts", "localhost"); builder.ConfigureTestServices(services => services.AddJwtTestSettings()); });
 }

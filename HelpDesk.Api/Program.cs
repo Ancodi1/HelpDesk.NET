@@ -16,6 +16,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
+HelpDesk.Api.Deployment.ProductionHosting.Configure(builder);
 
 builder.Services.Configure<RouteHandlerOptions>(options =>
 {
@@ -101,6 +102,7 @@ app.UseStatusCodePages(async context =>
     }
 });
 
+HelpDesk.Api.Deployment.ProductionHosting.UseProductionHosting(app);
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -675,6 +677,7 @@ app.MapPost("/api/auth/login", async (LoginDto dto, HelpDeskDbContext dbContext,
     return Results.Ok(tokens.Issue(user));
 }).AllowAnonymous().RequireRateLimiting("login");
 
+HelpDesk.Api.Deployment.ProductionHosting.MapProductionEndpoints(app);
 app.Run();
 
 // Solo se llama con el ticket bloqueado; SaveChanges y commit guardan cambio y actividad juntos.

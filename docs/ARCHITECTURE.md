@@ -754,3 +754,28 @@ reset público. Limitaciones: visitantes comparten cuenta/cupos/contenido; topes
 filas no sustituyen cuota de disco/vacuum/gateway. Publicación, secretos JWT propios,
 proxies confiables y programación privada de restauración siguen siendo operación
 futura. Garantías y límites precisos en DEMO.md; pruebas en PROGRESS.md.
+
+### 051 — Contenedor y hosting de producción (fase 10.7.4)
+
+Estado: preparación local implementada; publicación y proveedor pendientes.
+
+Decisión: Docker multi-stage compila Angular con npm ci y publica API Release; copia
+browser a wwwroot y usa únicamente ASP.NET runtime con APP_UID en la etapa final.
+ProductionHosting mantiene Program pequeño y configura KeyPerFile, hosts explícitos,
+proxy por IP exacta (un salto, sin forwarded host), cabeceras y archivos estáticos.
+Forwarded headers precede autenticación y rate limiting. /api queda reservado; GET/HEAD
+inexistentes responden 404 sin HTML, métodos conocidos conservan 405. SPA pública solo
+con index.html presente, fallback para rutas sin extensión, autorización API intacta.
+
+Readiness consulta las cuatro tablas con cancelación de tres segundos y respuesta
+503 genérica. Liveness conserva /api/health y añade /api/health/live. Todas las
+respuestas tienen no-store; CSP mínima compatible con estilos dinámicos Angular.
+HTTPS se termina en proxy confiable, HSTS solo para esquema HTTPS reconocido. No se
+introducen paquetes, cambios JWT/roles/esquema, migraciones ni arranque con Migrate.
+
+Migrador privado propietario separado del rol runtime sin DDL. Grants explícitos para
+cuatro tablas y secuencias en deploy/runtime-grants.sql; no grants sobre historial EF.
+Secretos se montan externamente, nunca durante build. Tags de imágenes son cómodos para
+preparación; releases deben fijar digests y registrar arquitectura. Configuración de
+proveedor, IPs de proxy, TLS, backups y revisión visual siguen pendientes. Operación y
+consecuencias en DEPLOYMENT.md; resultados reales de validación en PROGRESS.md.

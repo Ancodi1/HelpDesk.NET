@@ -744,3 +744,10 @@ Angular ofrece carga, vacío, error seguro, reintento y **Cargar anteriores**. A
 5. Preparar más de 20 cambios válidos solo en ese destino manual: **Cargar anteriores** debe añadir páginas sin duplicados. Cambiar de ticket durante una carga no debe mostrar actividad del anterior. Comprobar distribución en escritorio/móvil y que nombres con caracteres HTML aparecen como texto.
 6. Interrumpir temporalmente la API: debe aparecer un error recuperable del historial conservando el detalle ya mostrado. Restablecer y pulsar **Actualizar historial**. Comprobar también que los comentarios siguen cargándose/publicándose de forma independiente.
 7. El borrado no tiene interfaz Angular: su 409 con comentarios/actividad y el 204 sin dependencias se verifican en las pruebas HTTP aisladas. No hace falta añadir un control de eliminación al frontend.
+
+### Preparación de producción (10.7.4)
+
+Imagen multi-stage con Angular/API en un origen, usuario sin privilegios y secretos
+externos. Construcción: `docker build -t helpdesk:local .`. Migraciones separadas,
+roles PostgreSQL, configuración de proxy/HTTPS y sondas en [DEPLOYMENT.md](docs/DEPLOYMENT.md).
+No se ha publicado la aplicación. Consultar PROGRESS para las validaciones ejecutadas.
