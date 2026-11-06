@@ -2,6 +2,18 @@
   <p class="eyebrow">BIENVENIDO DE NUEVO</p>
   <h1 id="login-title">Conecta con tu espacio.</h1>
   <p class="intro">Inicia sesión en HelpDesk.NET con tu correo y contraseña.</p>
+  @if (demo.enabled()) {
+    <section class="feedback notice" aria-label="Cuentas de demostración">
+      <h2>Elige cómo probar la demo</h2>
+      <p>User: crea incidencias, consulta tus tickets y publica comentarios.</p>
+      <p>Technician: consulta lo creado o asignado a la cuenta, comenta y cambia estados permitidos.</p>
+      <p>Selecciona una cuenta y pulsa Iniciar sesión. El registro está cerrado.
+        Usa solo ejemplos ficticios; los cambios se comparten y se pueden restaurar.</p>
+      @for (account of demo.accounts(); track account.role) {
+        <button type="button" [disabled]="pending()" (click)="useDemo(account)">Usar cuenta {{ account.role }}</button>
+      }
+    </section>
+  }
   @if (registered) {
     <p class="feedback notice" role="status">Cuenta creada. Ya puedes iniciar sesión.</p>
   }
@@ -57,7 +69,9 @@
         {{ pending() ? 'Iniciando sesión…' : 'Iniciar sesión' }}
       </button>
     </fieldset>
-    <p class="switch">¿Todavía no tienes cuenta? <a routerLink="/register">Crear una cuenta</a></p>
+    @if (!demo.enabled()) {
+      <p class="switch">¿Todavía no tienes cuenta? <a routerLink="/register">Crear una cuenta</a></p>
+    }
   </form>
   <p class="privacy-note">
     La sesión se conserva solo mientras esta página permanece abierta. Si la recargas, tendrás que

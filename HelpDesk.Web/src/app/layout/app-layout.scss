@@ -244,3 +244,16 @@ main {
     flex-wrap: wrap;
   }
 }
+
+.demo-notice {
+  margin-bottom: 28px;
+  padding: 18px 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.65;
+  p { margin: 8px 0; }
+  a { color: var(--accent); }
+}

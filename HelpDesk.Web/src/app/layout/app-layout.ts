@@ -1,3 +1,4 @@
+import { DemoService } from '../core/demo/demo.service';
 import { Component, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
@@ -14,6 +15,7 @@ import { SessionMenu } from './session-menu';
   styleUrl: './app-layout.scss',
 })
 export class AppLayout {
+  readonly demo = inject(DemoService);
   readonly auth = inject(AuthService);
   readonly navigation = roleNavigation;
   readonly breadcrumb = signal('Inicio');

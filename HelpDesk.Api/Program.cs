@@ -9,6 +9,7 @@ using HelpDesk.Api.Models;
 using HelpDesk.Api.Validation;
 using Npgsql;
 using HelpDesk.Api.Security;
+using HelpDesk.Api.Demo;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 builder.Services.AddHelpDeskPasswordHashing();
+builder.Services.Configure<DemoSettings>(builder.Configuration.GetSection("Demo"));
+builder.Services.AddHostedService<DemoStartup>();
 builder.Services.AddSingleton<RequestLimits>();
 builder.Services.AddRateLimiter();
 builder.Services.AddOptions<RateLimiterOptions>().Configure<RequestLimits>(RequestLimits.Configure);
@@ -56,15 +59,25 @@ builder.Services.AddAuthorization(options =>
         AccessPolicies.AccountPolicy(nameof(UserRole.Admin), nameof(UserRole.Technician)));
 });
 
-builder.Services.AddDbContext<HelpDeskDbContext>(options =>
+builder.Services.AddDbContext<HelpDeskDbContext>((services, options) =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    var demo = services.GetRequiredService<IOptions<DemoSettings>>().Value;
+    demo.Validate();
+    var connectionString = demo.Enabled
+        ? new DemoTarget(demo.ConnectionString, demo.InstanceId).ConnectionString
+        : builder.Configuration.GetConnectionString("DefaultConnection");
 
     if (string.IsNullOrWhiteSpace(connectionString))
     {
         throw new InvalidOperationException("Configura ConnectionStrings:DefaultConnection mediante secretos de desarrollo o variables de entorno.");
     }
 
+    if (!demo.Enabled)
+    {
+        var normalTarget = new NpgsqlConnectionStringBuilder(connectionString);
+        if (normalTarget.Database == DemoTarget.Database || normalTarget.Username == DemoTarget.Username)
+            throw new InvalidOperationException("La base demo solo se puede utilizar con Demo:Enabled y su configuración explícita.");
+    }
     options.UseNpgsql(connectionString);
 });
 
@@ -92,6 +105,20 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
+app.UseMiddleware<DemoMiddleware>();
+
+app.MapGet("/api/demo", (IOptions<DemoSettings> options, HttpResponse response) =>
+{
+    response.Headers.CacheControl = "no-store";
+    var demo = options.Value;
+    return demo.Enabled
+        ? Results.Ok((object)new { enabled = true, accounts = new[]
+        {
+            new { role = "User", email = DemoAccounts.UserEmail, password = demo.UserPassword },
+            new { role = "Technician", email = DemoAccounts.TechnicianEmail, password = demo.TechnicianPassword }
+        } })
+        : Results.Ok((object)new { enabled = false });
+}).AllowAnonymous();
 
 app.MapGet("/api/health", () => new { status = "ok" }).AllowAnonymous();
 

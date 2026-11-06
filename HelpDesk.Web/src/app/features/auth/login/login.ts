@@ -1,3 +1,4 @@
+import { DemoAccount, DemoService } from '../../../core/demo/demo.service';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -15,6 +16,7 @@ import { emailAddress, nonBlank } from '../auth.validation';
   styleUrl: '../auth-form.scss',
 })
 export class Login {
+  readonly demo = inject(DemoService);
   readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
@@ -26,6 +28,12 @@ export class Login {
 
   constructor() {
     this.destroyRef.onDestroy(() => this.form.controls.password.reset(''));
+  }
+
+  useDemo(account: DemoAccount): void {
+    if (this.pending()) return;
+    this.form.setValue({ email: account.email, password: account.password });
+    this.error.set(null);
   }
 
   submit(): void {

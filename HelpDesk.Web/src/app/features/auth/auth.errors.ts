@@ -1,7 +1,10 @@
+import { demoError } from '../../core/demo/demo-error';
 import { HttpErrorResponse } from '@angular/common/http';
 import { TimeoutError } from 'rxjs';
 
 export function authError(error: unknown, action: 'login' | 'register'): string {
+  const demoMessage = demoError(error);
+  if (demoMessage) return demoMessage;
   if (error instanceof TimeoutError) return 'El servidor tarda en responder. Inténtalo de nuevo.';
   if (error instanceof HttpErrorResponse) {
     switch (error.status) {

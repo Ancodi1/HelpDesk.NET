@@ -1,3 +1,4 @@
+import { DemoService } from '../../core/demo/demo.service';
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
@@ -44,6 +45,30 @@ describe('Authentication pages', () => {
     f.componentInstance.submit();
     expect(f.componentInstance.form.invalid).toBe(true);
     http.expectNone('/api/auth/login');
+  });
+  it('selects public demo credentials without submitting or exposing an Admin account', () => {
+    const demo = TestBed.inject(DemoService);
+    const password = crypto.randomUUID();
+    demo.enabled.set(true);
+    demo.accounts.set([{ role: 'User', email: 'user@demo.helpdesk.test', password }]);
+    const f = TestBed.createComponent(Login);
+    f.detectChanges();
+    const button = [...f.nativeElement.querySelectorAll('button')].find((b: any) => b.textContent.includes('Usar cuenta User')) as HTMLButtonElement;
+    button.click();
+    expect(f.componentInstance.form.controls.password.value === password).toBe(true);
+    expect(f.nativeElement.textContent).not.toContain('Usar cuenta Admin');
+    http.expectNone('/api/auth/login');
+    f.destroy();
+  });
+  it('closes registration in demo while retaining a link to public accounts', () => {
+    TestBed.inject(DemoService).enabled.set(true);
+    const f = TestBed.createComponent(Register);
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('form')).toBeNull();
+    expect(f.nativeElement.textContent).toContain('El registro está cerrado');
+    f.componentInstance.submit();
+    http.expectNone('/api/auth/register');
+    f.destroy();
   });
   it('submits once, clears the password and navigates after login', () => {
     const f = TestBed.createComponent(Login);

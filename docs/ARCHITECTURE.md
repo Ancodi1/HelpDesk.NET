@@ -4,6 +4,10 @@
 
 ## Estado actual
 
+Fase 10.7.3: modo demo optativo, guardias backend, conexión exclusiva verificada,
+consola de dataset/restauración y avisos Angular. Desactivado por defecto, sin
+migraciones nuevas ni modificación de JWT/políticas de roles. Decisión 050 y DEMO.md.
+
 Fase 10.7.2: refuerzo de validación y rate limiter integrado por endpoint, sin cambio de arquitectura, esquema, JWT o roles. Decisión 049 y guía SECURITY.md.
 
 Fases 10.1 a 10.6.2.2: Angular con sesión en memoria, gestión de tickets, paneles, comentarios e historial automático. TicketActivities conserva valores y nombres históricos; cambio y actividad comparten transacción y bloqueo del ticket. Decisiones 039–048 al final. Migraciones solo en Docker exclusivo; resultados vigentes en PROGRESS.md. Revisión visual autenticada pendiente.
@@ -13,7 +17,7 @@ Revisión del 23 de octubre de 2026: los tres fallos PostgreSQL comunicados en 9
 
 La etapa 9.3 protege todas las rutas excepto health/register/login mediante JWT y comprobación de cuenta/rol actual en PostgreSQL. Tickets se filtran por propietario o asignación; la gestión completa y administración de usuarios requieren Admin (decisión 037). La etapa 9.4 incorpora una consola manual del primer Admin, sin cambiar rutas ni permisos; creación real y acceso administrativo confirmados por el usuario al cerrar 9.4 el 27 de octubre de 2026 (decisión 038). Las decisiones anteriores registran la evolución histórica.
 
-El repositorio contiene la solución `HelpDesk.NET.slnx` y los proyectos `HelpDesk.Api` (ASP.NET Core Web API), `HelpDesk.AdminBootstrap` (consola independiente) y `HelpDesk.Tests` (xUnit e integración HTTP), todos para `net10.0`. `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection`. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Todo el CRUD accede a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
+El repositorio contiene la solución `HelpDesk.NET.slnx` y los proyectos `HelpDesk.Api` (ASP.NET Core Web API), `HelpDesk.AdminBootstrap` (consola del primer Admin), `HelpDesk.Demo` (consola privada de dataset/restauración) y `HelpDesk.Tests` (xUnit e integración HTTP), todos para `net10.0`. `HelpDeskDbContext` está registrado mediante DI con Npgsql y `ConnectionStrings:DefaultConnection` en modo normal, o la conexión demo explícita validada en modo demo. El cierre del 8 de octubre de 2026 confirmó mediante consultas de lectura PostgreSQL 16.15, la base `helpdesk_db` y `InitialCreate` aplicada en `__EFMigrationsHistory`. Todo el CRUD accede a `Tickets`; la comprobación del 13 de octubre confirmó creación y lectura de un ticket incluso tras reiniciar la API.
 
 `GET /api/tickets` compone un IQueryable con AsNoTracking, filtros y búsqueda ILIKE parametrizada; cuenta antes de ordenar por CreatedAt/Id descendentes y aplicar Skip/Take. Devuelve HTTP 200 con items y metadatos de paginación (decisión 030). `GET /api/tickets/{id}` usa `FirstOrDefaultAsync` y devuelve 200 con el objeto o 404 sin cuerpo. Health mantiene HTTP 200 con `{"status":"ok"}`.
 
@@ -710,3 +714,43 @@ Builder pasa a 22.2.5 con Vite 8.3.5 y paquetes framework/compiler al parche coh
 fábrica PostgreSQL para conservar independencia de casos sin desactivar las cuotas.
 Motivos, valores, garantías y limitaciones completas en SECURITY.md; resultados en
 PROGRESS.md.
+
+### 050 — Entorno demo explícito y restauración de contenido (fase 10.7.3)
+
+Estado: implementado y validado el 6 de noviembre de 2026 exclusivamente en Docker.
+Sin despliegue, migración nueva, cambios de tablas/modelo o capas. HelpDesk.Demo sigue
+el precedente de consola operativa independiente de AdminBootstrap y referencia API
+para reutilizar DbContext, modelos, hashing y guardias de destino.
+
+Decisión: DemoSettings desactivado por defecto; al activarlo, conexión independiente
+obligatoria, base/rol fijos y UUID corroborado por comentario PostgreSQL. DemoStartup
+verifica identidad/privilegios, esquema existente y accesos públicos antes de servir.
+El modo normal rechaza reutilizar la base/rol demo mediante DefaultConnection.
+
+DemoMiddleware se ejecuta después de autorización y rate limiter; protege IDs 1/2/3,
+cierra registro/creación de cuentas solo en demo y coordina escritores con la consola
+mediante pg_advisory_xact_lock. Cuenta filas antes de POST tickets/comentarios y PATCH,
+con máximos 100/500/1000 y rechazos 409 seguros. No se cambian las transacciones de los
+endpoints: la coordinación usa una conexión/transacción separada, mantenida hasta que
+termina el endpoint. Las escrituras demo se serializan entre instancias; el modo normal
+no adquiere ese candado. Consecuencia: conexión extra y menor concurrencia en demo.
+El lock_timeout de cinco segundos evita espera ilimitada al adquirirlo.
+
+HelpDesk.Demo verifica confirmación/base/rol/marca antes de borrar. Inicializa solo
+una base vacía con cinco identidades y credenciales externas; restaura actividades,
+comentarios y tickets en una transacción, sin tocar cuentas/hashes ni reiniciar sus
+identidades. Los IDs de tickets siguen avanzando: una URL vieja no pasa a otro ticket.
+Dataset explícitamente ficticio, incluidas 27 actividades sintéticas coherentes con
+los ocho tickets; no es reconstrucción de auditoría real ni una nueva ruta de escritura.
+
+GET /api/demo es anónimo y no-store; devuelve enabled=false en modo normal y solo dos
+cuentas públicas en demo. Angular lo consulta una vez al inicializar, muestra banner,
+selección de cuenta con login normal y cierre visual del registro; no almacena
+credenciales persistentes. Credencial Admin solo en inicialización privada, nunca en
+configuración del cliente o contrato público. No hay una política de autorización nueva.
+
+Motivo: no mezclar cuentas reales/demo ni añadir columnas, bases por visitante o un
+reset público. Limitaciones: visitantes comparten cuenta/cupos/contenido; topes de
+filas no sustituyen cuota de disco/vacuum/gateway. Publicación, secretos JWT propios,
+proxies confiables y programación privada de restauración siguen siendo operación
+futura. Garantías y límites precisos en DEMO.md; pruebas en PROGRESS.md.

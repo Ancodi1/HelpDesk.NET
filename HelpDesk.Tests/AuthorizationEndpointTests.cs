@@ -66,15 +66,15 @@ public class AuthorizationEndpointTests
     }
 
     [Fact]
-    public void OnlyHealthRegistrationAndLogin_AreAnonymous_AndFallbackRequiresCurrentAccount()
+    public void OnlyHealthDemoInfoRegistrationAndLogin_AreAnonymous_AndFallbackRequiresCurrentAccount()
     {
         using var factory = Factory();
         using var client = factory.CreateClient();
         var routes = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.Cast<RouteEndpoint>().ToArray();
         var anonymous = routes.Where(endpoint => endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null)
             .Select(endpoint => endpoint.RoutePattern.RawText).OrderBy(path => path);
-        Assert.Equal(new[] { "/api/auth/login", "/api/auth/register", "/api/health" }, anonymous);
-        Assert.Equal(19, routes.Length);
+        Assert.Equal(new[] { "/api/auth/login", "/api/auth/register", "/api/demo", "/api/health" }, anonymous);
+        Assert.Equal(20, routes.Length);
         Assert.All(routes.Where(endpoint => endpoint.Metadata.GetMetadata<IAllowAnonymous>() is null),
             endpoint => Assert.NotEmpty(endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>()));
         var options = factory.Services.GetRequiredService<IOptions<AuthorizationOptions>>().Value;

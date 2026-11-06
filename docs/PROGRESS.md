@@ -2,7 +2,102 @@
 
 Última actualización: 2026-11-06.
 
-## Estado vigente — fase 10.7.2 implementada y validada
+## Estado vigente — fase 10.7.3 implementada y validada
+
+6 de noviembre de 2026. Preparación de demo de portfolio **desactivada por defecto**.
+Solo se inicializaron datos ficticios en Docker de tests; no se han creado credenciales
+permanentes para un entorno público, publicado, conectado a datos habituales, hecho
+commit o push. No hay migración nueva ni modificación de esquema EF, JWT o políticas
+de roles. La operación pública y su infraestructura siguen pendientes.
+
+Implementado:
+
+- DemoSettings/DemoTarget/DemoStartup validan una conexión separada, base/rol exclusivos,
+  UUID marcado en metadatos PostgreSQL, privilegios limitados y cuentas al arrancar.
+  Sin fallback a DefaultConnection y sin migrar/seed/reset al iniciar la API. El modo
+  normal rechaza la base/rol demo por su conexión habitual.
+- Backend demo protege IDs 1 User, 2 Technician y 3 Admin privado contra escrituras
+  de identidad, incluso administrativas (409). No existen rutas de contraseña o
+  eliminación de usuarios. Registro/creación administrativa cerrados solo en demo
+  (403). Cuentas no protegidas conservan PUT y fuera de demo no se interceptan cambios.
+- Máximos globales demo: 100 tickets, 500 comentarios y 1.000 actividades; candado
+  PostgreSQL entre escritores/restauración para evitar carreras. Capacidad agotada
+  responde 409 y conserva lecturas/login; se mantienen todos los 429 de 10.7.2.
+- Consola HelpDesk.Demo: --check, --initialize y --restore con confirmación UUID.
+  Lista cerrada de conexión, sin secretos por argumentos, User Secrets o migraciones.
+  Inicializa solo vacío. Restauración transaccional de contenido, sin borrar cuentas,
+  cambiar hashes/roles o reciclar IDs de tickets. No hay endpoint ni tarea de reset.
+- Dataset: cinco identidades ficticias, ocho tickets (todos los estados, categorías
+  y prioridades), asignados/sin asignar, catorce comentarios y veintisiete actividades.
+- GET anónimo /api/demo ofrece solo las dos credenciales públicas externas, no-store;
+  modo normal devuelve enabled=false. Angular consulta una vez al arrancar, muestra
+  aviso persistente/datos ficticios, rellena login por rol sin envío automático, cierra
+  visualmente registro y usa mensajes locales para cupos/esperas. Nunca recibe Admin.
+- README, ARCHITECTURE, SECURITY, POSTGRESQL_TESTS y nueva DEMO.md actualizados con
+  decisiones, preparación separada, operación y matriz manual.
+
+Conceptos trabajados: configuración validada mediante DI y servicio de arranque,
+middleware condicionado por modo, coordinación transaccional PostgreSQL entre procesos
+y restauración EF Core atómica reutilizando los modelos. Una consola pequeña sigue
+el precedente de AdminBootstrap; no se introduce una arquitectura nueva.
+
+| Comprobación ejecutada | Resultado final |
+| --- | --- |
+| `dotnet build HelpDesk.NET.slnx --no-restore` (cuatro proyectos) | Correcto, 0 errores/advertencias |
+| `dotnet test ... --no-build --filter 'Category!=PostgreSQL'` | 313 superadas, 0 fallidas/omitidas |
+| Suite Docker `Category=PostgreSQL` | 421 superadas, 0 fallidas/omitidas; 34 segundos |
+| Consola compilada real --check / rechazo de confirmación / --restore | Correcto, hashes e identidades conservados y tickets con IDs nuevos |
+| `npm run build` en HelpDesk.Web | Correcto, sin advertencias |
+| `npm test -- --watch=false` | 419 superadas en 37 archivos, 0 fallidas/omitidas |
+| `git diff --check` | Correcto |
+
+18 pruebas nuevas sin PostgreSQL cubren lista de destinos/opciones, confirmación antes
+de conectar, configuración optativa, mutaciones protegidas, cierre de creación y
+usuarios ficticios. 17 nuevas PostgreSQL cubren credenciales expuestas/exclusión Admin,
+los tres accesos después de rechazos, permisos User/Technician, edición de una identidad
+normal, cierre de registro, repetición de restore/hashes/URLs antiguas, coherencia de
+los datos, los tres topes con recuperación, carrera por la última plaza y rollback de
+restore cancelado después de borrar dependencias dentro de la transacción. La espera
+real se observa con pg_blocking_pids, sin sleeps como sincronización. También se prueba
+rechazo de marca equivocada, inicialización repetida, credenciales publicadas que no
+verifican y reutilización del destino demo al desactivar el modo. Las 404 regresiones
+PostgreSQL anteriores pasan completas. 15 nuevos casos Angular cubren contratos,
+selección de cuenta, registro, banner y errores seguros.
+
+Incidencias de validación resueltas: se actualiza el test que enumeraba las rutas
+anónimas para admitir únicamente /api/demo adicional (20 endpoints), conservando sus
+aserciones de políticas. Se detectó una ventana de test de 10.7.2 agotada durante
+construcción fría de EF bajo carga; se prepara el modelo fuera de la ventana y se
+ejecuta la colección temporal sin otras colecciones en paralelo, manteniendo cupos,
+duración y aserciones. Un build intermedio falló por Span conservado a través de await
+en una aserción nueva, corregida separando la lectura. Primer pase Docker: 404 pasan y
+15 casos demo no arrancan porque la fixture suministró una conexión normalizada con
+opciones internas rechazadas por la lista cerrada. Se corrige la fixture para usar
+la conexión externa original, sin relajar el guardia. El pase final de 421 es el válido.
+Dos invocaciones npm desde la raíz sin package.json se repitieron desde HelpDesk.Web;
+no se consideran builds superados. No hay nuevas dependencias o lockfiles modificados.
+
+Entorno final nuevo: contenedor helpdesk-1073-d7f0f511, volumen
+helpdesk-1073-data-d7f0f511, red exclusiva helpdesk-1073-net-d7f0f511 y puerto
+127.0.0.1:15439. ID Docker, montajes, miembros de red, clúster interno/TCP, arranque,
+base/rol/marca/privilegios verificados antes de migrar y tras la suite. Se aplican solo
+las nueve migraciones existentes a helpdesk_test_db y helpdesk_demo_db de esa instancia
+nueva. Final: tests ordinarios 0 usuarios/tickets/comentarios/actividades; demo 5/8/14/27;
+ambas con 9 migraciones. La consola real vuelve a verificar identidad y confirma
+preservación de hashes al restaurar. Contenedor detenido; volumen/red conservados.
+El intento anterior también queda detenido. Estado/credenciales temporales fuera de
+Git, en /tmp; instrucciones y límites en POSTGRESQL_TESTS.md.
+
+Pendiente: aprovisionar un entorno público separado con secretos JWT propios, revisar
+proxy/HTTPS y validar visualmente en escritorio/móvil. La consola no prepara esquema
+ni configura horarios; aplicar migraciones existentes y planificar restauración son
+operación privada posterior. Los visitantes comparten cuentas, contenido y cuotas;
+pueden agotar escritura hasta restaurar. Los máximos de filas no limitan bloat, logs o
+bytes físicos: mantener autovacuum y supervisión/cuotas de disco. Garantías exactas,
+alternativas y pasos manuales en [DEMO.md](DEMO.md). No hay nuevas funcionalidades de
+cuentas ni despliegue implícito. Los apartados siguientes son registro histórico.
+
+## Cierre anterior — fase 10.7.2 implementada y validada
 
 6 de noviembre de 2026. Refuerzo previo al despliegue público, sin despliegue,
 cambios JWT/roles, arquitectura, migraciones nuevas, datos reales, commit o push.

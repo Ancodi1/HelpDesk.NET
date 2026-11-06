@@ -1,3 +1,4 @@
+import { DemoService } from '../../../core/demo/demo.service';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -15,6 +16,7 @@ import { emailAddress, nonBlank, registrationPassword } from '../auth.validation
   styleUrl: '../auth-form.scss',
 })
 export class Register {
+  readonly demo = inject(DemoService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
@@ -32,6 +34,7 @@ export class Register {
   }
 
   submit(): void {
+    if (this.demo.enabled()) return;
     if (this.pending()) return;
     this.form.markAllAsTouched();
     this.error.set(null);

@@ -1,8 +1,11 @@
+import { demoError } from '../../core/demo/demo-error';
 import { HttpErrorResponse } from '@angular/common/http';
 import { TimeoutError } from 'rxjs';
 import { TicketCreationResponseError } from './ticket.service';
 
 export function ticketError(error: unknown, action: 'create' | 'detail'): string {
+  const demoMessage = demoError(error);
+  if (demoMessage) return demoMessage;
   const uncertain =
     ' No reenvíes la solicitud sin revisar antes el listado: el ticket podría haberse creado.';
   if (error instanceof TicketCreationResponseError)

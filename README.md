@@ -6,6 +6,21 @@ Es un **proyecto personal en desarrollo**, con un enfoque educativo y de portfol
 
 [Repositorio en GitHub](https://github.com/Ancodi1/HelpDeskt.NET)
 
+## Demo segura de portfolio — fase 10.7.3
+
+Modo demo opcional, desactivado por defecto: cuentas públicas User/Technician y
+Admin privado, identidades protegidas en backend, registro cerrado y datos ficticios.
+La consola `HelpDesk.Demo` inicializa/restaura solo una base marcada explícitamente,
+sin borrar cuentas ni ejecutar migraciones. La interfaz identifica la demo y permite
+elegir una cuenta pública; sus credenciales se configuran fuera de Git.
+
+Límites globales en demo: 100 tickets, 500 comentarios y 1.000 actividades, además de
+las cuotas 10.7.2. Contenido compartido entre visitas y restauración operada de forma
+privada. El modo normal conserva sus permisos y funcionamiento.
+
+[Configuración, dataset, restauración y validación manual](docs/DEMO.md).
+Implementado y probado en Docker aislado; aún sin aprovisionamiento público ni despliegue.
+
 ## Refuerzo de seguridad — fase 10.7.2
 
 Login: 10 intentos/minuto por IP de conexión; registro: 5/10 minutos por IP.
@@ -221,6 +236,7 @@ HelpDesk.Api/
   Data/               # DbContext y mapeo de entidades
   Migrations/         # Evolución del esquema PostgreSQL
 HelpDesk.AdminBootstrap/ # CLI manual del primer Admin; no arranca con la API
+HelpDesk.Demo/           # Consola privada de datos demo; destino verificado, sin migraciones
 HelpDesk.Tests/
   Integration/        # Fábrica HTTP, fixture y pruebas PostgreSQL
   ...                 # Pruebas unitarias y del endpoint de salud
@@ -241,7 +257,7 @@ La contraseña exige 15–128 unidades UTF-16, no puede ser solo espacios ni con
 
 Email conserva la política anterior: formato mediante `MailAddress.TryCreate`, sin nombres de presentación ni espacios internos, dominio ASCII con al menos un punto; dominios internacionalizados en punycode. PostgreSQL exige correo canónico mediante CHECK e índice único. Los GET proyectan DTOs con AsNoTracking y el listado sigue siendo un array ordenado por Id.
 
-**Etapa 9.3:** solo health, registro y login son públicos. Toda otra ruta requiere JWT válido y una cuenta existente con el mismo rol actual en PostgreSQL. POST/PUT de usuarios se habilitan solo para Admin; no permiten fijar contraseñas/hashes. Las cuentas administrativas creadas así tienen PasswordHash NULL y requieren un futuro flujo seguro de activación. La consola separada `HelpDesk.AdminBootstrap` permite crear el primer Admin nuevo solo si no existe ninguno, con destino y confirmación interactivos. No activa cuentas antiguas ni modifica las existentes. El primer Admin real ya fue creado y su acceso administrativo verificado. Perfil propio disponible en GET `/api/users/{id}`; directorio completo reservado a Admin.
+**Etapa 9.3:** health, registro y login son públicos; desde 10.7.3 también lo es GET /api/demo, que en modo normal solo informa enabled=false. Toda otra ruta requiere JWT válido y una cuenta existente con el mismo rol actual en PostgreSQL. POST/PUT de usuarios se habilitan solo para Admin; no permiten fijar contraseñas/hashes. Las cuentas administrativas creadas así tienen PasswordHash NULL y requieren un futuro flujo seguro de activación. La consola separada `HelpDesk.AdminBootstrap` permite crear el primer Admin nuevo solo si no existe ninguno, con destino y confirmación interactivos. No activa cuentas antiguas ni modifica las existentes. El primer Admin real ya fue creado y su acceso administrativo verificado. Perfil propio disponible en GET `/api/users/{id}`; directorio completo reservado a Admin.
 
 ## API
 

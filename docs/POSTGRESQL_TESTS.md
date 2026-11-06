@@ -1,6 +1,73 @@
 # Pruebas de persistencia con PostgreSQL aislado
 
-## Validación vigente — fase 10.7.2, 6 de noviembre de 2026
+## Validación vigente — fase 10.7.3, 6 de noviembre de 2026
+
+421 pruebas PostgreSQL superadas, 0 fallidas/omitidas (34 segundos): las 404 anteriores
+y 17 de demo. Ambas suites se ejecutan solo en un Docker **nuevo y exclusivo**.
+No hay migración nueva ni acceso a la base habitual o a los destinos manuales previos.
+
+| Recurso | Identidad final |
+| --- | --- |
+| Contenedor | helpdesk-1073-d7f0f511 |
+| Volumen | helpdesk-1073-data-d7f0f511 |
+| Red bridge exclusiva, único contenedor | helpdesk-1073-net-d7f0f511 |
+| Publicación loopback | 127.0.0.1:15439 → 5432 |
+| Imagen | postgres:16 |
+| Regresiones ordinarias | helpdesk_test_db / helpdesk_test_user |
+| Casos demo | helpdesk_demo_db / helpdesk_demo_user, UUID marcado exclusivo |
+| Estado final | Contenedor detenido, recursos conservados |
+
+Lanzador temporal `/tmp/helpdesk-1073-isolated.py`. Cada invocación crea recursos nuevos
+y un directorio privado distinto; no reutiliza una demo con datos. El puerto 15439 debe
+estar libre; no detener otro servicio para conseguirlo. Compara ID exacto Docker,
+volumen, red/miembros y publicación, más pg_control_system y hora de arranque por TCP
+frente al interior del contenedor. Comprueba ausencia de helpdesk_db, roles limitados,
+CONNECT restringido y marca demo; repite comprobaciones tras la suite. El entorno hijo
+excluye conexiones/Demo/PG heredados y recibe solo destinos explícitos. Las fixtures
+verifican de nuevo identidad/privilegios (demo también UUID/marca) antes de aplicar las
+nueve migraciones existentes en cada base inicialmente vacía.
+
+Variables de tests: HELPDESK_TEST_CONNECTION_STRING para las regresiones y
+HELPDESK_DEMO_TEST_CONNECTION_STRING / HELPDESK_DEMO_TEST_INSTANCE_ID para DemoFixture.
+No ejecutar la fixture demo contra una demo pública: es exclusivamente de pruebas,
+requiere inicialización vacía y usa credenciales de aplicación aleatorias en memoria.
+No hay fallback a DefaultConnection. Los secretos de conexión no se imprimen.
+
+Repetición, solo con acceso Docker y después de compilar:
+
+```bash
+python3 /tmp/helpdesk-1073-isolated.py
+```
+
+Ejecuta `dotnet test HelpDesk.NET.slnx --no-build --filter 'Category=PostgreSQL'` con
+las conexiones aisladas, timeout 300 segundos, verificación posterior y parada del
+contenedor exclusivo. No usar el comando dotnet por sí solo contra otra conexión.
+El estado final está en `/tmp/helpdesk-1073-isolated-3a83b2bb/`, permisos privados;
+registro `tests.log`. /tmp es efímero y no se debe copiar a Git. Si desaparece, preparar
+recursos nuevos con verificaciones equivalentes; nunca sustituir por la base habitual.
+
+Resultado posterior: base test 0 usuarios/tickets/comentarios/actividades; base demo
+5 usuarios, 8 tickets, 14 comentarios, 27 actividades; ambas con 9 migraciones. Se
+comprobaron carrera por la última plaza y rollback tras espera real de DELETE mediante
+pg_blocking_pids; no se desactivaron constraints para facilitar los tests.
+
+También se ejecutó la consola compilada real mediante
+`/tmp/helpdesk-1073-cli-check.py`, exclusivamente sobre ese contenedor y con identidad
+Docker/TCP de nuevo verificada: --check correcto, UUID de confirmación incorrecto
+rechazado sin modificar tickets y --restore correcto. Se comparan hashes solo en
+memoria, sin imprimirlos: todos conservados y nuevos IDs de tickets; conteos 5/8/14/27.
+El contenedor se vuelve a detener al terminar.
+
+Primer pase, directorio temporal e591a34c: 404 correctas/15 fallidas por configuración
+de fixture con opciones internas rechazadas antes de arrancar API demo. Se corrige
+para usar la conexión externa original sin aflojar validación. Ese contenedor se
+conserva detenido y no es el entorno del resultado final. No se modificaron datos reales,
+JWT, migraciones, secretos habituales, commit o push. Revisión visual pendiente:
+[DEMO.md](DEMO.md). Para validación manual preparar otra base exclusiva con credenciales
+controladas por el operador; no recuperar credenciales de aplicación de los tests.
+
+
+## Cierre anterior — fase 10.7.2, 6 de noviembre de 2026
 
 404 pruebas PostgreSQL superadas (33 segundos), cero fallidas/omitidas. Incluye los
 dos casos nuevos de validación/persistencia, más todas las regresiones anteriores.

@@ -2,6 +2,10 @@
   <p class="eyebrow">TU PRIMER PASO</p>
   <h1 id="register-title">Un espacio para ti.</h1>
   <p class="intro">Crea tu cuenta de usuario en HelpDesk.NET.</p>
+  @if (demo.enabled()) {
+    <p class="feedback notice">El registro está cerrado en la demo.
+      <a routerLink="/login">Utiliza una cuenta compartida</a> sin introducir datos personales.</p>
+  } @else {
   <form class="auth-card" [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="pending()">
     @if (error()) {
       <p class="feedback" role="alert">{{ error() }}</p>
@@ -71,6 +75,7 @@
     </fieldset>
     <p class="switch">¿Ya tienes cuenta? <a routerLink="/login">Iniciar sesión</a></p>
   </form>
+  }
   <p class="privacy-note">
     El registro crea una cuenta de usuario. No permite elegir permisos administrativos.
   </p>

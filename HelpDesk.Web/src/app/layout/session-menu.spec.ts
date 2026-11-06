@@ -1,3 +1,4 @@
+import { DemoService } from '../core/demo/demo.service';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
@@ -29,6 +30,20 @@ describe('Session navigation', () => {
     expect(f.nativeElement.querySelector('a[href="/login"]')).not.toBeNull();
     expect(f.nativeElement.querySelector('a[href="/register"]')).not.toBeNull();
     expect(f.nativeElement.querySelector('button')).toBeNull();
+  });
+  it('identifies the shared demo on every page and closes the registration link', () => {
+    TestBed.inject(DemoService).enabled.set(true);
+    const f = TestBed.createComponent(AppLayout);
+    f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('Demo pública · Datos ficticios');
+    expect(f.nativeElement.textContent).toContain('No introduzcas datos personales');
+    expect(f.nativeElement.querySelector('a[href="/register"]')).toBeNull();
+  });
+  it('warns against personal data when demo configuration is unavailable', () => {
+    TestBed.inject(DemoService).unavailable.set(true);
+    const f = TestBed.createComponent(AppLayout);
+    f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('No se pudo comprobar el modo de demostración');
   });
   it.each<UserRole>(['User', 'Technician', 'Admin'])(
     'adapts private navigation for %s without unfinished panels',

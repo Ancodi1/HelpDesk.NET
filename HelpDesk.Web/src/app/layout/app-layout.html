@@ -110,7 +110,20 @@
       </div>
       <app-session-menu />
     </header>
-    <main id="contenido" tabindex="-1"><router-outlet /></main>
+    <main id="contenido" tabindex="-1">
+      @if (demo.enabled()) {
+        <aside class="demo-notice" aria-label="Demostración pública">
+          <strong>Demo pública · Datos ficticios</strong>
+          <p>No introduzcas datos personales, contraseñas propias ni información de tu empresa.
+            Las cuentas son compartidas: otras visitas pueden ver tus cambios y una restauración los elimina.</p>
+          <a routerLink="/login">Probar como User o Technician</a>
+        </aside>
+      } @else if (demo.unavailable()) {
+        <aside class="demo-notice" role="status">No se pudo comprobar el modo de demostración.
+          No introduzcas datos personales hasta comprobar el entorno.</aside>
+      }
+      <router-outlet />
+    </main>
     <footer class="page-footer">
       <span>HelpDesk.NET · Diseñado para resolver.</span><span>Angular + ASP.NET Core</span>
     </footer>

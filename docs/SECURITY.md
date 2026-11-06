@@ -121,3 +121,29 @@ GHSA-r825-w8mm-5pxw, GHSA-9jrq-w75r-8gcw, GHSA-rq7h-c2jc-7f22 y GHSA-vfpm-58rq-9
 
 Resultados automáticos y límites operativos en [PROGRESS.md](PROGRESS.md) y
 [POSTGRESQL_TESTS.md](POSTGRESQL_TESTS.md). No ejecutar esta matriz contra datos reales.
+
+## Demo pública opcional — fase 10.7.3
+
+La fase 10.7.3 añade un modo desactivado por defecto. Solo funciona con conexión demo
+explícita a helpdesk_demo_db/helpdesk_demo_user y marca de instancia verificada. No
+utiliza DefaultConnection ni permite usar esa base en modo normal. Las cuentas públicas
+User/Technician y el Admin privado tienen identidad protegida contra escrituras HTTP,
+incluso administrativas. Se cierra registro/creación de usuarios solo en demo.
+
+GET /api/demo expone intencionalmente las dos credenciales públicas, proporcionadas
+fuera de Git, con no-store; nunca Admin, hashes o configuración. La API no necesita la
+contraseña Admin. Mantener secretos JWT/issuer/audience propios del entorno público,
+base/rol/red separados y todas las condiciones de proxy 10.7.2. El endpoint de información
+es anónimo de forma explícita; la autorización de recursos y JWT permanece igual.
+
+Topes globales de filas vivas: 100 tickets, 500 comentarios, 1.000 actividades. Un candado
+advisory compartido con la consola evita sobrepasarlos entre escritores concurrentes.
+Restauración en transacción, sin borrar usuarios ni reciclar IDs. Sin reset HTTP,
+restauración al arrancar o temporizador público. Las cuentas comparten cupos de petición
+y cambios: pueden agotarse escrituras hasta que el operador restaure; las lecturas
+siguen disponibles. La protección no cubre DDoS, SQL externo o crecimiento físico de
+logs/dead tuples. Mantener autovacuum, supervisión y cuotas operativas.
+
+Guía completa, alternativas, aprovisionamiento separado y matriz manual:
+[DEMO.md](DEMO.md). No guardar credenciales administrativas en Angular, fixtures
+persistentes, documentación ni capturas; no reutilizar claves o contraseñas habituales.

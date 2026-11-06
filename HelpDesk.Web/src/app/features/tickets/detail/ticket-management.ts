@@ -1,3 +1,4 @@
+import { demoError } from '../../../core/demo/demo-error';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, computed, inject, input, output, signal, viewChild } from '@angular/core';
 import { AssignmentPicker } from './assignment-picker';
@@ -146,7 +147,7 @@ export class TicketManagement {
             409: 'Conflicto con el estado o la asignación actual. Actualiza el detalle antes de continuar.',
           };
           this.message.set(
-            messages[code] ??
+            demoError(error) ?? messages[code] ??
               'No se pudo confirmar el cambio. Actualiza el detalle antes de reenviar: la operación podría haberse guardado.',
           );
           this.reviewRequired.set(true);

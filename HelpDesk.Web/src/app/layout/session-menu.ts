@@ -1,3 +1,4 @@
+import { DemoService } from '../core/demo/demo.service';
 import { Component, inject } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
@@ -16,7 +17,8 @@ import { roleLabels } from '../core/auth/auth.models';
       <button type="button" (click)="logout()">Cerrar sesión</button>
     } @else {
       <a routerLink="/login">Iniciar sesión</a
-      ><a class="register-link" routerLink="/register">Crear cuenta</a>
+      >
+      @if (!demo.enabled()) { <a class="register-link" routerLink="/register">Crear cuenta</a> }
     }
   </nav>`,
   styles: `
@@ -79,6 +81,7 @@ import { roleLabels } from '../core/auth/auth.models';
   `,
 })
 export class SessionMenu {
+  readonly demo = inject(DemoService);
   readonly auth = inject(AuthService);
   readonly labels = roleLabels;
   private readonly router = inject(Router);

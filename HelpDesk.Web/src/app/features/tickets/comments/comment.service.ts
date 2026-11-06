@@ -1,3 +1,4 @@
+import { demoError } from '../../../core/demo/demo-error';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { map, timeout } from 'rxjs';
@@ -88,6 +89,8 @@ function readComment(value: unknown, ticketId: number): TicketComment {
   };
 }
 export function commentError(error: unknown, writing = false): string {
+  const demoMessage = demoError(error);
+  if (demoMessage) return demoMessage;
   const code = error instanceof HttpErrorResponse ? error.status : 0;
   const messages: Record<number, string> = {
     429: 'Demasiadas peticiones. Espera antes de volver a intentarlo.',

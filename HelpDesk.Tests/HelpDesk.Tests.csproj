@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\HelpDesk.Demo\HelpDesk.Demo.csproj" />
     <ProjectReference Include="..\HelpDesk.Api\HelpDesk.Api.csproj" />
     <ProjectReference Include="..\HelpDesk.AdminBootstrap\HelpDesk.AdminBootstrap.csproj" />
   </ItemGroup>

@@ -1,4 +1,5 @@
 using System.Net;
+using HelpDesk.Api.Data;
 using System.Net.Http.Json;
 using HelpDesk.Api.Authorization;
 using HelpDesk.Api.Security;
@@ -13,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace HelpDesk.Tests;
 
+[Collection("Rate limiting timing")]
 public class RequestSecurityTests
 {
     [Theory]
@@ -24,6 +26,10 @@ public class RequestSecurityTests
     {
         using var factory = Factory(TimeSpan.FromSeconds(2));
         using var client = factory.CreateClient();
+        // Preparar EF fuera de la ventana: la primera construcción del modelo puede ser costosa.
+        using (var scope = factory.Services.CreateScope())
+            _ = scope.ServiceProvider.GetRequiredService<HelpDeskDbContext>().Model;
+        using var warmup = await client.GetAsync("/api/health");
         for (var i = 0; i < limit; i++)
         {
             using var response = await client.PostAsync(path, new StringContent("{", System.Text.Encoding.UTF8, "application/json"));
@@ -143,3 +149,6 @@ public class RequestSecurityTests
             object? resource, string policyName) => AuthorizeAsync(user, resource, []);
     }
 }
+
+[CollectionDefinition("Rate limiting timing", DisableParallelization = true)]
+public sealed class RateLimitingTimingCollection { }
