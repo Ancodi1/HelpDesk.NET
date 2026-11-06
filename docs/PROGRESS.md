@@ -2,7 +2,87 @@
 
 Última actualización: 2026-11-06.
 
-## Estado vigente — fase 10.7.4 preparada y validada localmente
+## Estado vigente — fase 10.7.5 implementada y validada localmente
+
+6 de noviembre de 2026. CI y ensayo seguro de recuperación preparados. **No se ha
+probado GitHub Actions en GitHub**: no hay run remoto, commit, push ni publicación.
+No se han conectado bases habituales, cambiado autenticación/roles de aplicación,
+referencias csproj, package-lock o esquema. Las migraciones existentes se aplicaron
+únicamente mediante fixtures en clústeres Docker nuevos y desechables.
+
+Archivos creados:
+
+- .github/workflows/ci.yml: PR hacia main, push main y workflow_dispatch; restore/build
+  Release/tests .NET, PostgreSQL efímero con recuperación real, npm ci/tests/build
+  Angular production e imagen Docker sin push. Solo contents:read, acciones oficiales
+  por SHA, checkout sin credenciales persistentes y sin cachés/artifacts/secrets.
+- global.json (SDK 10.0.114), Directory.Build.props y cuatro packages.lock.json:
+  restore bloqueado con hashes transitivos. CI fija Node 24.15.0 y npm 11.12.1.
+- scripts/isolated_postgres.py: biblioteca estándar Python, recursos UUID exclusivos,
+  puerto dinámico loopback, verificación de ID/montajes/red y clúster Docker/TCP,
+  roles y conexiones nuevas; sin destino existente ni configuración habitual.
+- scripts/ci_postgres.py: suite con guardias existentes y backup demo seguido de
+  restauración en un segundo clúster nuevo, comparando filas/hashes, migraciones,
+  secuencias, metadatos de constraints e índices, sin imprimir datos.
+- scripts/recovery.py: backup de solo lectura mediante servicio libpq explícito,
+  confirmación de origen, archivo nuevo 0600 fuera del repositorio. Restore exige
+  RESTORE-ISOLATED, rol no privilegiado, transacción y destino siempre nuevo; elimina
+  el ensayo al terminar, sin DROP/clean ni acceso a una base habitual como destino.
+- scripts/test_recovery.py: siete guardias sin conexión a bases ni Docker.
+- docs/CI_RECOVERY.md: operación, seguridad de PR, fallos, recuperación y validación remota.
+
+Modificados Dockerfile/.dockerignore para restaurar con lockfile y fijar bases por
+digest, .gitignore para archivos de backup, README, ARCHITECTURE, DEPLOYMENT y
+POSTGRESQL_TESTS. No hay dependencias nuevas de aplicación ni servicios contratados.
+Conceptos .NET: SDK fijado, restore reproducible y separación entre build, pruebas y
+operación. Las fixtures siguen siendo las únicas que aplican las migraciones de tests.
+
+| Comprobación ejecutada | Resultado final |
+| --- | --- |
+| dotnet restore HelpDesk.NET.slnx --locked-mode | Correcto en los cuatro proyectos |
+| dotnet build Release --no-restore | 0 errores/advertencias |
+| dotnet test Category!=PostgreSQL, Release | 316 superadas, 0 fallidas/omitidas; 19 s |
+| python3 scripts/ci_postgres.py | 421 PostgreSQL superadas; 36 s, backup y recuperación correctos |
+| Recuperación PostgreSQL 16.15 | Origen/copia con iguales filas, migraciones, secuencias y metadatos; constraints validadas |
+| Guardias Python (normal y -O) | 7 superadas en cada modo |
+| Confirmación CLI equivocada | Rechazada antes de crear entorno |
+| npm ci, Node 24.15.0/npm 11.12.1 | Correcto, package-lock conservado |
+| npm test -- --watch=false | 419 superadas en 37 archivos |
+| npm run build -- --configuration production | Correcto |
+| docker build helpdesk:1075 | Correcto, bases por digest y NuGet locked |
+| actionlint 1.7.7 | Workflow válido; binario/checksum oficial, sin ShellCheck/pyflakes disponibles |
+| git diff --check | Correcto |
+
+Incidencias resueltas: un permiso ampliado expiró en revisión automática; reintento
+correcto. Primer lanzador usó red --internal; Docker no publicó el puerto, se rechazó
+antes de migrar y se eliminaron sus recursos. Se usa bridge exclusivo con puerto
+loopback y verificación de identidad (no se presenta como aislamiento contra código
+hostil con acceso a Docker). Primer pase unitario durante builds simultáneos: 315/316,
+la ventana de dos segundos del rate limiter transcurrió bajo carga; repetición
+secuencial 316/316, sin modificar cuotas, aserciones ni tests de aplicación.
+
+Primera recuperación pasó filas y secuencias. Al ampliar la huella a texto de CHECK,
+la comparación falló: PostgreSQL reescribe casts equivalentes varchar→text de arrays
+al restaurar. Se diagnosticó únicamente metadatos, sin imprimir filas, y se compara
+inventario/tipo/columnas/validación de constraints, definiciones PK/FK/unique e índices,
+no igualdad textual de CHECK. El pase final completo repite 421 tests y recuperación
+satisfactoriamente. Las guardias son comprobaciones explícitas, activas con python -O.
+No se cuenta ningún pase fallido como validación correcta.
+
+Cada invocación creó instancias/roles/contraseñas/redes/volúmenes nuevos sin reutilizar
+las instancias históricas de 10.7.4. Directorios privados temporales, dumps y recursos
+Docker propios eliminados al terminar, incluidos fallos normales. Sin backups o
+credenciales añadidos a Git. La imagen local helpdesk:1075 se conserva, sin publicarla.
+
+Pendiente: autorizar incorporación remota, observar run real de PR, dispatch y push a
+main y registrar enlaces/resultados; después configurar check obligatorio y permisos
+Actions/forks en GitHub. No se modifica configuración remota desde esta fase. Siguen
+manuales proveedor/HTTPS/proxy, secretos exclusivos, permisos de operación, política
+de backups/cifrado/retención, objetivos y ensayo RPO/RTO, revisión visual y publicación.
+El ensayo no conserva un servicio recuperado ni sustituye restauración operativa
+aprobada. Reset de dataset demo es distinto de recuperar una base PostgreSQL completa.
+
+## Cierre anterior — fase 10.7.4 preparada y validada localmente
 
 6 de noviembre de 2026. Sin publicación, contratación, commit o push. Sin cambios
 JWT/roles/esquema ni migraciones en bases habituales. Operación pública pendiente.

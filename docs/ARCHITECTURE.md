@@ -779,3 +779,37 @@ Secretos se montan externamente, nunca durante build. Tags de imágenes son cóm
 preparación; releases deben fijar digests y registrar arquitectura. Configuración de
 proveedor, IPs de proxy, TLS, backups y revisión visual siguen pendientes. Operación y
 consecuencias en DEPLOYMENT.md; resultados reales de validación en PROGRESS.md.
+
+### 052 — CI reproducible y ensayo de recuperación (fase 10.7.5)
+
+Estado: implementado y comprobado localmente; ejecución real en GitHub pendiente.
+
+Decisión: workflow CI para PR a main, push a main y dispatch, runner hospedado Ubuntu
+24.04, permisos contents:read, checkout sin persistir credenciales y acciones oficiales
+fijadas por SHA. Sin cachés compartidas, artifacts, secretos de entorno o despliegue.
+SDK 10.0.114 en global.json; Node 24.15.0 y npm 11.12.1 explícitos en CI. Cuatro
+lockfiles NuGet y Directory.Build.props permiten restore bloqueado; npm ci conserva
+package-lock existente. Dockerfile consume lockfile/props y fija tres bases por digest.
+No se cambian referencias csproj, package-lock, esquema, autenticación, roles o contratos.
+
+Scripts Python de biblioteca estándar preparan un PostgreSQL 16 nuevo por invocación,
+volumen/red exclusivos y puerto dinámico loopback. Identidad Docker/TCP y roles
+verificados antes de delegar migraciones existentes a fixtures con sus guardias.
+No aceptan conexiones o contenedores existentes ni usan configuración habitual.
+Recuperación CI: pg_dump custom con origen explícito y solo lectura; pg_restore en
+segundo clúster nuevo con propietario sin privilegios elevados, sin clean/create,
+comparando filas, migraciones y secuencias y constraints validadas. Confirmación
+RESTORE-ISOLATED obligatoria; limpieza solo de recursos generados en el proceso.
+
+Motivo: reproducir validaciones sin secretos de operación y comprobar que el backup
+es restaurable, sin abrir una vía para sobrescribir bases habituales. La herramienta
+de recuperación es un ensayo que elimina su destino, no una promoción de servicio.
+Backup puede leer un origen futuro explícitamente autorizado mediante libpq privado;
+en esta fase solo se usa PostgreSQL desechable. Dataset demo y recuperación completa
+siguen siendo operaciones distintas.
+
+Consecuencias: más tiempo/red al no compartir cachés; actualización manual de pins y
+digests. Red bridge exclusiva no aísla código hostil con acceso a Docker: PR solo en
+runner hospedado desechable, dumps confiables y ningún acceso privado. Limpieza forzada
+puede requerir revisión local de etiquetas UUID. CI no garantiza ejecución byte a byte,
+RPO/RTO, validación visual, TLS/proxy real o publicación. Operación en CI_RECOVERY.md.

@@ -9,8 +9,9 @@ Desde la raíz: `docker build -t helpdesk:local .`. Node/SDK solo existen en eta
 construcción; la final contiene ASP.NET runtime y la publicación. `npm ci` usa el lockfile.
 Para un release registrar commit, arquitectura, digest final y digests inmutables de
 las tres imágenes base, pasados con `--build-arg NODE_IMAGE=...`, `SDK_IMAGE=...` y
-`RUNTIME_IMAGE=...`. Los tags por defecto reciben actualizaciones y no garantizan
-reconstrucción idéntica. No pasar secretos como build args ni incluirlos en el cliente.
+`RUNTIME_IMAGE=...`. Desde 10.7.5 los valores por defecto están fijados por digest y NuGet usa lockfile;
+actualizarlos deliberadamente al revisar parches. No garantiza reconstrucción idéntica
+byte a byte. No pasar secretos como build args ni incluirlos en el cliente.
 
 ## Configuración por entorno
 
@@ -115,3 +116,13 @@ queda sustituida por comprobaciones HTTP locales. Resultados ejecutados en PROGR
 
 Referencias: [proxy ASP.NET Core 10](https://learn.microsoft.com/aspnet/core/host-and-deploy/proxy-load-balancer?view=aspnetcore-10.0)
 y [fallback Angular](https://angular.dev/tools/cli/deployment).
+
+## Integración continua y recuperación (10.7.5)
+
+[CI_RECOVERY.md](CI_RECOVERY.md) documenta el workflow, sus permisos de lectura,
+PostgreSQL desechable y herramientas de respaldo/ensayo de recuperación. CI construye
+la imagen pero no la publica ni aplica migraciones en una base de operación. Los
+respaldos privados se restauran únicamente en un clúster Docker nuevo y se destruyen
+al terminar la comprobación. Recuperar servicio/tráfico, revisar datos y grants,
+TLS/proxy, secretos y cualquier publicación siguen siendo operaciones manuales.
+El reset de contenido HelpDesk.Demo es distinto de restaurar un backup PostgreSQL.
