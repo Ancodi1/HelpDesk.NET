@@ -64,12 +64,12 @@ describe('Create and detail protected routing with HTTP-isolated API', () => {
       http.expectOne((r) => r.url === '/api/tickets').flush(pageFixture());
       f.detectChanges();
       const button = [...f.nativeElement.querySelectorAll('button')].find((b: HTMLButtonElement) =>
-        b.textContent?.includes('Nuevo ticket'),
+        b.textContent?.includes('Nueva incidencia'),
       ) as HTMLButtonElement;
       expect(button).toBeDefined();
       await actionNavigation(() => button.click());
       expect(router.url).toBe('/tickets/new');
-      expect(f.nativeElement.querySelector('h1').textContent).toContain('Cuéntanos qué ocurre');
+      expect(f.nativeElement.querySelector('h1').textContent).toContain('Nueva incidencia');
       http.expectNone('/api/tickets/new');
       http.expectNone('/api/tickets');
     },

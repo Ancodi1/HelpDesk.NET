@@ -1,77 +1,95 @@
-<div class="home">
-  <app-home-intro />
-
-  <section id="conexion" class="connection-section" aria-labelledby="connection-title">
-    <div class="section-heading">
+<section class="home" aria-labelledby="home-title">
+  <app-page-header
+    headingId="home-title"
+    title="Centro de soporte"
+    context="Inicio"
+    description="Gestiona incidencias y da seguimiento a cada solicitud."
+  />
+  <section class="entry-workspace" aria-labelledby="entry-title">
+    <div class="entry-heading">
       <div>
-        <p class="eyebrow">ESTADO DEL SISTEMA</p>
-        <h2 id="connection-title">Una conexión, todo preparado.</h2>
+        <h2 id="entry-title">Accesos rápidos</h2>
       </div>
-      <span class="section-index" aria-hidden="true">01 /</span>
     </div>
-    <div
-      class="connection-card"
-      [class.is-success]="connection() === 'success'"
-      [class.is-error]="connection() === 'error'"
-    >
-      <div class="connection-content">
-        <div
-          class="connection-icon"
-          [class.spinning]="connection() === 'loading'"
-          aria-hidden="true"
+    <div class="entry-links">
+      @if (auth.user(); as user) {
+        <a routerLink="/tickets"
+          ><strong>Incidencias <span aria-hidden="true">→</span></strong
+          ><span>Consulta, busca y filtra las solicitudes disponibles para tu cuenta.</span></a
         >
-          @switch (connection()) {
-            @case ('loading') {
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M20 12a8 8 0 1 1-8-8" />
-              </svg>
-            }
-            @case ('success') {
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="m6 12 4 4 8-8" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            }
-            @case ('error') {
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M12 5v9M12 17v2" stroke-linecap="round" />
-              </svg>
-            }
-          }
-        </div>
-        <div class="connection-message" role="status" aria-live="polite" aria-atomic="true">
-          @switch (connection()) {
-            @case ('loading') {
-              <span class="status-label">COMPROBANDO</span>
+        <a routerLink="/tickets/new"
+          ><strong>Nueva incidencia <span aria-hidden="true">→</span></strong
+          ><span>Registra un problema con su descripción, prioridad y categoría.</span></a
+        >
+        @if (user.role === 'Technician') {
+          <a routerLink="/my-tickets"
+            ><strong>Mis incidencias <span aria-hidden="true">→</span></strong
+            ><span>Revisa tus asignaciones y sus estados.</span></a
+          >
+        }
+        @if (user.role === 'Admin') {
+          <a routerLink="/admin"
+            ><strong>Administración <span aria-hidden="true">→</span></strong
+            ><span>Consulta el servicio y gestiona el directorio de usuarios.</span></a
+          >
+        }
+      } @else {
+        <a routerLink="/login"
+          ><strong>Iniciar sesión <span aria-hidden="true">→</span></strong
+          ><span>Accede con tu cuenta para consultar y gestionar incidencias.</span></a
+        >
+        @if (!demo.enabled()) {
+          <a routerLink="/register"
+            ><strong>Crear una cuenta <span aria-hidden="true">→</span></strong
+            ><span>Regístrate como usuario para comunicar una incidencia.</span></a
+          >
+        }
+      }
+    </div>
+  </section>
+  <div class="home-support">
+    <section id="conexion" aria-labelledby="connection-title" class="service-panel">
+      <div class="panel-heading">
+        <h2 id="connection-title">Conexión del servicio</h2>
+        <span class="service-label">API</span>
+      </div>
+      <div class="connection-message" role="status" aria-live="polite" aria-atomic="true">
+        @switch (connection()) {
+          @case ('loading') {
+            <span class="service-dot pending"></span>
+            <div>
               <h3>Conectando con el servidor…</h3>
-              <p>Estamos comprobando la disponibilidad de la API.</p>
-            }
-            @case ('success') {
-              <span class="status-label">CONEXIÓN CORRECTA</span>
-              <h3>La API está disponible</h3>
-              <p>El servidor responde. La conexión con HelpDesk.NET funciona correctamente.</p>
-            }
-            @case ('error') {
-              <span class="status-label">SIN CONEXIÓN CONFIRMADA</span>
-              <h3>No hemos podido conectar</h3>
-              <p>Comprueba que la API esté en marcha y vuelve a intentarlo.</p>
-            }
+              <p>Comprobando la disponibilidad de la API.</p>
+            </div>
           }
-        </div>
-        <button
-          class="check-button"
+          @case ('success') {
+            <span class="service-dot success"></span>
+            <div>
+              <h3>La API está disponible</h3>
+              <p>El servicio responde a la comprobación de conexión.</p>
+            </div>
+          }
+          @case ('error') {
+            <span class="service-dot error"></span>
+            <div>
+              <h3>No hemos podido conectar</h3>
+              <p>Comprueba el servicio y vuelve a intentarlo.</p>
+            </div>
+          }
+        }
+      </div>
+      <div class="connection-actions">
+        <span>{{
+          lastChecked()
+            ? 'Última comprobación: ' + (lastChecked() | date: 'HH:mm:ss')
+            : 'Esperando respuesta'
+        }}</span
+        ><button
+          class="secondary"
           type="button"
           (click)="checkConnection()"
           [disabled]="connection() === 'loading'"
         >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.7"
-            aria-hidden="true"
-          >
-            <path d="M20 7v5h-5M4 17v-5h5M19 10a7 7 0 0 0-12-4L4 9m16 6-3 3A7 7 0 0 1 5 14" />
-          </svg>
           {{
             connection() === 'loading'
               ? 'Comprobando…'
@@ -81,60 +99,23 @@
           }}
         </button>
       </div>
-      <div class="connection-details">
-        <span><span class="detail-dot" aria-hidden="true"></span>API de HelpDesk.NET</span
-        ><code>GET /api/health</code
-        ><span>{{
-          lastChecked()
-            ? 'Última comprobación: ' + (lastChecked() | date: 'HH:mm:ss')
-            : 'Esperando respuesta'
-        }}</span>
-      </div>
-    </div>
-    <p class="connection-note">
-      Esta comprobación consulta la disponibilidad de la API; no verifica PostgreSQL ni modifica
-      datos.
-    </p>
-  </section>
-
-  <section id="proyecto" class="project-section" aria-labelledby="project-title">
-    <div class="section-heading">
-      <div>
-        <p class="eyebrow">EL PROYECTO</p>
-        <h2 id="project-title">Una base sólida. Un propósito claro.</h2>
-      </div>
-      <span class="section-index" aria-hidden="true">02 /</span>
-    </div>
-    <div class="project-grid">
-      <article>
-        <span class="card-number">01</span>
-        <h3>Soporte con contexto</h3>
-        <p>
-          Un HelpDesk para organizar incidencias y conectar usuarios, técnicos y administradores.
-        </p>
-        <span class="card-tag">Personas primero</span>
-      </article>
-      <article>
-        <span class="card-number">02</span>
-        <h3>Diseñado para evolucionar</h3>
-        <p>Una API ASP.NET Core y un frontend Angular que crecen juntos, paso a paso.</p>
-        <span class="card-tag">Una arquitectura sencilla</span>
-      </article>
-      <article>
-        <span class="card-number">03</span>
-        <h3>Cada detalle cuenta</h3>
-        <p>
-          Una interfaz adaptable y accesible, con estados claros para saber qué está ocurriendo.
-        </p>
-        <span class="card-tag">Claridad en cada pantalla</span>
-      </article>
-    </div>
-  </section>
-  <div class="phase-note">
-    <span class="phase-badge">EN CONSTRUCCIÓN</span>
-    <p>
-      La interfaz ya permite iniciar sesión y crear una cuenta. La gestión de incidencias llegará en
-      las siguientes fases.
-    </p>
+      <p class="footnote">
+        Comprueba la disponibilidad de la API; no verifica PostgreSQL ni modifica datos.
+      </p>
+    </section>
+    <section id="proyecto" class="service-panel" aria-labelledby="project-title">
+      <div class="panel-heading"><h2 id="project-title">Acerca de HelpDesk.NET</h2></div>
+      <p>Gestión de incidencias con usuarios, técnicos y administradores.</p>
+      <dl class="project-facts">
+        <div>
+          <dt>Seguimiento</dt>
+          <dd>Estados, prioridades y asignaciones</dd>
+        </div>
+        <div>
+          <dt>Colaboración</dt>
+          <dd>Comentarios e historial de cambios</dd>
+        </div>
+      </dl>
+    </section>
   </div>
-</div>
+</section>

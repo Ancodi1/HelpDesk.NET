@@ -22,7 +22,7 @@ describe('Application navigation', () => {
     await fixture.whenStable();
     const page = fixture.nativeElement as HTMLElement;
     expect(page.querySelector('main#contenido')).not.toBeNull();
-    expect(page.querySelector('h1')?.textContent).toContain('Mejores conexiones');
+    expect(page.querySelector('h1')?.textContent).toContain('Centro de soporte');
     expect(page.querySelector('[aria-current="page"]')?.textContent).toContain('Inicio');
     expect(page.querySelector('.skip-link')?.getAttribute('href')).toBe('#contenido');
   });

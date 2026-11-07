@@ -1,8 +1,264 @@
 # Progreso — HelpDesk.NET
 
-Última actualización: 2026-11-06.
+Última actualización: 2026-11-07.
 
-## Estado vigente — fase 10.7.5 implementada y validada localmente
+## Estado vigente — fase 10.7.5.4 refinamiento visual y UX
+
+7 de noviembre de 2026. Refinamiento incremental tras inspección real en Brave, sin
+rehacer la estructura de 10.7.5.3. Se conserva todo el trabajo local anterior; sin
+commit, push, despliegue ni cambios de backend, autenticación, roles, contratos, datos,
+Docker, CI o dependencias. No se crean cuentas ni se escriben datos reales.
+
+Problemas observados antes de modificar código:
+
+- Con las mismas cinco incidencias de prueba, filas de unos 105 px a 1024 px por columna
+  de título estrecha; columna de responsable y controles mostraban textos partidos/cortados.
+- Cabecera móvil de 117 px, repetición del producto/contexto e iconos ausentes en enlaces
+  secundarios. Marca morada que no correspondía al azul del resto del producto.
+- Selector Por página de 36 px en móvil y selector de rol de 39 px en tablet pese al
+  objetivo táctil de 44 px; la cascada de estilos específicos anulaba parte del global.
+- Propiedades repetía estado/prioridad/categoría ya visibles en el encabezado. En tablet
+  el order:-1 del lateral cambiaba el orden visual respecto al DOM/teclado.
+- Numeración y bloque contextual de acceso sin utilidad operativa; cabeceras y textos
+  con peso excesivo, separación amplia y controles de interacción poco uniformes.
+
+Cambios implementados:
+
+- Navegación con iconos propios consistentes, marca azul, selección/foco afinados y menú
+  móvil de icono con nombre accesible dinámico. Menú de sesión compacto en móvil.
+  Sin alterar rutas, guards ni condiciones de rol.
+- Tabla con ID/título alineados, anchos redistribuidos, filas más compactas, focus-within
+  y descripción secundaria de una línea. Opciones vacías de filtros más breves bajo sus
+  etiquetas; filtros en una fila en anchuras intermedias. Pestañas de vistas solo para
+  Technician, donde existen dos vistas reales. Filtros, URL y paginación intactos.
+- Tamaños táctiles de selectores, acciones y registro corregidos también en tablet.
+- Detalle con propiedades sin duplicados, separación menor entre secciones y orden DOM
+  conservado en todos los anchos. Conversación con autor/fecha próximos y compositor
+  más breve. Error de comentario asociado mediante aria-describedby al campo inválido;
+  límite UTF-16 y borradores/bloqueos conservados.
+- Directorio con filas/cabeceras/acciones alineadas, filtros sin margen inferior sobrante
+  y edición/confirmaciones existentes conservadas.
+- Acceso/registro centrados, sin la columna artificial. Inicio sin monograma decorativo
+  ni presentación repetida; accesos y comprobación real del servicio conservados.
+- Transiciones breves solo de color/borde, hover útil y foco uniforme; transiciones
+  desactivadas con prefers-reduced-motion. Sin animaciones de desplazamiento.
+- Pruebas del menú adaptadas para exigir aria-label de apertura/cierre. Se conservan
+  todas las comprobaciones anteriores de roles, navegación, formularios y contratos.
+
+Archivos modificados específicamente en esta fase (el diff Git también contiene las
+fases anteriores aún sin commit):
+
+- HelpDesk.Web/src/app/features/admin/admin.scss
+- HelpDesk.Web/src/app/features/auth/auth-form.scss
+- HelpDesk.Web/src/app/features/auth/login/login.html
+- HelpDesk.Web/src/app/features/auth/register/register.html
+- HelpDesk.Web/src/app/features/home/home.html
+- HelpDesk.Web/src/app/features/home/home.scss
+- HelpDesk.Web/src/app/features/tickets/_ticket-badges.scss
+- HelpDesk.Web/src/app/features/tickets/comments/ticket-comments.html
+- HelpDesk.Web/src/app/features/tickets/comments/ticket-comments.scss
+- HelpDesk.Web/src/app/features/tickets/create/ticket-create.scss
+- HelpDesk.Web/src/app/features/tickets/detail/ticket-detail.html
+- HelpDesk.Web/src/app/features/tickets/detail/ticket-detail.scss
+- HelpDesk.Web/src/app/features/tickets/ticket-page.scss
+- HelpDesk.Web/src/app/features/tickets/ticket-table.html
+- HelpDesk.Web/src/app/features/tickets/ticket-table.scss
+- HelpDesk.Web/src/app/features/tickets/tickets.html
+- HelpDesk.Web/src/app/features/tickets/tickets.scss
+- HelpDesk.Web/src/app/layout/app-layout.html
+- HelpDesk.Web/src/app/layout/app-layout.scss
+- HelpDesk.Web/src/app/layout/app-layout.spec.ts
+- HelpDesk.Web/src/app/layout/session-menu.ts
+- HelpDesk.Web/src/app/shared/page-header.ts
+- HelpDesk.Web/src/app/shared/workspace-icon.ts
+- HelpDesk.Web/src/styles.scss
+- HelpDesk.Web/public/favicon.svg
+
+Validación ejecutada:
+
+| Comprobación | Resultado |
+| --- | --- |
+| npm test -- --watch=false | 427 superadas en 38 archivos |
+| npm run build -- --configuration production | Correcto, sin advertencias |
+| dotnet build --no-restore -m:1 -nr:false | 0 errores y advertencias |
+| dotnet test --no-build --no-restore, Category!=PostgreSQL | 316 superadas, 0 fallidas/omitidas |
+| git diff --check | Correcto |
+
+Revisión visual: Brave con medidas y capturas a 320/390/768/1024/1440 px, usando build
+anterior preservado y build refinado. Admin a las cinco anchuras y User/Technician a
+390/1440 px, mediante fixtures HTTP exclusivamente en servidor temporal. Incluye
+listado, creación, detalle con conversación/historial, directorio/editor, asignadas,
+Inicio, sesión, acceso, registro y demo; vacío/error del listado a 390/1440 px.
+No se introducen fixtures ni métricas en la aplicación ni se valida autorización de
+backend con esos datos. Sin desbordamiento horizontal en la matriz final. Todos los
+button/input/select visibles medidos a 320/390/768 px alcanzan 44 px; se corrigieron
+excepciones adicionales del listado tablet y badges partidos en la última revisión.
+Con Angular/API reales se verificaron Tab, Escape, cierre por ruta, foco y transiciones
+desactivadas al emular prefers-reduced-motion. Comparativas reales y mediciones fuera de Git, disponibles
+para revisión; los servidores/perfiles temporales se eliminan al terminar.
+
+Medidas comparables: filas del ejemplo a 1024 px pasan de ~105 a ~67–81 px y cabecera móvil
+de 117 a 101 px. Son medidas de esos ejemplos, no alturas fijas para contenido arbitrario.
+
+Angular y API existentes en localhost:4200/5085: health 200 y demo desactivada. Se revisan
+Inicio/acceso anónimos contra esos servicios, sin leer datos privados ni hacer escrituras.
+No se dispone de cuentas autenticadas de prueba para ese entorno. No se crean cuentas,
+se consultan secretos o se cambian datos para capturas. Revisiones de rol/demo con
+fixtures se distinguen de la comprobación anónima con API real.
+
+Limitaciones: pendiente revisión autenticada con API/base reales y cuentas autorizadas,
+lector de pantalla y zoom real al 200 %. No se repiten pruebas PostgreSQL al no modificar
+persistencia/backend. El resultado se entrega para aprobación visual; sin despliegue.
+
+Incidencias de comprobación: un intento de Brave no produjo DevToolsActivePort dentro
+del margen de arranque; se cerró el proceso propio y se repitió con margen mayor y perfil
+nuevo. Builds simultáneos tardaron excepcionalmente 197 y 430 segundos; terminaron
+correctamente y no se cambiaron budgets ni timeouts de tests. El formateador no infería
+parser del SVG; el resto de archivos fuente se formateó y el SVG conserva sintaxis válida.
+No se presenta ningún intento fallido como comprobación superada.
+
+## Cierre anterior — fase 10.7.5.3 rediseño integral del workspace
+
+7 de noviembre de 2026. Composición visual renovada en todas las vistas. Se conserva
+el trabajo local de 10.7.5.2; sin commit, push, despliegue, biblioteca nueva ni cambios
+en backend, contratos, autenticación, permisos, persistencia, Docker, CI o recuperación.
+
+Implementado:
+
+- Inicio operativo con accesos según sesión/rol y paneles reales de conexión/acerca de.
+  Eliminado HomeIntro y sus tres archivos decorativos; retirados anuncios obsoletos.
+- Login/registro con composición de contexto y formulario, cabecera compacta y selección
+  demo diferenciada; las validaciones y el envío no se alteran. Aviso demo persistente
+  conserva las condiciones de cuentas compartidas, datos ficticios y restauración.
+- Listado/Mis incidencias con cabecera y acción, navegación de vistas, búsqueda/filtros
+  integrados, tabla densa y resumen Technician compacto. Tabla adaptada a columnas
+  disponibles y filas móviles con etiquetas; se conservan filtros, URL, paginación,
+  estados vacíos, errores y recuperación de página fuera de rango.
+- Creación con formulario principal y ayuda lateral; mismo contrato, validaciones,
+  envío único y navegación al ID retornado.
+- Detalle con encabezado ID/título/estado/prioridad, descripción/conversación/historial
+  en zona principal y propiedades/gestión al lateral. Se conserva una sola instancia
+  de cada componente, controles de pending/revisión, permisos y apertura explícita de
+  comentarios/historial; no hay peticiones anticipadas ni pestañas que destruyan borradores.
+- Comentarios e historial con cronología, cabeceras de sección y compositor identificado.
+- Administración con resumen por estado, directorio tabular semántico, presentación
+  móvil y editor contextual con todas las confirmaciones existentes.
+- Mi sesión con identidad, caducidad y accesos según rol. Navegación con iconos SVG
+  originales pequeños; se conserva el menú móvil accesible de 10.7.5.2.
+- Componentes standalone nuevos PageHeader y WorkspaceIcon; reutilizados TicketTable,
+  TicketManagement, AssignmentPicker, TicketComments, TicketActivities y SessionMenu.
+- Pruebas adaptadas a títulos, navegación y directorio; aserciones de composición del
+  detalle y semántica del directorio. Servicios y lógica de negocio sin cambios.
+
+Archivos afectados por esta fase (además de los cambios locales previos): app.routes.ts
+(solo título/etiqueta de creación), shared/page-header.ts y workspace-icon.ts, layout
+AppLayout, features/home (incluida eliminación de home-intro.*), auth login/register y
+session, estilos auth-form, tickets/listado/tabla/badges, create, detail/management,
+comments, activities y admin. Suites app, auth-routing, home, tickets, create-detail-routing,
+detail y admin adaptadas. Código fuente formateado con Prettier instalado, sin dependencias.
+
+Validación final:
+
+| Comprobación ejecutada | Resultado |
+| --- | --- |
+| npm test -- --watch=false | 427 superadas en 38 archivos |
+| npm run build -- --configuration production | Correcto, sin advertencias |
+| dotnet build --no-restore -m:1 -nr:false | 0 errores y advertencias |
+| dotnet test --no-build --no-restore, Category!=PostgreSQL | 316 superadas, 0 fallidas/omitidas |
+| git diff --check | Correcto |
+| Brave real, 320/390/768/1024/1440 px, fixtures HTTP | Sin desbordamiento en vistas comprobadas |
+| Brave real contra API local, acceso e Inicio anónimos a cinco anchuras | Correcto; Tab/Escape/cierre/foco del menú comprobados |
+
+Matriz visual con fixtures: Admin a las cinco anchuras; User/Technician adicionales a
+390 y 1440 px. Incluye listado, detalle con comentarios/historial abiertos, creación,
+sesión, Inicio, directorio/editor Admin, asignaciones Technician y acceso demo.
+Capturas reales del antes (build de 10.7.5.2 preservado) y después fuera del repositorio,
+con el mismo conjunto de respuestas HTTP ficticias y sin conectar a bases reales.
+No se incorporan fixtures ni métricas al código de aplicación. Servidores y perfiles
+de navegador temporales se eliminan al terminar; capturas conservadas para revisión.
+
+API local /api/health responde 200 y /api/demo enabled=false: se verifican solo vistas
+anónimas contra esa API. El sandbox inicialmente bloqueó su detección; la comprobación
+con permiso ampliado confirmó disponibilidad. No se dispone de cuentas autenticadas
+para esa API: no se crean cuentas ni se realizan escrituras. Roles/demo visuales con
+fixtures y pruebas HTTP aisladas no equivalen a validación integral con API/DB reales.
+
+Incidencias resueltas: primer build advertía presupuesto CSS del listado por incluir
+todos los estilos ticket-page; se eliminó la inclusión innecesaria conservando estilos
+específicos. Primer pase Angular falló por router simulado incompleto tras añadir
+RouterLinkActive y causó fallos en cascada; se usa router real con spy de navigate y se
+conserva ActivatedRoute controlado (orden de providers corregido). Se corrigió además
+el tipo del spy, sin relajar aserciones ni cambiar lógica de aplicación. Fixture visual
+inicial tenía totalPages incoherente con pageSize=1 y capitalización de rol; corregida
+exclusivamente en el servidor temporal y repetidas capturas comparables. Primer pase
+.NET 315/316 por ObjectDisposedException del host en una prueba de configuración JWT;
+repetición 316/316 sin cambios de backend/tests. Ningún fallo se cuenta como pase.
+
+Pendiente: aceptación visual del usuario; flujos autenticados contra API real con cuentas
+preexistentes autorizadas, revisión con lector de pantalla y zoom real al 200 %. No se
+ha repetido suite PostgreSQL porque no se modifica backend/persistencia. La fase no
+publica ni da por aprobado el resultado visual: se entrega para revisión en navegador.
+
+## Cierre anterior — fase 10.7.5.2 sistema visual y navegación
+
+7 de noviembre de 2026. Implementación local del sistema visual y AppLayout.
+Sin commit, push, despliegue, dependencias nuevas ni cambios de backend, contratos,
+autenticación, permisos, datos, Docker o CI. El rediseño específico de las pantallas
+queda pendiente de revisión y autorización posterior.
+
+Implementado:
+
+- Tokens globales de paleta azul/pizarra, colores semánticos, tipografía Segoe UI/sistema,
+  espacios 4/8/12/16/24/32 px, radios 4/6 px, controles nativos y movimiento reducido.
+- AppLayout con lateral persistente de 224 px desde 960 px y cabecera de 56 px en
+  escritorio; contenido con márgenes de 24 px, 16 px en móvil. Cabecera puede crecer
+  por contenido/zoom. Enlaces operativos según sesión/rol; información secundaria separada.
+- Menú móvil desplegable en flujo normal, botón nativo con aria-expanded/controls,
+  recorrido Tab nativo, Escape y foco al botón, cierre por enlace/navegación y foco
+  al contenido. Los clics modificados para abrir otra pestaña conservan el menú.
+- Menú de sesión y aviso demo armonizados. Se conservan las advertencias completas.
+  Incidencias permanece marcada en el detalle; Nueva incidencia tiene selección propia.
+- Estilos compartidos auth-form, ticket-page, ticket-create y badges consumen los
+  tokens. Solo cambios de presentación compartida, sin reorganizar pantallas o formularios.
+- Ocho pruebas nuevas de navegación; expectativas de etiquetas/visibilidad actualizadas
+  en las suites existentes, conservando comprobaciones de rutas y autorización.
+
+Validación ejecutada:
+
+| Comprobación | Resultado |
+| --- | --- |
+| npm test -- --watch=false | 427 superadas en 38 archivos |
+| npm run build -- --configuration production | Correcto, sin advertencias; inicial 306,81 kB |
+| dotnet build HelpDesk.NET.slnx --no-restore -m:1 -nr:false | Correcto, 0 errores/advertencias |
+| dotnet test sin PostgreSQL, --no-build --no-restore | 316 superadas, 0 fallidas/omitidas |
+| Brave headless, acceso anónimo a 320/390/768/1024/1440 px | Sin desbordamiento horizontal; lateral/cabecera escritorio 224/56 px |
+| Brave, menú móvil abierto a 320/390/768 px | Sin desbordamiento; Tab, Escape y recuperación de foco correctos |
+| git diff --check | Correcto |
+| Contraste calculado de pares de tokens | Texto semántico >= 5,6:1 en pares revisados; borde de campo/blanco 3,16:1 |
+
+La comprobación Brave sirve el build production con respuestas HTTP locales simuladas
+para demo desactivada y health; no conecta a la API ni acredita flujos reales por rol.
+Servidor y perfil temporales eliminados al terminar. Capturas temporales fuera del repo.
+Las pruebas unitarias usan jsdom: el botón móvil se expone explícitamente en su montaje
+porque jsdom no aplica media queries; las anchuras se comprueban con Brave.
+
+Incidencias de validación: primer pase 418/419 por etiqueta anterior Tickets; actualizado
+el texto esperado a Incidencias. Primer pase nuevo 424/426 por foco de botón oculto en
+jsdom; corregido montaje móvil, no debilitadas las aserciones. Pase final 427/427.
+VSTest no pudo abrir socket local en sandbox; repetido con permiso ampliado, 316/316.
+Una escritura inicial de prueba usó ruta relativa incorrecta y dos invocaciones npm
+se lanzaron desde la raíz sin script test; repetidas correctamente en HelpDesk.Web.
+Ninguno de esos intentos fallidos se cuenta como validación superada.
+Revisión de captura de Inicio a 320 px detectó que min-width:320px en body impedía
+absorber el ancho de la barra vertical; cambiado a min-width:0. La comprobación final
+compara scrollWidth con clientWidth, incluido Inicio tras seleccionar la ruta.
+
+Pendiente: revisión visual completa autenticada User/Technician/Admin y demo, zoom
+real al 200 %, lector de pantalla, y rediseño específico de listados/formularios/detalle.
+No se repite PostgreSQL: esta fase no modifica backend ni persistencia. No se declara
+accesibilidad completa solo por contraste de tokens y pruebas automáticas.
+
+## Cierre anterior — fase 10.7.5 implementada y validada localmente
 
 6 de noviembre de 2026. CI y ensayo seguro de recuperación preparados. **No se ha
 probado GitHub Actions en GitHub**: no hay run remoto, commit, push ni publicación.

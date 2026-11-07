@@ -7,7 +7,7 @@ import { vi } from 'vitest';
 import { SessionMenu } from './session-menu';
 import { AppLayout } from './app-layout';
 import { AuthService } from '../core/auth/auth.service';
-import { UserRole, roleNavigation } from '../core/auth/auth.models';
+import { UserRole } from '../core/auth/auth.models';
 import { signIn } from '../core/auth/auth.testing';
 
 describe('Session navigation', () => {
@@ -31,6 +31,14 @@ describe('Session navigation', () => {
     expect(f.nativeElement.querySelector('a[href="/register"]')).not.toBeNull();
     expect(f.nativeElement.querySelector('button')).toBeNull();
   });
+  it('shows only Inicio in the anonymous sidebar without an information group', () => {
+    const f = TestBed.createComponent(AppLayout);
+    f.detectChanges();
+    const nav = f.nativeElement.querySelector('.sidebar nav') as HTMLElement;
+    expect([...nav.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['/']);
+    expect(nav.textContent).not.toContain('Información');
+    expect(nav.querySelector('a[href*="#"]')).toBeNull();
+  });
   it('identifies the shared demo on every page and closes the registration link', () => {
     TestBed.inject(DemoService).enabled.set(true);
     const f = TestBed.createComponent(AppLayout);
@@ -51,12 +59,27 @@ describe('Session navigation', () => {
       signIn(auth, http, role);
       const f = TestBed.createComponent(AppLayout);
       f.detectChanges();
-      expect(f.nativeElement.textContent).toContain(roleNavigation[role]);
+      expect(f.nativeElement.textContent).toContain('Mi sesión');
+      expect(f.nativeElement.querySelector('a[href="/tickets/new"]')).not.toBeNull();
+      expect(!!f.nativeElement.querySelector('a[href="/my-tickets"]')).toBe(role === 'Technician');
       expect(f.nativeElement.querySelector('a[href="/session"]')).not.toBeNull();
       const adminLink = f.nativeElement.querySelector('a[href="/admin"]');
       if (role === 'Admin') expect(adminLink).not.toBeNull();
       else expect(adminLink).toBeNull();
       expect(f.nativeElement.querySelector('a[href="/tickets"]')).not.toBeNull();
+      const nav = f.nativeElement.querySelector('.sidebar nav') as HTMLElement;
+      expect([...nav.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
+        '/',
+        '/tickets',
+        ...(role === 'Technician' ? ['/my-tickets'] : []),
+        '/tickets/new',
+        ...(role === 'Admin' ? ['/admin'] : []),
+        '/session',
+      ]);
+      expect(nav.textContent).not.toContain('Información');
+      expect(nav.textContent).not.toContain('Conexión');
+      expect(nav.textContent).not.toContain('Acerca de');
+      expect(nav.querySelector('a[href*="#"]')).toBeNull();
     },
   );
   it('closes the session locally and navigates to login', () => {

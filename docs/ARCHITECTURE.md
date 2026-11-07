@@ -813,3 +813,90 @@ digests. Red bridge exclusiva no aísla código hostil con acceso a Docker: PR s
 runner hospedado desechable, dumps confiables y ningún acceso privado. Limpieza forzada
 puede requerir revisión local de etiquetas UUID. CI no garantiza ejecución byte a byte,
 RPO/RTO, validación visual, TLS/proxy real o publicación. Operación en CI_RECOVERY.md.
+
+
+### 053 — Sistema visual y navegación accesible (fase 10.7.5.2)
+
+Estado: implementado y validado localmente el 7 de noviembre de 2026; revisión visual
+completa por rol y autorización de siguientes pantallas pendientes.
+
+Decisión: conservar Angular standalone, componentes existentes y controles nativos.
+Tokens CSS en styles.scss para paleta, semántica, tipografía, espaciado y radios;
+los estilos compartidos existentes consumen los tokens sin biblioteca visual nueva.
+Los estilos específicos de pantallas se migrarán en etapas posteriores: no se considera
+completado el rediseño de tickets, Inicio, sesión o administración.
+
+AppLayout organiza navegación por funciones y conserva condiciones de rol y guards.
+Lateral de 224 px desde 960 px, cabecera de al menos 56 px y contenido flexible;
+por debajo de 960 px, disclosure en flujo normal sin overlay ni trampa de foco.
+El botón nativo controla aria-expanded/aria-controls; CSS oculta el lateral cerrado
+solo en móvil, retirando sus enlaces del recorrido de teclado. Escape devuelve foco
+al botón; seleccionar enlace o completar navegación cierra y enfoca main. La selección
+de Incidencias incluye detalle y excluye creación. Mi sesión usa etiqueta estable.
+No cambia ninguna ruta, contrato HTTP, política de sesión, permiso ni operación.
+
+Motivo: aumentar coherencia y espacio útil con una base pequeña y comprensible,
+preservando formularios reactivos y separación de componentes. Consecuencia: conviven
+temporalmente estilos renovados compartidos con composiciones anteriores; las siguientes
+etapas requerirán revisión visual específica. El menú no modal mantiene recorrido Tab
+normal, sin implementar interacción de menú ARIA de aplicación.
+
+Validación: 427 Angular, build production, build .NET y 316 tests sin PostgreSQL.
+Brave real verifica dimensiones/desbordamientos del acceso anónimo a cinco anchuras y
+Escape/foco en móvil mediante servidor local temporal con respuestas simuladas.
+No equivale a prueba integral autenticada, zoom o lector de pantalla. Detalle de límites
+e incidencias en PROGRESS.md. Sin commit, push o publicación.
+
+
+### 054 — Workspace de incidencias y composición de presentación (fase 10.7.5.3)
+
+Estado: implementado localmente el 7 de noviembre de 2026; aceptación visual pendiente.
+
+Decisión: rediseñar todas las composiciones Angular sobre servicios/contratos existentes.
+PageHeader reutiliza título/contexto/acciones mediante inputs y proyección; WorkspaceIcon
+contiene trazos SVG originales y decorativos para acompañar etiquetas. No se crea una
+biblioteca genérica DataTable ni capas nuevas: TicketTable conserva su contrato y el
+directorio Admin utiliza HTML de tabla semántica. Tokens de 10.7.5.2 siguen vigentes.
+
+Listado integra herramientas y tabla en una superficie de trabajo, con columnas adaptadas
+y filas móviles. Detalle usa dos columnas para contenido/conversación y propiedades/
+gestión, pasando a una columna según espacio disponible. Comentarios/historial conservan
+carga explícita, cursores y una sola instancia; gestión conserva operaciones separadas,
+controles de revisión y bloqueos de envío. No se cambian llamadas HTTP por reorganizar DOM.
+Administración presenta resumen real, directorio y editor/confirmación existentes.
+Inicio, autenticación y sesión pasan a accesos/contexto operativo; HomeIntro se elimina.
+
+Motivo: resolver jerarquía y organización, además de los tokens. Inspiración conceptual
+en navegación y work items de Azure Boards (https://learn.microsoft.com/en-us/azure/devops/boards/),
+sin copiar marcas, recursos o una interfaz exacta. Consecuencia: estilos específicos
+reemplazados, vistas móviles propias y pruebas de estructura adaptadas. PageHeader no
+contiene lógica de acceso; todos los guards/condiciones y servicios existentes se conservan.
+
+Validación: 427 Angular, build production sin advertencias, build .NET y 316 pruebas
+sin PostgreSQL. Brave real con fixtures verifica las vistas de los tres roles y demo;
+la API local real solo se comprueba anónimamente (demo desactivada, sin cuentas de
+prueba disponibles). Capturas antes/después reales y fixtures permanecen fuera del repo.
+Detalle de la matriz, intentos fallidos y límites en PROGRESS.md. No implica aprobación
+visual, prueba integral contra DB real ni despliegue. Sin commit ni push.
+
+
+### 055 — Refinamiento visual medido y continuidad de interacción (fase 10.7.5.4)
+
+Estado: implementado localmente el 7 de noviembre de 2026, pendiente de aprobación visual.
+
+Se mantiene la composición de 10.7.5.3. El refinamiento responde a capturas/medidas reales:
+redistribución de tabla, escala de cabeceras, controles táctiles y navegación consistente.
+El orden de lectura y foco del detalle sigue el DOM también en tablet, eliminando order:-1.
+Las propiedades ya representadas en el encabezado no se duplican; no se oculta información
+ni cambia acceso a operaciones. Login/registro retiran contexto decorativo y conservan
+formularios/políticas; PageHeader y WorkspaceIcon se reutilizan sin biblioteca nueva.
+
+Las microinteracciones solo modifican color/borde, respetan movimiento reducido y no
+reubican controles. Menú de icono conserva botón nativo con nombre accesible dinámico;
+error de comentario se asocia al textarea. No cambia la lógica de negocio, servicios,
+rutas, autenticación ni contratos de .NET. No se crean capas ni dependencias.
+
+Brave verifica las vistas con fixtures explícitas en cinco anchuras y las rutas anónimas
+con Angular/API locales reales. No equivale a comprobar cuentas autenticadas o permisos
+contra la base habitual. Tests Angular y .NET sin PostgreSQL, builds y diff ejecutados;
+medidas, matriz, archivos e incidencias en PROGRESS.md. Sin commit, push ni despliegue.

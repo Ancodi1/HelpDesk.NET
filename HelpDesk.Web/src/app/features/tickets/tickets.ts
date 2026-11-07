@@ -1,8 +1,9 @@
+import { PageHeader } from '../../shared/page-header';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, OnInit, signal, computed } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
-import { ActivatedRoute, ParamMap, Router } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import {
   catchError,
   EMPTY,
@@ -51,7 +52,7 @@ type Action =
 @Component({
   selector: 'app-tickets',
   standalone: true,
-  imports: [ReactiveFormsModule, TicketTable],
+  imports: [PageHeader, RouterLink, RouterLinkActive, ReactiveFormsModule, TicketTable],
   templateUrl: './tickets.html',
   styleUrl: './tickets.scss',
 })
@@ -64,7 +65,9 @@ export class Tickets implements OnInit {
   private readonly actions = new Subject<Action>();
   readonly auth = inject(AuthService);
   readonly personal = this.route.snapshot?.data['assignedToMe'] === true;
-  readonly summary = signal<{ kind: 'loading' } | { kind: 'ready'; counts: number[] } | { kind: 'error'; message: string }>({ kind: 'loading' });
+  readonly summary = signal<
+    { kind: 'loading' } | { kind: 'ready'; counts: number[] } | { kind: 'error'; message: string }
+  >({ kind: 'loading' });
   private readonly summaryActions = new Subject<void>();
   readonly canCreate = computed(() => this.auth.user() !== null);
   readonly query = signal<TicketQuery>({ ...defaultTicketQuery });
@@ -88,30 +91,38 @@ export class Tickets implements OnInit {
     return !!(q.search || q.status || q.priority || q.category);
   });
   readonly visibility = computed(() =>
-    this.personal ? 'Incidencias asignadas a ti.' : this.auth.user()?.role === 'Admin'
-      ? 'Todas las incidencias disponibles para tu cuenta de administrador.'
-      : this.auth.user()?.role === 'Technician'
-        ? 'Incidencias creadas por ti o asignadas a ti.'
-        : 'Incidencias creadas por ti.',
+    this.personal
+      ? 'Incidencias asignadas a ti.'
+      : this.auth.user()?.role === 'Admin'
+        ? 'Todas las incidencias disponibles para tu cuenta de administrador.'
+        : this.auth.user()?.role === 'Technician'
+          ? 'Incidencias creadas por ti o asignadas a ti.'
+          : 'Incidencias creadas por ti.',
   );
 
   ngOnInit(): void {
     if (this.personal) {
-      this.summaryActions.pipe(
-        startWith(undefined),
-        switchMap(() => {
-          this.summary.set({ kind: 'loading' });
-          return forkJoin(
-            (['Open', 'InProgress', 'Resolved'] as const).map(status =>
-              this.service.list({ ...defaultTicketQuery, status, pageSize: 1 }, true)
-                .pipe(map(page => page.totalCount))),
-          ).pipe(
-            map(counts => ({ kind: 'ready' as const, counts })),
-            catchError((error: unknown) => of({ kind: 'error' as const, message: listError(error) })),
-          );
-        }),
-        takeUntilDestroyed(this.destroyRef),
-      ).subscribe(summary => this.summary.set(summary));
+      this.summaryActions
+        .pipe(
+          startWith(undefined),
+          switchMap(() => {
+            this.summary.set({ kind: 'loading' });
+            return forkJoin(
+              (['Open', 'InProgress', 'Resolved'] as const).map((status) =>
+                this.service
+                  .list({ ...defaultTicketQuery, status, pageSize: 1 }, true)
+                  .pipe(map((page) => page.totalCount)),
+              ),
+            ).pipe(
+              map((counts) => ({ kind: 'ready' as const, counts })),
+              catchError((error: unknown) =>
+                of({ kind: 'error' as const, message: listError(error) }),
+              ),
+            );
+          }),
+          takeUntilDestroyed(this.destroyRef),
+        )
+        .subscribe((summary) => this.summary.set(summary));
     }
     const filters = merge(
       this.form.controls.status.valueChanges,
@@ -143,7 +154,12 @@ export class Tickets implements OnInit {
     void this.router.navigate(['/tickets/new'], { queryParams: ticketQueryParams(this.query()) });
   }
   openTicket(id: number): void {
-    void this.router.navigate(['/tickets', id], { queryParams: { ...ticketQueryParams(this.query()), ...(this.personal ? { from: 'my-tickets' } : {}) } });
+    void this.router.navigate(['/tickets', id], {
+      queryParams: {
+        ...ticketQueryParams(this.query()),
+        ...(this.personal ? { from: 'my-tickets' } : {}),
+      },
+    });
   }
 
   retrySummary(): void {
@@ -233,7 +249,10 @@ export class Tickets implements OnInit {
   }
   private load(query: TicketQuery): Observable<ListState> {
     if (query.search.length > 200 || query.search.includes('\0'))
-      return of({ kind: 'error', message: 'La búsqueda admite hasta 200 unidades UTF-16 y no admite caracteres nulos.' });
+      return of({
+        kind: 'error',
+        message: 'La búsqueda admite hasta 200 unidades UTF-16 y no admite caracteres nulos.',
+      });
     return (this.personal ? this.service.list(query, true) : this.service.list(query)).pipe(
       map((data): ListState => ({ kind: 'ready', data })),
       catchError((error: unknown) => of<ListState>({ kind: 'error', message: listError(error) })),

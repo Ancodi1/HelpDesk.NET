@@ -1,9 +1,10 @@
-<section class="ticket-page" aria-labelledby="admin-title">
-  <header>
-    <p class="eyebrow">GESTIÓN DEL SERVICIO</p>
-    <h1 id="admin-title">Administración</h1>
-    <p class="intro">Incidencias del equipo y directorio de usuarios.</p>
-  </header>
+<section class="ticket-page admin-page" aria-labelledby="admin-title">
+  <app-page-header
+    headingId="admin-title"
+    title="Administración"
+    context="Gestión del servicio"
+    description="Estado de las incidencias y directorio de usuarios."
+  />
   <section aria-labelledby="overview-title">
     <div class="heading">
       <h2 id="overview-title">Vista general de incidencias</h2>
@@ -32,7 +33,7 @@
       mientras el equipo trabaja.
     </p>
   </section>
-  <section aria-labelledby="directory-title">
+  <section class="directory-workspace" aria-labelledby="directory-title">
     <div class="heading">
       <h2 id="directory-title">Directorio de usuarios</h2>
       <button class="secondary" type="button" [disabled]="pending()" (click)="reloadUsers()">
@@ -76,29 +77,49 @@
       } @else if (filtered().length === 0) {
         <p>No hay coincidencias para estos filtros.</p>
       } @else {
-        <ul class="users" aria-label="Usuarios">
-          @for (user of filtered(); track user.id) {
-            <li class="card">
-              <div class="identity">
-                <strong>{{ user.name }}</strong
-                ><span>{{ user.email }}</span>
-                <small
-                  >ID {{ user.id }} · {{ roleNames[user.role] }} · Alta
-                  {{ user.createdAt | date: 'mediumDate' }}</small
-                >
-              </div>
-              <button
-                class="secondary"
-                type="button"
-                [disabled]="pending() || reviewRequired()"
-                (click)="edit(user)"
-                [attr.aria-label]="'Editar usuario ' + user.name"
-              >
-                Editar
-              </button>
-            </li>
-          }
-        </ul>
+        <table class="users" role="table">
+          <caption class="sr-only">
+            Directorio de usuarios
+          </caption>
+          <thead role="rowgroup">
+            <tr role="row">
+              <th scope="col" role="columnheader">Usuario</th>
+              <th scope="col" role="columnheader">Rol</th>
+              <th scope="col" role="columnheader">Alta</th>
+              <th scope="col" role="columnheader">Acciones</th>
+            </tr>
+          </thead>
+          <tbody role="rowgroup">
+            @for (user of filtered(); track user.id) {
+              <tr role="row" [class.is-selected]="selected()?.id === user.id">
+                <td role="cell" class="identity">
+                  <strong>{{ user.name }}</strong
+                  ><span>{{ user.email }}</span
+                  ><small>ID {{ user.id }}</small>
+                </td>
+                <td role="cell">
+                  <span class="role-label">{{ roleNames[user.role] }}</span>
+                </td>
+                <td role="cell">
+                  <time [attr.datetime]="user.createdAt">{{
+                    user.createdAt | date: 'mediumDate'
+                  }}</time>
+                </td>
+                <td role="cell">
+                  <button
+                    class="secondary"
+                    type="button"
+                    [disabled]="pending() || reviewRequired()"
+                    (click)="edit(user)"
+                    [attr.aria-label]="'Editar usuario ' + user.name"
+                  >
+                    Editar
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
       }
     }
     @if (selected(); as user) {

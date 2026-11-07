@@ -30,76 +30,81 @@
         </div>
       }
       @case ('ready') {
-        <header>
-          <p class="eyebrow">INCIDENCIA #{{ result.ticket.id }}</p>
+        <header class="work-item-heading">
+          <div class="work-item-identity">
+            <span class="work-item-type">Incidencia</span
+            ><span class="work-item-id">#{{ result.ticket.id }}</span>
+          </div>
           <h1 id="detail-title">{{ result.ticket.title }}</h1>
-          <p class="intro">Información de la incidencia disponible para tu cuenta.</p>
+          <div class="work-item-status">
+            <span class="badge status" [attr.data-value]="result.ticket.status">{{
+              statusNames[result.ticket.status]
+            }}</span
+            ><span class="badge priority" [attr.data-value]="result.ticket.priority">{{
+              priorityNames[result.ticket.priority]
+            }}</span
+            ><span>{{ categoryNames[result.ticket.category] }}</span>
+          </div>
         </header>
-        <article class="card" aria-label="Información del ticket">
-          <dl class="metadata">
-            <div>
-              <dt>Estado</dt>
-              <dd>
-                <span class="badge status" [attr.data-value]="result.ticket.status">{{
-                  statusNames[result.ticket.status]
-                }}</span>
-              </dd>
+        <div class="detail-workspace">
+          <div class="detail-main">
+            <article class="description-panel" aria-labelledby="description-title">
+              <div class="panel-heading"><h2 id="description-title">Descripción</h2></div>
+              <p class="description">{{ result.ticket.description }}</p>
+            </article>
+            <app-ticket-comments #comments [ticketId]="result.ticket.id" />
+            <app-ticket-activities [ticketId]="result.ticket.id" [revision]="activityRevision()" />
+          </div>
+          <aside class="property-panel" aria-label="Propiedades y gestión">
+            <div class="panel-heading">
+              <h2>Propiedades</h2>
+              <button
+                class="secondary"
+                type="button"
+                [disabled]="management.pending() || comments.pending()"
+                (click)="retry()"
+              >
+                Actualizar detalle
+              </button>
             </div>
-            <div>
-              <dt>Prioridad</dt>
-              <dd>
-                <span class="badge priority" [attr.data-value]="result.ticket.priority">{{
-                  priorityNames[result.ticket.priority]
-                }}</span>
-              </dd>
-            </div>
-            <div>
-              <dt>Categoría</dt>
-              <dd>{{ categoryNames[result.ticket.category] }}</dd>
-            </div>
-          </dl>
-          <section aria-labelledby="description-title">
-            <h2 id="description-title">Descripción</h2>
-            <p class="description">{{ result.ticket.description }}</p>
-          </section>
-          <dl class="metadata secondary-data">
-            <div>
-              <dt>Creada el</dt>
-              <dd>
-                <time [attr.datetime]="result.ticket.createdAt">{{
-                  result.ticket.createdAt | date: 'dd/MM/yyyy, HH:mm'
-                }}</time>
-              </dd>
-            </div>
-            <div>
-              <dt>Creada por</dt>
-              <dd>
-                {{
-                  result.ticket.createdByUserId === null
-                    ? 'Sin creador registrado'
-                    : 'ID ' + result.ticket.createdByUserId
-                }}
-              </dd>
-            </div>
-            <div>
-              <dt>Técnico asignado</dt>
-              <dd>
-                {{
-                  result.ticket.assignedToUserId === null
-                    ? 'Sin asignar'
-                    : 'ID ' + result.ticket.assignedToUserId
-                }}
-              </dd>
-            </div>
-          </dl>
-          <p class="time-note">Fecha mostrada en tu hora local.</p>
-        </article>
-        <app-ticket-management #management [ticket]="result.ticket" (updated)="updated($event)" />
-        <button class="secondary" type="button" [disabled]="management.pending() || comments.pending()" (click)="retry()">
-          Actualizar detalle
-        </button>
-        <app-ticket-comments #comments [ticketId]="result.ticket.id" />
-        <app-ticket-activities [ticketId]="result.ticket.id" [revision]="activityRevision()" />
+            <dl class="metadata">
+              <div>
+                <dt>Responsable</dt>
+                <dd>
+                  {{
+                    result.ticket.assignedToUserId === null
+                      ? 'Sin asignar'
+                      : 'ID ' + result.ticket.assignedToUserId
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt>Creada por</dt>
+                <dd>
+                  {{
+                    result.ticket.createdByUserId === null
+                      ? 'Sin creador registrado'
+                      : 'ID ' + result.ticket.createdByUserId
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt>Creada el</dt>
+                <dd>
+                  <time [attr.datetime]="result.ticket.createdAt">{{
+                    result.ticket.createdAt | date: 'dd/MM/yyyy, HH:mm'
+                  }}</time>
+                </dd>
+              </div>
+            </dl>
+            <p class="time-note">Fecha mostrada en tu hora local.</p>
+            <app-ticket-management
+              #management
+              [ticket]="result.ticket"
+              (updated)="updated($event)"
+            />
+          </aside>
+        </div>
       }
     }
   </div>

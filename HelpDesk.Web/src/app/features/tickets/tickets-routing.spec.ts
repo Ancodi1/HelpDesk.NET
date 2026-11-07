@@ -77,7 +77,7 @@ describe('Real ticket routing and permissions', () => {
     f.detectChanges();
     await f.whenStable();
     const link = f.nativeElement.querySelector('aside a[href="/tickets"]') as HTMLAnchorElement;
-    expect(link.textContent).toContain('Tickets');
+    expect(link.textContent).toContain('Incidencias');
     expect(link.classList.contains('active')).toBe(false);
     link.click();
     await f.whenStable();

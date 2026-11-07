@@ -12,13 +12,16 @@ import { roleLabels } from '../core/auth/auth.models';
     @if (auth.user(); as user) {
       <a class="identity" routerLink="/session"
         ><span>{{ user.email }}</span
-        ><small>{{ labels[user.role] }} · Sesión iniciada</small></a
+        ><small
+          >{{ labels[user.role] }}<span class="session-state"> · Sesión iniciada</span></small
+        ></a
       >
       <button type="button" (click)="logout()">Cerrar sesión</button>
     } @else {
-      <a routerLink="/login">Iniciar sesión</a
-      >
-      @if (!demo.enabled()) { <a class="register-link" routerLink="/register">Crear cuenta</a> }
+      <a routerLink="/login">Iniciar sesión</a>
+      @if (!demo.enabled()) {
+        <a class="register-link" routerLink="/register">Crear cuenta</a>
+      }
     }
   </nav>`,
   styles: `
@@ -27,12 +30,12 @@ import { roleLabels } from '../core/auth/auth.models';
       align-items: center;
       justify-content: flex-end;
       flex-wrap: wrap;
-      gap: 10px 16px;
+      gap: var(--space-2) var(--space-3);
     }
     a,
     button {
       color: var(--accent);
-      font-size: 12px;
+      font-size: var(--text-small);
       font-weight: 600;
       text-decoration: none;
     }
@@ -42,11 +45,11 @@ import { roleLabels } from '../core/auth/auth.models';
     button,
     .register-link {
       border: 1px solid var(--border);
-      border-radius: 7px;
-      padding: 10px 12px;
-      background: white;
+      border-radius: var(--radius-sm);
+      padding: var(--space-2) var(--space-3);
+      background: var(--surface);
       cursor: pointer;
-      min-height: 42px;
+      min-height: 36px;
     }
     button:hover,
     .register-link:hover {
@@ -56,7 +59,7 @@ import { roleLabels } from '../core/auth/auth.models';
       color: var(--ink);
       min-width: 0;
     }
-    .identity span {
+    .identity > span {
       display: block;
       max-width: 210px;
       overflow: hidden;
@@ -66,16 +69,32 @@ import { roleLabels } from '../core/auth/auth.models';
     small {
       display: block;
       color: var(--muted);
-      font-size: 10px;
-      margin-top: 4px;
+      font-size: var(--text-small);
+      margin-top: var(--space-1);
       font-weight: 400;
     }
-    @media (max-width: 480px) {
-      .session-menu {
-        justify-content: flex-start;
+    @media (max-width: 959px) {
+      a,
+      .register-link,
+      button {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
       }
-      .identity span {
-        max-width: 185px;
+      .identity {
+        display: block;
+      }
+    }
+    @media (max-width: 639px) {
+      .session-menu {
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .session-state {
+        display: none;
+      }
+      .identity > span {
+        max-width: 160px;
       }
     }
   `,

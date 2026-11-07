@@ -55,6 +55,8 @@ describe('Admin directory and overview', () => {
       '/tickets?status=Open',
     );
     expect(f.nativeElement.querySelector('.identity b')).toBeNull();
+    expect(f.nativeElement.querySelectorAll('.users th[scope=col]')).toHaveLength(4);
+    expect(f.nativeElement.querySelectorAll('.users tbody tr')).toHaveLength(users.length);
     expect(f.nativeElement.textContent).toContain('<b>Fixture technician</b>');
     c.search.setValue('OTHER');
     c.roleFilter.setValue('User');

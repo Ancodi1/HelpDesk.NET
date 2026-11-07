@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, Params, Router } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, Params, Router, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { vi } from 'vitest';
 import { Tickets } from './tickets';
@@ -13,7 +13,7 @@ describe('Ticket listing interactions', () => {
   let fixture: ComponentFixture<Tickets>;
   let http: HttpTestingController;
   let params: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
-  let navigate: ReturnType<typeof vi.fn>;
+  let navigate: (commands: unknown, options: { queryParams: Params }) => Promise<boolean>;
   const request = () => http.expectOne((r) => r.url === '/api/tickets');
   const settle = async () => {
     await Promise.resolve();
@@ -40,10 +40,13 @@ describe('Ticket listing interactions', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
+        provideRouter([]),
         { provide: ActivatedRoute, useValue: { queryParamMap: params.asObservable() } },
-        { provide: Router, useValue: { navigate, navigateByUrl: vi.fn().mockResolvedValue(true) } },
       ],
     });
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockImplementation((commands, options) =>
+      navigate(commands, options as { queryParams: Params }),
+    );
     http = TestBed.inject(HttpTestingController);
     signIn(TestBed.inject(AuthService), http, 'User');
     fixture = TestBed.createComponent(Tickets);

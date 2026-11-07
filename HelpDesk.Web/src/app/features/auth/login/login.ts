@@ -1,3 +1,4 @@
+import { PageHeader } from '../../../shared/page-header';
 import { DemoAccount, DemoService } from '../../../core/demo/demo.service';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -11,7 +12,7 @@ import { emailAddress, nonBlank } from '../auth.validation';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [PageHeader, ReactiveFormsModule, RouterLink],
   templateUrl: './login.html',
   styleUrl: '../auth-form.scss',
 })
@@ -24,7 +25,10 @@ export class Login {
   readonly registered = inject(ActivatedRoute).snapshot.queryParamMap.get('registered') === '1';
   readonly pending = signal(false);
   readonly error = signal<string | null>(null);
-  readonly form = this.builder.group({ email: ['', emailAddress], password: ['', [nonBlank, Validators.maxLength(128)]] });
+  readonly form = this.builder.group({
+    email: ['', emailAddress],
+    password: ['', [nonBlank, Validators.maxLength(128)]],
+  });
 
   constructor() {
     this.destroyRef.onDestroy(() => this.form.controls.password.reset(''));

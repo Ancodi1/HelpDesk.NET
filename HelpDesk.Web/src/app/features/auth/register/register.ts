@@ -1,3 +1,4 @@
+import { PageHeader } from '../../../shared/page-header';
 import { DemoService } from '../../../core/demo/demo.service';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -11,7 +12,7 @@ import { emailAddress, nonBlank, registrationPassword } from '../auth.validation
 @Component({
   selector: 'app-register',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [PageHeader, ReactiveFormsModule, RouterLink],
   templateUrl: './register.html',
   styleUrl: '../auth-form.scss',
 })

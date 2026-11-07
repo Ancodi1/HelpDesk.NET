@@ -28,9 +28,7 @@ describe('Private session route integration', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(router.url).toBe('/login');
-    expect(fixture.nativeElement.querySelector('h1').textContent).toContain(
-      'Conecta con tu espacio',
-    );
+    expect(fixture.nativeElement.querySelector('h1').textContent).toContain('Iniciar sesión');
     expect(fixture.nativeElement.querySelector('input[type="password"]')).not.toBeNull();
   });
   it('renders the session and closes it through the actual menu', async () => {

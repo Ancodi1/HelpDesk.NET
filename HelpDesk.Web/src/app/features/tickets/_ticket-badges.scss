@@ -1,41 +1,57 @@
 @mixin styles {
   .badge {
+    white-space: nowrap;
     display: inline-block;
-    font-size: 10px;
+    font-size: var(--text-small);
     font-weight: 650;
-    padding: 3px 8px;
-    border-radius: 5px;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
   }
   .status[data-value='Open'] {
-    color: #3e4fa5;
-    background: #edf1ff;
+    color: var(--accent);
+    background: var(--accent-soft);
   }
   .status[data-value='InProgress'] {
-    color: #86570c;
-    background: #fff3d5;
+    color: var(--warning);
+    background: var(--warning-soft);
   }
   .status[data-value='Resolved'] {
-    color: #247456;
-    background: #eaf6ef;
+    color: var(--success);
+    background: var(--success-soft);
   }
   .status[data-value='Closed'] {
-    color: #575e72;
-    background: #eef0f5;
+    color: var(--neutral);
+    background: var(--neutral-soft);
   }
   .priority[data-value='Low'] {
-    color: #476075;
-    background: #eff4f8;
+    color: var(--neutral);
+    background: var(--neutral-soft);
   }
   .priority[data-value='Medium'] {
-    color: #5b4bcc;
-    background: #eeecfc;
+    color: var(--accent);
+    background: var(--accent-soft);
   }
   .priority[data-value='High'] {
-    color: #9a521a;
-    background: #fff0df;
+    color: var(--priority-high);
+    background: var(--priority-high-soft);
   }
   .priority[data-value='Critical'] {
-    color: #a13628;
-    background: #fff0eb;
+    color: var(--error);
+    background: var(--error-soft);
+  }
+  .priority {
+    background: transparent !important;
+    padding-left: 0;
+    font-weight: 500;
+  }
+  .priority::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    background: currentColor;
+    border-radius: 1px;
+    vertical-align: middle;
   }
 }

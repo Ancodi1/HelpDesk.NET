@@ -3,86 +3,123 @@
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
   table-layout: fixed;
 }
 th {
   text-align: left;
-  color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 16px 12px;
-  background: #fafbfe;
+  color: var(--muted);
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
+  background: #fafbfd;
 }
 th:first-child {
-  width: 34%;
-  padding-left: 24px;
+  width: 43%;
+  padding-left: 16px;
+}
+th:nth-child(2) {
+  width: 12%;
+}
+th:nth-child(3) {
+  width: 10%;
+}
+th:nth-child(4) {
+  width: 10%;
 }
 th:nth-child(5) {
   width: 16%;
 }
+th:nth-child(6) {
+  width: 9%;
+}
+.ticket-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
 td {
-  padding: 22px 12px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
-  vertical-align: top;
+  vertical-align: middle;
   overflow-wrap: anywhere;
-  line-height: 1.7;
+  line-height: 1.5;
 }
 td:first-child {
-  padding-left: 24px;
-}
-td:last-child {
-  padding-right: 24px;
+  padding-left: 16px;
 }
 tr:last-child td {
-  border-bottom: 0;
+  border: 0;
+}
+tbody tr:hover {
+  background: #f7faff;
 }
 .ticket-id {
-  display: block;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
-  margin-bottom: 4px;
+  display: inline-block;
+  min-width: 30px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 .ticket-title {
   display: block;
-  font-size: 13px;
-  font-weight: 650;
+  min-width: 0;
   border: 0;
-  padding: 0;
   background: none;
+  padding: 0;
+  min-height: 24px;
   color: var(--accent);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.45;
   text-align: left;
-  font-family: inherit;
   cursor: pointer;
-}
-.ticket-title:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  &:hover {
+    text-decoration: underline;
+  }
 }
 .description {
-  margin: 6px 0 0;
+  margin: 4px 0 0 38px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   overflow: hidden;
   white-space: pre-line;
 }
 .mobile-label {
   display: none;
 }
-@media (max-width: 1100px) {
+time {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+@media (min-width: 768px) and (max-width: 1199px) {
   th:first-child {
-    width: 28%;
+    width: 40%;
+  }
+  th:nth-child(2) {
+    width: 14%;
+  }
+  th:nth-child(6) {
+    width: 15%;
   }
   th,
   td {
     padding-inline: 8px;
   }
+  th:nth-child(4),
+  td:nth-child(4) {
+    display: none;
+  }
+  th:nth-child(5) {
+    width: 21%;
+  }
 }
-@media (max-width: 900px) {
+@media (max-width: 767px) {
   table,
   tbody {
     display: block;
@@ -96,34 +133,73 @@ tr:last-child td {
   }
   tr {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px;
-    padding: 22px;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+    padding: 16px;
     border-bottom: 1px solid var(--border);
   }
-  tr:last-child {
-    border-bottom: 0;
-  }
   td,
-  td:first-child,
-  td:last-child {
+  td:first-child {
     display: block;
-    padding: 0;
     border: 0;
+    padding: 0;
+  }
+  .ticket-heading {
+    display: block;
   }
   .ticket-summary {
-    grid-column: 1 / -1;
+    grid-column: 1/-1;
   }
   .ticket-title {
-    font-size: 15px;
+    min-height: 44px;
+    font-size: 14px;
   }
   .description {
-    font-size: 12px;
+    margin-left: 0;
+    -webkit-line-clamp: 1;
+    font-size: 13px;
   }
   .mobile-label {
     display: block;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--muted);
-    margin-bottom: 5px;
+    margin-bottom: 4px;
+  }
+  td:nth-child(2),
+  td:nth-child(3) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    .mobile-label {
+      display: none;
+      margin: 0;
+    }
+  }
+  td:nth-child(4) {
+    grid-column: 2;
+    grid-row: 3;
+  }
+  td:nth-child(5) {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .ticket-id {
+    font-size: 12px;
+  }
+  .badge {
+    font-size: 12px;
+  }
+}
+
+tbody tr:focus-within {
+  background: var(--accent-soft);
+}
+.ticket-title:focus-visible {
+  outline-offset: 2px;
+}
+
+@media (max-width: 959px) {
+  .ticket-title {
+    min-height: 44px;
   }
 }

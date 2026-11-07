@@ -1,3 +1,4 @@
+import { PageHeader } from '../../../shared/page-header';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -20,7 +21,7 @@ import { ticketError } from '../ticket-errors';
 @Component({
   selector: 'app-ticket-create',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [PageHeader, ReactiveFormsModule, RouterLink],
   templateUrl: './ticket-create.html',
   styleUrls: ['../ticket-page.scss', './ticket-create.scss'],
 })

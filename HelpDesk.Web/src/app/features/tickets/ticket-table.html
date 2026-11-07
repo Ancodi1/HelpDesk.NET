@@ -16,10 +16,12 @@
     @for (ticket of tickets(); track ticket.id) {
       <tr role="row">
         <td role="cell" class="ticket-summary">
-          <span class="ticket-id">#{{ ticket.id }}</span
-          ><button type="button" class="ticket-title" (click)="selectTicket.emit(ticket.id)">
-            {{ ticket.title }}
-          </button>
+          <div class="ticket-heading">
+            <span class="ticket-id">#{{ ticket.id }}</span
+            ><button type="button" class="ticket-title" (click)="selectTicket.emit(ticket.id)">
+              {{ ticket.title }}
+            </button>
+          </div>
           <p class="description">{{ ticket.description }}</p>
         </td>
         <td role="cell">

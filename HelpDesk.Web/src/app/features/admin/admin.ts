@@ -1,3 +1,4 @@
+import { PageHeader } from '../../shared/page-header';
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
@@ -19,7 +20,7 @@ type Summary = { kind: 'loading' } | { kind: 'ready'; counts: number[] } | { kin
 
 @Component({
   selector: 'app-admin',
-  imports: [ReactiveFormsModule, RouterLink, DatePipe],
+  imports: [PageHeader, ReactiveFormsModule, RouterLink, DatePipe],
   templateUrl: './admin.html',
   styleUrls: [
     '../tickets/ticket-page.scss',

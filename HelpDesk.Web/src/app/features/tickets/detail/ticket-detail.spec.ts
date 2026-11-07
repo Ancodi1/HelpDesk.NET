@@ -36,21 +36,21 @@ describe('Ticket detail read-only view', () => {
   });
   it('announces loading and displays only the real detail fields', () => {
     expect(f.nativeElement.textContent).toContain('Cargando incidencia');
-    http
-      .expectOne('/api/tickets/41')
-      .flush(
-        ticketFixture({
-          description: 'First line\nSecond line',
-          createdByUserId: 3,
-          assignedToUserId: 7,
-        }),
-      );
+    http.expectOne('/api/tickets/41').flush(
+      ticketFixture({
+        description: 'First line\nSecond line',
+        createdByUserId: 3,
+        assignedToUserId: 7,
+      }),
+    );
     f.detectChanges();
     expect(f.nativeElement.textContent).toContain('Test fixture incident');
     expect(f.nativeElement.textContent).toContain('First line\nSecond line');
     expect(f.nativeElement.textContent).toContain('ID 3');
     expect(f.nativeElement.textContent).toContain('ID 7');
     expect(f.nativeElement.textContent).toContain('Abierta');
+    expect(f.nativeElement.querySelector('.detail-main app-ticket-comments')).not.toBeNull();
+    expect(f.nativeElement.querySelector('aside.property-panel dl')).not.toBeNull();
     expect(f.nativeElement.querySelector('time').getAttribute('datetime')).toBe(
       '2026-10-27T10:00:00Z',
     );

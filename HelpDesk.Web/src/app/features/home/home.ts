@@ -1,8 +1,11 @@
+import { PageHeader } from '../../shared/page-header';
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
-import { HomeIntro } from './home-intro';
+import { RouterLink } from '@angular/router';
+import { AuthService } from '../../core/auth/auth.service';
+import { DemoService } from '../../core/demo/demo.service';
 import { HealthService } from '../../core/api/health.service';
 
 type ConnectionState = 'loading' | 'success' | 'error';
@@ -10,11 +13,13 @@ type ConnectionState = 'loading' | 'success' | 'error';
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [DatePipe, HomeIntro],
+  imports: [PageHeader, DatePipe, RouterLink],
   templateUrl: './home.html',
   styleUrl: './home.scss',
 })
 export class Home implements OnInit {
+  readonly auth = inject(AuthService);
+  readonly demo = inject(DemoService);
   private readonly health = inject(HealthService);
   private readonly destroyRef = inject(DestroyRef);
   private inFlight = false;

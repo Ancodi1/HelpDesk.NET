@@ -1,5 +1,8 @@
 <section class="card comments" aria-labelledby="comments-title">
-  <h2 id="comments-title">Comentarios</h2>
+  <div class="panel-heading">
+    <h2 id="comments-title">Comentarios</h2>
+    <span class="section-context">Conversación</span>
+  </div>
   @if (!opened()) {
     <p class="intro">
       Consulta la conversación y publica comentarios de texto plano, también en incidencias
@@ -51,24 +54,32 @@
         la publicación se haya cancelado.
       </p>
     }
-    <form [formGroup]="form" (ngSubmit)="publish()">
+    <form
+      class="comment-composer"
+      aria-label="Publicar un comentario"
+      [formGroup]="form"
+      (ngSubmit)="publish()"
+    >
       <fieldset [disabled]="pending() || reading() || !loaded() || reviewRequired()">
         <div class="field">
-          <label for="comment-content">Nuevo comentario (máximo 4.000 unidades UTF-16)</label>
+          <label for="comment-content">Nuevo comentario</label>
           <textarea
             id="comment-content"
             rows="4"
             maxlength="4000"
             [formControl]="content"
             [attr.aria-invalid]="content.touched && content.invalid"
-            aria-describedby="comment-hint"
+            [attr.aria-describedby]="
+              content.touched && content.invalid ? 'comment-hint comment-error' : 'comment-hint'
+            "
           ></textarea>
           <p id="comment-hint" class="hint">
-            Texto plano. No incluyas contraseñas, tokens ni otros secretos.
+            Máximo 4.000 unidades UTF-16. Texto plano. No incluyas contraseñas, tokens ni otros
+            secretos.
             {{ content.value.length }} / 4000
           </p>
           @if (content.touched && content.invalid) {
-            <p class="field-error">
+            <p class="field-error" id="comment-error">
               Escribe texto no vacío de hasta 4.000 unidades UTF-16, sin caracteres nulos.
             </p>
           }

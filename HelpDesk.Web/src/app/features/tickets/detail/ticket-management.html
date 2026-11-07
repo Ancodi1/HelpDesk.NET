@@ -1,5 +1,5 @@
 @if (admin() || canStatus()) {
-  <section class="card" aria-labelledby="manage-title">
+  <section class="property-editor" aria-labelledby="manage-title">
     <h2 id="manage-title">Gestionar ticket</h2>
     @if (message()) {
       <p class="feedback" [class.success]="success()" role="status">{{ message() }}</p>
@@ -27,7 +27,12 @@
               </div>
               <div class="field">
                 <label for="edit-description">Descripción (obligatoria)</label
-                ><textarea id="edit-description" formControlName="description" maxlength="10000" rows="5"></textarea>
+                ><textarea
+                  id="edit-description"
+                  formControlName="description"
+                  maxlength="10000"
+                  rows="5"
+                ></textarea>
               </div>
             </div>
           }

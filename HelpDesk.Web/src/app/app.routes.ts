@@ -31,7 +31,7 @@ export const routes: Routes = [
         title: 'Administración | HelpDesk.NET',
         data: { label: 'Administración' },
         canActivate: [roleGuard('Admin')],
-        loadComponent: () => import('./features/admin/admin').then(m => m.Admin),
+        loadComponent: () => import('./features/admin/admin').then((m) => m.Admin),
       },
       {
         path: 'my-tickets',
@@ -42,8 +42,8 @@ export const routes: Routes = [
       },
       {
         path: 'tickets/new',
-        title: 'Nuevo ticket | HelpDesk.NET',
-        data: { label: 'Nuevo ticket' },
+        title: 'Nueva incidencia | HelpDesk.NET',
+        data: { label: 'Nueva incidencia' },
         canActivate: [authGuard],
         loadComponent: () =>
           import('./features/tickets/create/ticket-create').then((m) => m.TicketCreate),
